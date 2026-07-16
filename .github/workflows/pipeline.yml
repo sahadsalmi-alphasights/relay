@@ -1,0 +1,168 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ---------- Security scanning ----------
+
+  secrets-scan:
+    name: Secret scanning (Gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  dependency-scan:
+    name: Dependency vulnerability scan (Trivy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Trivy filesystem scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: CRITICAL,HIGH
+          exit-code: 1
+          ignore-unfixed: true
+
+  code-scan:
+    name: Static analysis (Semgrep)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: Install Semgrep
+        run: pip install semgrep
+      - name: Run Semgrep
+        run: semgrep scan --config p/security-audit --config p/typescript --error
+
+  # ---------- Build & test ----------
+
+  server-build-test:
+    name: Server build + tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: relay
+          POSTGRES_PASSWORD: relay_test
+          POSTGRES_DB: relay_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U relay -d relay_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: server
+    env:
+      DATABASE_URL: postgres://relay:relay_test@localhost:5432/relay_test
+      NODE_ENV: test
+      DEV_AUTH: "true"
+      SESSION_SECRET: ci_test_secret
+      PORT: 4000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: npm audit (high/critical)
+        run: npm audit --audit-level=high
+      - name: Run migrations
+        run: npm run migrate:up
+      - name: Build (typecheck)
+        run: npm run build
+      - name: Run tests
+        run: npm test
+
+  web-build:
+    name: Web build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install dependencies
+        run: npm install
+      - name: npm audit (high/critical)
+        run: npm audit --audit-level=high
+      - name: Build
+        run: npm run build
+        env:
+          VITE_API_URL: https://captracker.alphasights.ae/api
+
+  container-scan:
+    name: Container image scan (Trivy)
+    needs: [server-build-test, web-build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build API image
+        run: docker build -t relay-api:scan -f server/Dockerfile.prod server
+      - name: Build web image
+        run: docker build -t relay-web:scan -f web/Dockerfile.prod web --build-arg VITE_API_URL=https://captracker.alphasights.ae/api
+      - name: Scan API image
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: relay-api:scan
+          severity: CRITICAL,HIGH
+          exit-code: 1
+          ignore-unfixed: true
+      - name: Scan web image
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: relay-web:scan
+          severity: CRITICAL,HIGH
+          exit-code: 1
+          ignore-unfixed: true
+
+  # ---------- Deploy (main branch only, only after everything above passes) ----------
+
+  deploy:
+    name: Deploy to GCP VM
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs:
+      [
+        secrets-scan,
+        dependency-scan,
+        code-scan,
+        server-build-test,
+        web-build,
+        container-scan,
+      ]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.GCP_VM_IP }}
+          username: ${{ secrets.GCP_VM_USER }}
+          key: ${{ secrets.GCP_SSH_PRIVATE_KEY }}
+          script: |
+            cd ~/relay
+            git pull origin main
+            docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+            docker image prune -f

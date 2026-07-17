@@ -125,20 +125,29 @@ export async function setDeactivated(id: string, deactivated: boolean): Promise<
   return (await findPersonById(id))!;
 }
 
-/** Owner-only profile edit: name / practice area / team (any of them). */
+/** Owner-only profile edit: name / practice area / team / status (any of them). */
 export async function updateProfile(
   id: string,
-  fields: { name?: string; practiceArea?: string | null; teamId?: string | null }
+  fields: { name?: string; practiceArea?: string | null; teamId?: string | null; status?: PersonStatus }
 ): Promise<PersonRow> {
   const sets: string[] = [];
   const vals: unknown[] = [id];
   if (fields.name !== undefined) { vals.push(fields.name); sets.push(`name = $${vals.length}`); }
   if (fields.practiceArea !== undefined) { vals.push(fields.practiceArea); sets.push(`practice_area = $${vals.length}`); }
   if (fields.teamId !== undefined) { vals.push(fields.teamId); sets.push(`team_id = $${vals.length}`); }
+  if (fields.status !== undefined) { vals.push(fields.status); sets.push(`status = $${vals.length}`); }
   if (sets.length > 0) {
     await pool.query(`UPDATE person SET ${sets.join(", ")} WHERE id = $1`, vals);
   }
   return (await findPersonById(id))!;
+}
+
+/** Owner-only: pre-provision a user by email so their role/team are ready on first SSO login. Throws if the email already exists. */
+export async function createUser(email: string, name: string): Promise<PersonRow> {
+  const existing = await findPersonByEmail(email);
+  if (existing) throw new Error("exists");
+  const { rows } = await pool.query(`INSERT INTO person (email, name) VALUES ($1, $2) RETURNING id`, [email, name]);
+  return (await findPersonById(rows[0].id))!;
 }
 
 export interface AdminUserRow extends PersonRow {

@@ -7,7 +7,7 @@ import type { LiveStatus } from "../lib/useLiveSocket";
 import type { NotificationsState } from "../lib/useNotifications";
 import NotificationBell from "./NotificationBell";
 
-export type Tab = "PL" | "Delivery" | "Ranking" | "FirstDel" | "AuditLog";
+export type Tab = "PL" | "Delivery" | "Ranking" | "FirstDel" | "AuditLog" | "Users";
 export type Scope = "mine" | "team";
 
 export default function Header({

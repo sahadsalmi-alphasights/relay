@@ -1,20 +1,32 @@
 import { pool } from "../db";
 import type { PersonStatus } from "../rules/types";
 
+export type Role = "owner" | "manager" | "member";
+
 export interface PersonRow {
   id: string;
   email: string;
   name: string;
   teamId: string | null;
   isManager: boolean;
+  isOwner: boolean;
   practiceArea: string | null;
   status: PersonStatus;
   eveningCoverage: boolean;
+  lastLoginAt: string | null;
+  deactivatedAt: string | null;
+}
+
+/** role(person) = owner ? 'owner' : manager ? 'manager' : 'member'. */
+export function roleOf(p: { isOwner: boolean; isManager: boolean }): Role {
+  return p.isOwner ? "owner" : p.isManager ? "manager" : "member";
 }
 
 const SELECT = `
   SELECT id, email, name, team_id AS "teamId", is_manager AS "isManager",
-         practice_area AS "practiceArea", status, evening_coverage AS "eveningCoverage"
+         is_owner AS "isOwner", practice_area AS "practiceArea", status,
+         evening_coverage AS "eveningCoverage", last_login_at AS "lastLoginAt",
+         deactivated_at AS "deactivatedAt"
   FROM person`;
 
 export async function findPersonById(id: string): Promise<PersonRow | null> {
@@ -75,6 +87,77 @@ export async function assignTeam(personId: string, teamId: string, makeManager: 
 export async function removeFromTeam(personId: string): Promise<PersonRow> {
   await pool.query(`UPDATE person SET team_id = NULL, is_manager = false WHERE id = $1`, [personId]);
   return (await findPersonById(personId))!;
+}
+
+// ---------------------------------------------------------------------------
+// User management (owner portal) — role changes, login tracking, deactivation.
+// ---------------------------------------------------------------------------
+
+/** Stamp the last successful login; called from the OIDC callback. */
+export async function markLogin(id: string): Promise<void> {
+  await pool.query(`UPDATE person SET last_login_at = now() WHERE id = $1`, [id]);
+}
+
+/** Grant/revoke Owner. Owner is a superset of Manager, enforced in rules. */
+export async function setOwner(id: string, isOwner: boolean): Promise<PersonRow> {
+  await pool.query(`UPDATE person SET is_owner = $2 WHERE id = $1`, [id, isOwner]);
+  return (await findPersonById(id))!;
+}
+
+/**
+ * Set a person's role from the portal. member -> neither flag; manager ->
+ * is_manager only; owner -> is_owner (keeps is_manager too so nothing that
+ * still checks is_manager directly loses access when someone is promoted).
+ */
+export async function setRole(id: string, role: Role): Promise<PersonRow> {
+  const isOwner = role === "owner";
+  const isManager = role === "owner" || role === "manager";
+  await pool.query(`UPDATE person SET is_owner = $2, is_manager = $3 WHERE id = $1`, [id, isOwner, isManager]);
+  return (await findPersonById(id))!;
+}
+
+/** Revoke sign-in access without deleting the person or their history. */
+export async function setDeactivated(id: string, deactivated: boolean): Promise<PersonRow> {
+  await pool.query(
+    `UPDATE person SET deactivated_at = ${deactivated ? "now()" : "NULL"} WHERE id = $1`,
+    [id]
+  );
+  return (await findPersonById(id))!;
+}
+
+/** Owner-only profile edit: name / practice area / team (any of them). */
+export async function updateProfile(
+  id: string,
+  fields: { name?: string; practiceArea?: string | null; teamId?: string | null }
+): Promise<PersonRow> {
+  const sets: string[] = [];
+  const vals: unknown[] = [id];
+  if (fields.name !== undefined) { vals.push(fields.name); sets.push(`name = $${vals.length}`); }
+  if (fields.practiceArea !== undefined) { vals.push(fields.practiceArea); sets.push(`practice_area = $${vals.length}`); }
+  if (fields.teamId !== undefined) { vals.push(fields.teamId); sets.push(`team_id = $${vals.length}`); }
+  if (sets.length > 0) {
+    await pool.query(`UPDATE person SET ${sets.join(", ")} WHERE id = $1`, vals);
+  }
+  return (await findPersonById(id))!;
+}
+
+export interface AdminUserRow extends PersonRow {
+  teamName: string | null;
+  role: Role;
+}
+
+/** Full roster for the owner portal, with team name resolved and role derived. */
+export async function listPeopleAdmin(): Promise<AdminUserRow[]> {
+  const { rows } = await pool.query(
+    `SELECT p.id, p.email, p.name, p.team_id AS "teamId", t.name AS "teamName",
+            p.is_manager AS "isManager", p.is_owner AS "isOwner",
+            p.practice_area AS "practiceArea", p.status,
+            p.evening_coverage AS "eveningCoverage", p.last_login_at AS "lastLoginAt",
+            p.deactivated_at AS "deactivatedAt"
+     FROM person p LEFT JOIN team t ON t.id = p.team_id
+     ORDER BY p.is_owner DESC, p.is_manager DESC, p.name`
+  );
+  return rows.map((r) => ({ ...r, role: roleOf(r) }));
 }
 
 /** People not yet on any team — candidates a manager can add to their own team. */

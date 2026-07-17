@@ -3,7 +3,14 @@ import { buildAuthorizationUrl, exchangeCallback, type OidcTransaction } from ".
 import { SESSION_COOKIE } from "../auth/plugin";
 import { config } from "../config";
 import { badRequest, forbidden, notFound } from "../errors";
-import { findOrCreatePersonByEmail, findPersonById, listPeople } from "../repositories/people";
+import {
+  findOrCreatePersonByEmail,
+  findPersonById,
+  listPeople,
+  markLogin,
+  setDeactivated,
+  setOwner,
+} from "../repositories/people";
 
 const OIDC_TXN_COOKIE = "relay_oidc_txn";
 
@@ -75,7 +82,23 @@ const authRoutes: FastifyPluginAsync = async (app) => {
     try {
       const transaction: OidcTransaction = JSON.parse(unsigned.value);
       const identity = await exchangeCallback(request.query, transaction);
-      const person = await findOrCreatePersonByEmail(identity.email, identity.name);
+      const isOwnerEmail = config.ownerEmails.includes(identity.email.toLowerCase());
+      let person = await findOrCreatePersonByEmail(identity.email, identity.name);
+
+      // Owner allowlist wins over everything: the founders can never be
+      // locked out, so an allowlisted email is (re)granted Owner and
+      // reactivated on login regardless of prior portal changes.
+      if (isOwnerEmail) {
+        if (person.deactivatedAt) person = await setDeactivated(person.id, false);
+        if (!person.isOwner) person = await setOwner(person.id, true);
+      } else if (person.deactivatedAt) {
+        // Everyone else: a deactivated account may not sign in.
+        request.log.warn({ email: identity.email }, "sign-in blocked: account deactivated");
+        reply.redirect(`${config.webOrigin}/?ssoError=disabled`);
+        return;
+      }
+
+      await markLogin(person.id);
       setSessionCookie(reply, person.id);
       reply.redirect(config.webOrigin);
     } catch (err) {

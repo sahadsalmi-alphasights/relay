@@ -12,6 +12,7 @@ declare module "fastify" {
   }
   interface FastifyInstance {
     requireAuth: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
+    requireOwner: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
   }
 }
 
@@ -44,6 +45,23 @@ export default fp(async function authPlugin(app: FastifyInstance) {
   app.decorate("requireAuth", async (request: FastifyRequest, reply: FastifyReply) => {
     if (!request.actor) {
       reply.code(401).send({ error: "unauthorized" });
+      return;
+    }
+    // Deactivated accounts keep their history but can no longer act.
+    if (request.actor.deactivatedAt) {
+      reply.code(403).send({ error: "account deactivated" });
+    }
+  });
+
+  // User management — owner-only routes (the admin portal). Enforced
+  // server-side; hiding the nav item in the UI is not authorization.
+  app.decorate("requireOwner", async (request: FastifyRequest, reply: FastifyReply) => {
+    if (!request.actor) {
+      reply.code(401).send({ error: "unauthorized" });
+      return;
+    }
+    if (request.actor.deactivatedAt || !request.actor.isOwner) {
+      reply.code(403).send({ error: "owner only" });
     }
   });
 });

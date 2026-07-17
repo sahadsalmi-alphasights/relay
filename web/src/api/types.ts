@@ -13,9 +13,21 @@ export interface Person {
   name: string;
   teamId: string | null;
   isManager: boolean;
+  isOwner: boolean;
   practiceArea: string | null;
   status: PersonStatus;
   eveningCoverage: boolean;
+  lastLoginAt: string | null;
+  deactivatedAt: string | null;
+}
+
+/** User management portal — role tiers. owner > manager > member. */
+export type Role = "owner" | "manager" | "member";
+
+/** A row in the owner-only user management portal (Person + resolved team name + derived role). */
+export interface AdminUser extends Person {
+  teamName: string | null;
+  role: Role;
 }
 
 export interface Team {

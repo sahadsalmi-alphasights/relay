@@ -1,4 +1,6 @@
 import { pool } from "../db";
+import { computeCustomGoal, suggestStaffing } from "../rules/suggestedGoal";
+import type { ProjectType } from "../rules/types";
 
 /**
  * Big structural change — a project always has at least one angle (a
@@ -87,4 +89,88 @@ export async function countAnglesForProject(projectId: string): Promise<number> 
     projectId,
   ]);
   return Number(rows[0].count);
+}
+
+/**
+ * CHANGE 3 — the broadcast fallback's "seat target" for an angle, always
+ * `suggestStaffing(callsN, projectType)` recomputed live from the SAME
+ * formula intake itself uses — no new column stores it. Deliberate
+ * simplification (no-schema-changes constraint for this batch): if the PL
+ * manually dialed the intake stepper away from the suggested headcount
+ * before the zero-eligible match happened, the broadcast still targets the
+ * FORMULA count, not whatever the PL had set — there's nowhere to persist a
+ * PL override without a new column. Revisit if a schema change is later
+ * approved for this feature.
+ */
+export function seatTargetForAngle(callsN: number, projectType: ProjectType): number {
+  return suggestStaffing(callsN, projectType).delivererCount;
+}
+
+/**
+ * CHANGE 3 — atomic first-come seat claim. Locks the angle row so two
+ * concurrent claims serialize: the second waits for the first's transaction
+ * to commit, then re-reads the now-current assignment count and correctly
+ * refuses if the target's already met. WebSockets only ever broadcast
+ * "something changed" (see ws/hub.ts) — they never enforce this count
+ * themselves; this transaction is the only place the count is authoritative.
+ *
+ * Returns null (no throw) for every "seat's gone" reason — already full,
+ * already-claimed-by-this-same-person, or angle not found — so the route
+ * layer can turn any of them into a plain 409 without distinguishing which.
+ */
+export async function claimAngleSeat(
+  angleId: string,
+  delivererId: string,
+  goal: number
+): Promise<{ id: string } | null> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const { rows: angleRows } = await client.query<{ id: string; callsN: number; projectId: string }>(
+      `SELECT id, calls_n AS "callsN", project_id AS "projectId" FROM angle WHERE id = $1 FOR UPDATE`,
+      [angleId]
+    );
+    if (angleRows.length === 0) {
+      await client.query("ROLLBACK");
+      return null;
+    }
+    const angle = angleRows[0];
+
+    const { rows: projectRows } = await client.query<{ projectType: ProjectType }>(
+      `SELECT project_type AS "projectType" FROM project WHERE id = $1`,
+      [angle.projectId]
+    );
+    const projectType = projectRows[0].projectType;
+    const target = seatTargetForAngle(angle.callsN, projectType);
+
+    const { rows: countRows } = await client.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM assignment WHERE angle_id = $1`,
+      [angleId]
+    );
+    if (countRows[0].n >= target) {
+      await client.query("ROLLBACK");
+      return null;
+    }
+
+    const { rows: existing } = await client.query(
+      `SELECT id FROM assignment WHERE angle_id = $1 AND deliverer_id = $2`,
+      [angleId, delivererId]
+    );
+    if (existing.length > 0) {
+      await client.query("ROLLBACK");
+      return null;
+    }
+
+    const { rows: inserted } = await client.query<{ id: string }>(
+      `INSERT INTO assignment (angle_id, deliverer_id, goal, custom_goal) VALUES ($1, $2, $3, $4) RETURNING id`,
+      [angleId, delivererId, goal, computeCustomGoal(goal)]
+    );
+    await client.query("COMMIT");
+    return { id: inserted[0].id };
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
 }

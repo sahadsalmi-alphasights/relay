@@ -67,7 +67,7 @@ describe("change 4 — project type changes goal and staffing", () => {
     const cookie = await loginAs(app, fx.plAlpha);
     const { rows } = await pool.query<{ id: string }>(
       `INSERT INTO project (pl_id, client, project_link, project_type, expert_pool, status)
-       VALUES ($1, 'Client_PitchZero', 'https://example.test/proj/pitchzero', 'Pitch', 'US only', 'matched') RETURNING id`,
+       VALUES ($1, 'Client_PitchZero', 'https://example.test/proj/pitchzero', 'Pitch', 'US only', 'active') RETURNING id`,
       [fx.plAlpha]
     );
     const { rows: angleRows } = await pool.query<{ id: string }>(
@@ -95,7 +95,7 @@ describe("change 4 — project type changes goal and staffing", () => {
     const cookie = await loginAs(app, fx.plAlpha);
     const { rows } = await pool.query<{ id: string }>(
       `INSERT INTO project (pl_id, client, project_link, project_type, expert_pool, status)
-       VALUES ($1, 'Client_PitchConverts', 'https://example.test/proj/pitchconverts', 'Pitch', 'Global', 'matched') RETURNING id`,
+       VALUES ($1, 'Client_PitchConverts', 'https://example.test/proj/pitchconverts', 'Pitch', 'Global', 'active') RETURNING id`,
       [fx.plAlpha]
     );
     const { rows: angleRows } = await pool.query<{ id: string }>(
@@ -139,7 +139,7 @@ describe("BUG 1 (fixed) — pool weight never gates logging work", () => {
   it("a deliverer can log delivered/custom profiles on a dormant US-pool project before 15:00 Dubai", async () => {
     const { rows } = await pool.query<{ id: string }>(
       `INSERT INTO project (pl_id, client, project_link, project_type, expert_pool, status)
-       VALUES ($1, 'Client_Dormant', 'https://example.test/proj/dormant', 'Strategy', 'US only', 'matched') RETURNING id`,
+       VALUES ($1, 'Client_Dormant', 'https://example.test/proj/dormant', 'Strategy', 'US only', 'active') RETURNING id`,
       [fx.plAlpha]
     );
     const { rows: angleRows } = await pool.query<{ id: string }>(

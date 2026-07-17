@@ -1,11 +1,27 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
-import type { Angle, Assignment, GoalChangeRequest, Project } from "../api/types";
-import { barColor, initials, paceInfo, stageClass, typeClass } from "../lib/format";
+import type { Angle, Assignment, CapacityRankRow, GoalChangeRequest, Project, Stage } from "../api/types";
+import { barColor, entityName, entityTint, initials, paceInfo, stageClass, stageLabel, typeClass } from "../lib/format";
 import { fmtElapsed, poolState, timerClass } from "../lib/time";
 import { useApp } from "../state/AppContext";
 import type { NotesTarget } from "../Shell";
 import type { Scope } from "../components/Header";
+
+// Phase D, item 1 — dropdown options in stage order; only the "Selling" ->
+// "Admin" label differs from the stored value (display-only, §format.ts).
+const STAGE_OPTIONS: { value: Stage; label: string }[] = [
+  { value: "First Deliverable", label: "First Deliverable" },
+  { value: "Second Deliverable", label: "Second Deliverable" },
+  { value: "Hail Mary", label: "Hail Mary" },
+  { value: "Selling", label: stageLabel("Selling") },
+];
+
+// Phase D, item 3 — sold pulse bar color bands: <25% red, 25-<50% amber, >=50% green.
+function soldBarColor(attainment: number): string {
+  if (attainment < 0.25) return "var(--red)";
+  if (attainment < 0.5) return "var(--amber)";
+  return "var(--green)";
+}
 
 interface ProjectItem {
   project: Project;
@@ -75,62 +91,71 @@ function AssigneeGoalEditor({ assignment, onSave }: { assignment: Assignment; on
 }
 
 /**
- * §5 (eight changes) — changing an assignee's stage prompts for a new goal
- * for the new stage, which starts a new round (§3/§9 — previous round
- * archived, new round starts at 0 delivered): the goal PATCH is what
- * triggers that, so this does both in sequence.
+ * Phase D, item 1 — each deliverer row gets a dropdown that sets that
+ * deliverer's stage directly, and can jump straight to a later phase,
+ * skipping intermediates (unlike the old one-step advance/back). Picking a
+ * phase always prompts for a new goal — never an auto-goal from the phase —
+ * and reuses the exact existing round/archive mechanism (§3/§9): the stage
+ * PATCH, then the goal PATCH in sequence, same two-call pattern the old
+ * "Advance" button already used, just against a caller-picked target stage
+ * instead of a computed "next."
  */
-function AdvanceWithGoal({ assignment, onSave }: { assignment: Assignment; onSave: () => void }) {
-  const [open, setOpen] = useState(false);
+function StageDropdown({ assignment, onSave }: { assignment: Assignment; onSave: () => void }) {
+  const [pendingStage, setPendingStage] = useState<Stage | null>(null);
   const [goal, setGoal] = useState(assignment.goal);
   const [busy, setBusy] = useState(false);
 
-  if (!open) {
+  if (pendingStage) {
+    const confirm = async () => {
+      setBusy(true);
+      try {
+        await api.patch(`/assignments/${assignment.id}/stage`, { stage: pendingStage });
+        await api.patch(`/assignments/${assignment.id}/goal`, { goal });
+        onSave();
+      } finally {
+        setBusy(false);
+        setPendingStage(null);
+      }
+    };
     return (
-      <button
-        className="btn-sm btn-ghost"
-        disabled={assignment.stage === "Selling"}
-        onClick={() => {
-          setGoal(assignment.goal);
-          setOpen(true);
-        }}
-      >
-        Advance →
-      </button>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 12, fontWeight: 600, color: "var(--ink)" }}>
+          New goal for {stageLabel(pendingStage)}
+        </span>
+        <div className="step">
+          <button disabled={busy} onClick={() => setGoal((g) => Math.max(0, g - 1))}>
+            −
+          </button>
+          <span className="val">{goal}</span>
+          <button disabled={busy} onClick={() => setGoal((g) => g + 1)}>
+            +
+          </button>
+        </div>
+        <button className="btn-sm btn-pl" disabled={busy} onClick={confirm}>
+          Confirm
+        </button>
+        <button className="btn-sm btn-ghost" disabled={busy} onClick={() => setPendingStage(null)}>
+          Cancel
+        </button>
+      </div>
     );
   }
 
-  const confirm = async () => {
-    setBusy(true);
-    try {
-      await api.post(`/assignments/${assignment.id}/stage/advance`);
-      await api.patch(`/assignments/${assignment.id}/goal`, { goal });
-      onSave();
-    } finally {
-      setBusy(false);
-      setOpen(false);
-    }
-  };
-
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-      <span style={{ fontSize: 12, fontWeight: 600, color: "var(--ink)" }}>New goal for next stage</span>
-      <div className="step">
-        <button disabled={busy} onClick={() => setGoal((g) => Math.max(0, g - 1))}>
-          −
-        </button>
-        <span className="val">{goal}</span>
-        <button disabled={busy} onClick={() => setGoal((g) => g + 1)}>
-          +
-        </button>
-      </div>
-      <button className="btn-sm btn-pl" disabled={busy} onClick={confirm}>
-        Confirm
-      </button>
-      <button className="btn-sm btn-ghost" disabled={busy} onClick={() => setOpen(false)}>
-        Cancel
-      </button>
-    </div>
+    <select
+      className="stage-select"
+      value={assignment.stage}
+      onChange={(e) => {
+        setGoal(assignment.goal);
+        setPendingStage(e.target.value as Stage);
+      }}
+    >
+      {STAGE_OPTIONS.map((o) => (
+        <option key={o.value} value={o.value}>
+          {o.label}
+        </option>
+      ))}
+    </select>
   );
 }
 
@@ -207,9 +232,14 @@ export default function ProjectLeadingTab({
   onEditProject: (projectId: string) => void;
   onNotes: (t: NotesTarget) => void;
 }) {
-  const { actor, people, nameOf, practiceOf, nowMs, effectiveHour } = useApp();
+  const { actor, people, nameOf, practiceOf, nowMs, effectiveHour, demoHour } = useApp();
   const [items, setItems] = useState<ProjectItem[] | null>(null);
   const [archived, setArchived] = useState<Project[]>([]);
+  // Phase D, item 5 — team-overview running list. Reuses the existing,
+  // already-tested GET /capacity-ranking computation (personLoad + the
+  // rawRemaining<=median "free" rule, rules/load.ts) rather than inventing a
+  // second definition of load or free for this one screen.
+  const [rankRows, setRankRows] = useState<CapacityRankRow[] | null>(null);
 
   const load = async () => {
     const active = await api.get<Project[]>(`/projects?role=leading&scope=${scope}&archived=false`);
@@ -247,15 +277,13 @@ export default function ProjectLeadingTab({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scope, reloadTick]);
 
+  useEffect(() => {
+    // Team-view-only panel (below) -- don't bother fetching it in My view.
+    if (scope === "team") api.get<CapacityRankRow[]>("/capacity-ranking").then(setRankRows);
+  }, [scope, reloadTick, demoHour]);
+
   const resolveRequest = async (id: string) => {
     await api.patch(`/goal-change-requests/${id}/resolve`);
-    onReload();
-  };
-  // §6/§8 — stage is per-assignment now (domain change 8). Advance now goes
-  // through AdvanceWithGoal (§5 -- prompts for a new goal, starting a new
-  // round); "back" (mis-click recovery) stays a direct action.
-  const backAssignmentStage = async (assignmentId: string) => {
-    await api.post(`/assignments/${assignmentId}/stage/back`);
     onReload();
   };
   const archiveProject = async (id: string) => {
@@ -266,6 +294,16 @@ export default function ProjectLeadingTab({
     await api.post(`/projects/${id}/resurface`);
     onReload();
   };
+  // New project status — Idle: "parked, waiting on something external,
+  // nothing to do now." One-tap either direction, right from the card.
+  const idleProject = async (id: string) => {
+    await api.post(`/projects/${id}/idle`);
+    onReload();
+  };
+  const reactivateProject = async (id: string) => {
+    await api.post(`/projects/${id}/reactivate`);
+    onReload();
+  };
 
   if (!items) return <div className="empty">Loading…</div>;
 
@@ -274,6 +312,13 @@ export default function ProjectLeadingTab({
   // showing only the projects that member leads.
   const teamMembers =
     scope === "team" ? [...people].filter((p) => p.teamId === actor.teamId).sort((a, b) => a.name.localeCompare(b.name)) : [];
+
+  // Phase D, item 5 — the running-list team roster is always the actor's own
+  // team, independent of the My view/Team view scope toggle (which only
+  // filters project cards, not this overview strip).
+  const myTeamRanked = (rankRows ?? [])
+    .filter((r) => people.find((p) => p.id === r.personId)?.teamId === actor.teamId)
+    .sort((a, b) => a.load - b.load);
 
   // §8.1 — end-of-day nudge: the actor's OWN active led projects whose
   // calls_sold hasn't been touched today, regardless of scope (Team view
@@ -287,7 +332,7 @@ export default function ProjectLeadingTab({
   const renderAssigneeRow = (a: Assignment) => {
     const elapsed = nowMs - new Date(a.stageEnteredAt).getTime();
     return (
-      <div key={a.id}>
+      <div key={a.id} className="assignee-block">
         <div className="assignee">
           <div className="avatar">{initials(nameOf(a.delivererId))}</div>
           <div>
@@ -298,21 +343,14 @@ export default function ProjectLeadingTab({
           </div>
           <AssigneeGoalEditor assignment={a} onSave={onReload} />
         </div>
-        {/* §6/§8 — this assignee's own stage, timer, and advance/back (per-deliverer, domain change 8). */}
+        {/* §6/§8 — this assignee's own stage, timer, and the phase dropdown (per-deliverer, domain change 8). */}
         <div className="assignee-actions-row">
           {/* (bug fix, three-across) the adjacent stage-pill already
               names the stage, so the timer chip doesn't repeat it --
               frees up enough width for this row to stay on one line. */}
-          <span className={"stage-pill " + stageClass(a.stage)}>{a.stage}</span>
+          <span className={"stage-pill " + stageClass(a.stage)}>{stageLabel(a.stage)}</span>
           <span className={"chip timer " + timerClass(elapsed)}>⏱ {fmtElapsed(elapsed)}</span>
-          <button
-            className="btn-sm btn-ghost"
-            disabled={a.stage === "First Deliverable"}
-            onClick={() => backAssignmentStage(a.id)}
-          >
-            ← Back
-          </button>
-          <AdvanceWithGoal assignment={a} onSave={onReload} />
+          <StageDropdown assignment={a} onSave={onReload} />
         </div>
       </div>
     );
@@ -326,10 +364,20 @@ export default function ProjectLeadingTab({
         // re-derived here from summed totals (see rules/project.ts for why).
         const chase = p.chaseClient;
         const multiAngle = angles.length > 1;
+        // New project status — idle: visually distinct, excluded from active
+        // pacing (server already zeroes chase/needsCallsSoldUpdate for it).
+        const isIdle = p.status === "idle";
 
         return (
-          <div key={p.id} className="card">
-            <div className="card-top">
+          <div key={p.id} className={"card" + (isIdle ? " idle" : "")}>
+            {/* Phase D (v2), item 7 — header block tinted by client_entity
+                (display map only, §format.ts CLIENT_ENTITY_MAP -- the stored
+                clientEntity smallint is untouched). A soft wash, not a full
+                colour fill: header text/badge contrast is unaffected since
+                all five tints are pale and text stays var(--ink)/pill-own
+                colours; "Behind"/chase-client render lower in the card, on
+                the plain white body, never inside this tinted block. */}
+            <div className="card-top" style={{ background: entityTint(p.clientEntity) }}>
               <div>
                 <a className="client" href={p.projectLink} target="_blank" rel="noopener noreferrer">
                   {p.client}
@@ -366,23 +414,62 @@ export default function ProjectLeadingTab({
                 <span style={{ width: pct + "%", background: barColor(pct) }} />
               </div>
             </div>
+            {/* Phase D, items 2/3 — per-angle remaining goal + remaining calls
+                sold ("N of M sold"), plus a sold-attainment pulse bar under
+                the existing profiles/goal bar above. No bar at all for a
+                no-calls Pitch angle (callsN === 0) -- there's nothing to
+                divide, and an empty/red bar would misread as behind. */}
+            <div className="angle-progress-list">
+              {angles.map((ang) => {
+                const angleAssignments = assignments.filter((a) => a.angleId === ang.id);
+                const angleDelivered = angleAssignments.reduce((s, a) => s + a.delivered + a.customDelivered, 0);
+                const remainingGoal = Math.max(ang.goalTotal - angleDelivered, 0);
+                const attainment = ang.callsN > 0 ? ang.callsSold / ang.callsN : null;
+                return (
+                  <div key={ang.id} className="angle-progress-row">
+                    <div className="angle-progress-stats">
+                      {multiAngle && <span className="angle-progress-name">{ang.name}</span>}
+                      <span>{remainingGoal} to goal</span>
+                      {ang.callsN > 0 && (
+                        <span>
+                          {ang.callsSold} of {ang.callsN} sold
+                        </span>
+                      )}
+                    </div>
+                    {attainment !== null && (
+                      <div className="sold-pulse-bar">
+                        <span style={{ width: Math.min(100, attainment * 100) + "%", background: soldBarColor(attainment) }} />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
             <div className="stage-row">
-              {/* BUG 2 (fixed) — stage is per-deliverer now (§3/§8); the
-                  rolled-up "Earliest: X" project-level label doesn't need
-                  surfacing here — each assignee below shows their own. Only
-                  the unstaffed case is still worth a pill (that's staffing
-                  status, not a stage). */}
-              {!p.earliestStage && <span className="stage-pill stage-selling">Not yet staffed</span>}
-              {chase && (
-                <span className="chip" style={{ color: "#A82F2F", background: "var(--red-bg)" }}>
-                  delivered, not sold — chase client
-                </span>
-              )}
-              {p.earliestStage && (
-                <span className="pace" style={{ color: pace.color }}>
-                  <span className="dot" style={{ background: pace.color }} />
-                  {pace.label}
-                </span>
+              {/* New project status — idle is excluded from active pacing
+                  entirely: no pace dot, no chase flag, just the parked badge. */}
+              {isIdle ? (
+                <span className="idle-badge">⏸ Idle</span>
+              ) : (
+                <>
+                  {/* BUG 2 (fixed) — stage is per-deliverer now (§3/§8); the
+                      rolled-up "Earliest: X" project-level label doesn't need
+                      surfacing here — each assignee below shows their own. Only
+                      the unstaffed case is still worth a pill (that's staffing
+                      status, not a stage). */}
+                  {!p.earliestStage && <span className="stage-pill stage-selling">Not yet staffed</span>}
+                  {chase && (
+                    <span className="chip" style={{ color: "#A82F2F", background: "var(--red-bg)" }}>
+                      delivered, not sold — chase client
+                    </span>
+                  )}
+                  {p.earliestStage && (
+                    <span className="pace" style={{ color: pace.color }}>
+                      <span className="dot" style={{ background: pace.color }} />
+                      {pace.label}
+                    </span>
+                  )}
+                </>
               )}
             </div>
             <div className="assignees">
@@ -413,6 +500,10 @@ export default function ProjectLeadingTab({
                   })
                 : assignments.map(renderAssigneeRow)}
             </div>
+            {/* Phase D (v2), item 12 — exactly two logical action rows, with
+                a divider between them (same weight/colour as the header
+                divider, item 6 -- no new style introduced). Row 1: manage
+                the project's set-up. Row 2: manage its lifecycle. */}
             <div className="actions">
               <button className="btn btn-pl" onClick={() => onEditTeam(p.id)}>
                 Edit team
@@ -420,14 +511,23 @@ export default function ProjectLeadingTab({
               <button className="btn btn-ghost" onClick={() => onEditProject(p.id)} title="Edit project set-up">
                 ✏️ Edit
               </button>
-            </div>
-            <div className="actions">
               <CallsSoldEditor angles={angles} onSave={onReload} />
             </div>
-            <div className="actions">
+            <div className="actions actions-row2">
               <button className="btn btn-ghost" onClick={() => onNotes({ projectId: p.id })}>
                 📝 Notes
               </button>
+              {/* New project status — Idle: park from the card (one tap),
+                  reactivate with one tap once parked. */}
+              {isIdle ? (
+                <button className="btn btn-pl" onClick={() => reactivateProject(p.id)}>
+                  ▶ Reactivate
+                </button>
+              ) : (
+                <button className="btn btn-ghost" onClick={() => idleProject(p.id)}>
+                  ⏸ Idle
+                </button>
+              )}
               <button className="btn btn-ghost" onClick={() => archiveProject(p.id)}>
                 Archive
               </button>
@@ -436,94 +536,151 @@ export default function ProjectLeadingTab({
         );
   };
 
-  return (
-    <>
-      {myStaleProjects.length > 0 && (
-        <div className="review-strip" style={{ borderColor: "#F0DCB0", background: "#FFFDF8" }}>
-          <span>📞</span>
-          <div style={{ flex: 1 }}>
-            <b>Update calls sold</b> for today: {myStaleProjects.map((it) => it.project.client).join(", ")}
-          </div>
-        </div>
-      )}
-
-      {items
-        .filter((it) => it.pending.length > 0)
-        .flatMap((it) =>
-          it.pending.map((r) => (
-            <div key={r.id} className="review-strip">
-              <span>↩</span>
-              <div style={{ flex: 1 }}>
-                <b>{nameOf(r.requestedBy)}</b> requests: {r.body}
-              </div>
-              <button className="btn-sm btn-pl" onClick={() => resolveRequest(r.id)}>
-                Resolve
-              </button>
+  // New set-up field — group a list of project cards into rows by Client
+  // Entity, each with a small heading. Always grouped (unlike the angle
+  // chrome, which only appears past one angle) — a stable landmark the PL
+  // can rely on being in the same place every time, not something that
+  // pops in and out as data changes.
+  const renderEntityGroups = (list: ProjectItem[]) => {
+    const byEntity = new Map<number, ProjectItem[]>();
+    for (const it of list) {
+      const bucket = byEntity.get(it.project.clientEntity) ?? [];
+      bucket.push(it);
+      byEntity.set(it.project.clientEntity, bucket);
+    }
+    const entities = [...byEntity.keys()].sort((a, b) => a - b);
+    return (
+      <>
+        {entities.map((entity) => (
+          <div key={entity} className="entity-row">
+            <div className="entity-row-heading">
+              <span className="swatch" style={{ background: entityTint(entity) }} />
+              {entityName(entity)}
             </div>
-          ))
+            <div className="card-grid">{byEntity.get(entity)!.map(renderCard)}</div>
+          </div>
+        ))}
+      </>
+    );
+  };
+
+  return (
+    <div className="pl-board-layout">
+      <div className="pl-board-main">
+        {myStaleProjects.length > 0 && (
+          <div className="review-strip" style={{ borderColor: "#F0DCB0", background: "#FFFDF8" }}>
+            <span>📞</span>
+            <div style={{ flex: 1 }}>
+              <b>Update calls sold</b> for today: {myStaleProjects.map((it) => it.project.client).join(", ")}
+            </div>
+          </div>
         )}
 
-      {scope === "team" ? (
-        <>
-          <div className="section-lbl">
-            Team — projects led <span className="count">{items.length}</span>
-          </div>
-          {teamMembers.map((person) => {
-            const personItems = items.filter((it) => it.project.plId === person.id);
-            return (
-              <div key={person.id} className="team-group">
-                <div className="team-group-header">
-                  <div className="avatar">{initials(person.name)}</div>
-                  {person.name}
-                  <span className="count">{personItems.length}</span>
+        {items
+          .filter((it) => it.pending.length > 0)
+          .flatMap((it) =>
+            it.pending.map((r) => (
+              <div key={r.id} className="review-strip">
+                <span>↩</span>
+                <div style={{ flex: 1 }}>
+                  <b>{nameOf(r.requestedBy)}</b> requests: {r.body}
                 </div>
-                {personItems.length === 0 ? (
-                  <div className="empty team-group-empty">Leading nothing right now.</div>
-                ) : (
-                  <div className="card-grid">{personItems.map(renderCard)}</div>
-                )}
+                <button className="btn-sm btn-pl" onClick={() => resolveRequest(r.id)}>
+                  Resolve
+                </button>
               </div>
-            );
-          })}
-        </>
-      ) : (
-        <>
-          <div className="section-lbl">
-            Projects you lead <span className="count">{items.length}</span>
-          </div>
-          {items.length === 0 && (
-            <div className="empty">
-              <b>No projects yet</b>Tap "New project" to add one and auto-staff it.
-            </div>
+            ))
           )}
-          <div className="card-grid">{items.map(renderCard)}</div>
-        </>
-      )}
 
-      {archived.length > 0 && (
-        <>
-          <div className="section-lbl spaced">
-            Archived <span className="count">{archived.length}</span>
-          </div>
-          {archived.map((p) => (
-            <div key={p.id} className="rank-row">
-              <div className="rank-body">
-                <div className="rank-name">
-                  {p.client} · {p.topic}
+        {scope === "team" ? (
+          <>
+            <div className="section-lbl">
+              Team — projects led <span className="count">{items.length}</span>
+            </div>
+            {teamMembers.map((person) => {
+              const personItems = items.filter((it) => it.project.plId === person.id);
+              return (
+                <div key={person.id} className="team-group">
+                  <div className="team-group-header">
+                    <div className="avatar">{initials(person.name)}</div>
+                    {person.name}
+                    <span className="count">{personItems.length}</span>
+                  </div>
+                  {personItems.length === 0 ? (
+                    <div className="empty team-group-empty">Leading nothing right now.</div>
+                  ) : (
+                    renderEntityGroups(personItems)
+                  )}
                 </div>
-                <div className="rank-sub">
-                  <span>
-                    {p.projectType} · {p.expertPool}
-                  </span>
-                </div>
+              );
+            })}
+          </>
+        ) : (
+          <>
+            <div className="section-lbl">
+              Projects you lead <span className="count">{items.length}</span>
+            </div>
+            {items.length === 0 && (
+              <div className="empty">
+                <b>No projects yet</b>Tap "New project" to add one and auto-staff it.
               </div>
-              <button className="btn-sm btn-pl" onClick={() => resurface(p.id)}>
-                Resurface
-              </button>
+            )}
+            {renderEntityGroups(items)}
+          </>
+        )}
+
+        {archived.length > 0 && (
+          <>
+            <div className="section-lbl spaced">
+              Archived <span className="count">{archived.length}</span>
+            </div>
+            {archived.map((p) => (
+              <div key={p.id} className="rank-row">
+                <div className="rank-body">
+                  <div className="rank-name">
+                    {p.client} · {p.topic}
+                  </div>
+                  <div className="rank-sub">
+                    <span>
+                      {p.projectType} · {p.expertPool}
+                    </span>
+                  </div>
+                </div>
+                <button className="btn-sm btn-pl" onClick={() => resurface(p.id)}>
+                  Resurface
+                </button>
+              </div>
+            ))}
+          </>
+        )}
+      </div>
+
+      {/* Phase D, item 5 — small team-overview panel: Name, Load, Free/Not
+          only. Team view only (this is "who else on my team is free right
+          now," not relevant while looking at just your own projects).
+          Reuses GET /capacity-ranking's own personLoad and median-based free
+          computation verbatim (rules/load.ts) -- no new definitions here,
+          just a narrower, PL-page-local view of them. A thin side panel, not
+          a full-width table -- it's a short list of rows, not a lot of text. */}
+      {scope === "team" && myTeamRanked.length > 0 && (
+        <aside className="team-capacity-panel">
+          <div className="team-capacity-header">Team capacity</div>
+          {myTeamRanked.map((r) => (
+            <div key={r.personId} className="team-capacity-row">
+              <div className="avatar">{initials(nameOf(r.personId))}</div>
+              <span className="team-capacity-name">{nameOf(r.personId)}</span>
+              <span className="team-capacity-load">{r.load.toFixed(1)}</span>
+              {!r.eligible ? (
+                <span className="mini off">off</span>
+              ) : r.free ? (
+                <span className="mini free">free</span>
+              ) : (
+                <span className="mini busy">busy</span>
+              )}
             </div>
           ))}
-        </>
+        </aside>
       )}
-    </>
+    </div>
   );
 }

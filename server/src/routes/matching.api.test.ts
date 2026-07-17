@@ -34,12 +34,13 @@ describe("bug 3 — POST /projects/intake/match respects staffCount authoritativ
       url: "/projects/intake/match",
       cookies: { relay_session: cookie.split("=")[1] },
       headers: { [DEMO_AS_OF_HEADER]: WEEKDAY_MORNING },
-      payload: { staffCount: 2 },
+      payload: { angles: [{ key: "0", staffCount: 2 }] },
     });
     expect(res.statusCode).toBe(200);
     const body = res.json();
-    expect(body.picked).toHaveLength(2);
-    expect(body.picked.every((p: { eligible: boolean }) => p.eligible)).toBe(true);
+    const picked = body.perAngle.find((p: { key: string }) => p.key === "0").picked;
+    expect(picked).toHaveLength(2);
+    expect(picked.every((p: { eligible: boolean }) => p.eligible)).toBe(true);
   });
 
   it("caps picks at however many are actually eligible when staffCount is set higher", async () => {
@@ -49,12 +50,13 @@ describe("bug 3 — POST /projects/intake/match respects staffCount authoritativ
       url: "/projects/intake/match",
       cookies: { relay_session: cookie.split("=")[1] },
       headers: { [DEMO_AS_OF_HEADER]: WEEKDAY_MORNING },
-      payload: { staffCount: 50 },
+      payload: { angles: [{ key: "0", staffCount: 50 }] },
     });
     const body = res.json();
+    const picked = body.perAngle.find((p: { key: string }) => p.key === "0").picked;
     const eligibleInRanked = body.ranked.filter((r: { eligible: boolean }) => r.eligible).length;
-    expect(body.picked.length).toBe(eligibleInRanked);
-    expect(body.picked.length).toBeLessThan(50);
+    expect(picked.length).toBe(eligibleInRanked);
+    expect(picked.length).toBeLessThan(50);
   });
 
   it("respects a lower staffCount than the previous suggestion (the reported symptom)", async () => {
@@ -64,18 +66,18 @@ describe("bug 3 — POST /projects/intake/match respects staffCount authoritativ
       url: "/projects/intake/match",
       cookies: { relay_session: cookie.split("=")[1] },
       headers: { [DEMO_AS_OF_HEADER]: WEEKDAY_MORNING },
-      payload: { staffCount: 3 },
+      payload: { angles: [{ key: "0", staffCount: 3 }] },
     });
-    expect(res1.json().picked).toHaveLength(3);
+    expect(res1.json().perAngle.find((p: { key: string }) => p.key === "0").picked).toHaveLength(3);
 
     const res2 = await app.inject({
       method: "POST",
       url: "/projects/intake/match",
       cookies: { relay_session: cookie.split("=")[1] },
       headers: { [DEMO_AS_OF_HEADER]: WEEKDAY_MORNING },
-      payload: { staffCount: 1 },
+      payload: { angles: [{ key: "0", staffCount: 1 }] },
     });
-    expect(res2.json().picked).toHaveLength(1);
+    expect(res2.json().perAngle.find((p: { key: string }) => p.key === "0").picked).toHaveLength(1);
   });
 });
 
@@ -88,7 +90,7 @@ describe("bugs 1+2 — capacity ranking recomputes live at the previewed Dubai t
     // would add a hour-independent +12 baseline and mask the assertion.
     const { rows } = await pool.query<{ id: string }>(
       `INSERT INTO project (pl_id, client, project_link, project_type, expert_pool, status)
-       VALUES ($1, 'Client_Apac', 'https://example.test/proj/apac', 'Pitch', 'AUS / NZ / Sing / JP', 'matched')
+       VALUES ($1, 'Client_Apac', 'https://example.test/proj/apac', 'Pitch', 'AUS / NZ / Sing / JP', 'active')
        RETURNING id`,
       [fx.plAlpha]
     );
@@ -154,17 +156,18 @@ describe("bugs 1+2 — capacity ranking recomputes live at the previewed Dubai t
 });
 
 describe("domain change 6 — evening projects are ASSIGNED, not floated (end-to-end)", () => {
-  it("creates a matched project after hours when an evening-coverage volunteer exists — never open while someone is eligible", async () => {
+  it("creates an active project after hours when an evening-coverage volunteer exists — never open while someone is eligible", async () => {
     const cookie = await loginAs(app, fx.plAlpha);
     const matchRes = await app.inject({
       method: "POST",
       url: "/projects/intake/match",
       cookies: { relay_session: cookie.split("=")[1] },
       headers: { [DEMO_AS_OF_HEADER]: WEEKDAY_EVENING },
-      payload: { staffCount: 1 },
+      payload: { angles: [{ key: "0", staffCount: 1 }] },
     });
-    const { picked, projectStatus } = matchRes.json();
-    expect(projectStatus).toBe("matched");
+    const { perAngle, projectStatus } = matchRes.json();
+    const picked = perAngle.find((p: { key: string }) => p.key === "0").picked;
+    expect(projectStatus).toBe("active");
     expect(picked).toHaveLength(1);
 
     const createRes = await app.inject({
@@ -177,10 +180,11 @@ describe("domain change 6 — evening projects are ASSIGNED, not floated (end-to
         projectLink: "https://example.test/proj/evening",
         projectType: "Pitch",
         expertPool: "Global",
+        clientEntity: 1,
         angles: [{ name: "Main", callsN: 2, goalTotal: 6, assignments: [{ delivererId: picked[0].personId, goal: 6 }] }],
       },
     });
-    expect(createRes.json().status).toBe("matched");
+    expect(createRes.json().status).toBe("active");
   });
 
   it("only goes to the open pool when zero evening-coverage volunteers exist after hours — the true last resort", async () => {
@@ -194,9 +198,10 @@ describe("domain change 6 — evening projects are ASSIGNED, not floated (end-to
       url: "/projects/intake/match",
       cookies: { relay_session: cookie.split("=")[1] },
       headers: { [DEMO_AS_OF_HEADER]: WEEKDAY_EVENING },
-      payload: { staffCount: 1 },
+      payload: { angles: [{ key: "0", staffCount: 1 }] },
     });
-    const { picked, projectStatus } = matchRes.json();
+    const { perAngle, projectStatus } = matchRes.json();
+    const picked = perAngle.find((p: { key: string }) => p.key === "0").picked;
     expect(projectStatus).toBe("open");
     expect(picked).toHaveLength(0);
 

@@ -12,6 +12,11 @@ export type Stage =
   | "Hail Mary"
   | "Selling";
 
-export type ProjectStatus = "matched" | "open";
+/**
+ * Project lifecycle — open (unclaimed) -> active (staffed) -> idle (parked,
+ * PL's own call) -> active again, and archived from any of the three. See
+ * RELAY_BUILD_SPEC.md for the full state diagram.
+ */
+export type ProjectStatus = "open" | "active" | "idle" | "archived";
 
 export type ProjectType = "Pitch" | "Due Diligence" | "Strategy";

@@ -92,3 +92,18 @@ export async function countOutstandingProfiles(personId: string): Promise<number
   );
   return Number(rows[0].outstanding);
 }
+
+/**
+ * CHANGE 3 — broadcast fallback recipients. Deliberately NOT the same list
+ * as matching's Available-only candidates: this is "who should hear that a
+ * project is stuck at zero staffing," a much wider net than "who's currently
+ * biddable." Sick and On vacation are never included, at any hour. Offline
+ * is excluded during the working day but INCLUDED after hours (the
+ * evening-coverage window, §4 Rule 3) — someone who's toggled off for the
+ * night may still see the ask and choose to come back online for it.
+ */
+export async function listBroadcastRecipients(afterHours: boolean): Promise<PersonRow[]> {
+  const excludedStatuses = afterHours ? ["Sick", "On vacation"] : ["Sick", "On vacation", "Offline"];
+  const { rows } = await pool.query(`${SELECT} WHERE status <> ALL($1) ORDER BY name`, [excludedStatuses]);
+  return rows;
+}

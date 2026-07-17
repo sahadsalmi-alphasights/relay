@@ -7,7 +7,7 @@ import type { LiveStatus } from "../lib/useLiveSocket";
 import type { NotificationsState } from "../lib/useNotifications";
 import NotificationBell from "./NotificationBell";
 
-export type Tab = "PL" | "Delivery" | "Ranking" | "FirstDel";
+export type Tab = "PL" | "Delivery" | "Ranking" | "FirstDel" | "AuditLog";
 export type Scope = "mine" | "team";
 
 export default function Header({
@@ -90,6 +90,14 @@ export default function Header({
           <button className={tab === "FirstDel" ? "on-fd" : ""} onClick={() => setTab("FirstDel")}>
             1st Del{fdCount ? ` · ${fdCount}` : ""}
           </button>
+          {/* docs/AUDIT_LOG_SPEC.md — audit trails are sensitive; only a
+              manager sees this entry at all, same gate the read API itself
+              enforces server-side (never rely on hiding the button alone). */}
+          {actor.isManager && (
+            <button className={tab === "AuditLog" ? "on-al" : ""} onClick={() => setTab("AuditLog")}>
+              Audit
+            </button>
+          )}
         </div>
         <div className="scope">
           <button className={scope === "mine" ? "on" : ""} onClick={() => setScope("mine")}>

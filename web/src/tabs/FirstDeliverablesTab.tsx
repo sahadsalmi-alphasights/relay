@@ -60,8 +60,8 @@ export default function FirstDeliverablesTab({
   useEffect(() => {
     const load = async () => {
       const [leading, delivering] = await Promise.all([
-        api.get<Project[]>(`/projects?role=leading&scope=${scope}&status=matched&archived=false`),
-        api.get<Project[]>(`/projects?role=delivering&scope=${scope}&status=matched&archived=false`),
+        api.get<Project[]>(`/projects?role=leading&scope=${scope}&status=active`),
+        api.get<Project[]>(`/projects?role=delivering&scope=${scope}&status=active`),
       ]);
       const byId = new Map<string, Project>();
       for (const p of [...leading, ...delivering]) byId.set(p.id, p);

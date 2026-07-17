@@ -125,3 +125,76 @@ describe("domain change 8 — stage is per-deliverer, not per-project (end-to-en
     expect(rows[0].stage).toBe("First Deliverable");
   });
 });
+
+describe("Phase D, item 1 — PATCH /assignments/:id/stage: direct jump to any phase, skipping intermediates", () => {
+  it("jumps straight from First Deliverable to Hail Mary in one call", async () => {
+    const cookie = await loginAs(app, fx.plAlpha);
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/assignments/${fx.assignment}/stage`,
+      cookies: { relay_session: cookie.split("=")[1] },
+      payload: { stage: "Hail Mary" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().stage).toBe("Hail Mary");
+  });
+
+  it("can also move a stage backward, unlike the old one-directional advance", async () => {
+    const cookie = await loginAs(app, fx.plAlpha);
+    await app.inject({
+      method: "PATCH",
+      url: `/assignments/${fx.assignment}/stage`,
+      cookies: { relay_session: cookie.split("=")[1] },
+      payload: { stage: "Selling" },
+    });
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/assignments/${fx.assignment}/stage`,
+      cookies: { relay_session: cookie.split("=")[1] },
+      payload: { stage: "First Deliverable" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().stage).toBe("First Deliverable");
+  });
+
+  it("rejects a value that isn't one of the four real stages", async () => {
+    const cookie = await loginAs(app, fx.plAlpha);
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/assignments/${fx.assignment}/stage`,
+      cookies: { relay_session: cookie.split("=")[1] },
+      payload: { stage: "Admin" },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("only the project's PL may set stage directly — the deliverer themself gets 403", async () => {
+    const cookie = await loginAs(app, fx.delivererAlpha);
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/assignments/${fx.assignment}/stage`,
+      cookies: { relay_session: cookie.split("=")[1] },
+      payload: { stage: "Hail Mary" },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("does not touch goal/delivered/rounds itself — that stays a separate PATCH .../goal call", async () => {
+    const cookie = await loginAs(app, fx.plAlpha);
+    const before = await app.inject({
+      method: "GET",
+      url: `/assignments/${fx.assignment}`,
+      cookies: { relay_session: cookie.split("=")[1] },
+    });
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/assignments/${fx.assignment}/stage`,
+      cookies: { relay_session: cookie.split("=")[1] },
+      payload: { stage: "Second Deliverable" },
+    });
+    expect(res.json().goal).toBe(before.json().goal);
+    expect(res.json().delivered).toBe(before.json().delivered);
+    const { rows } = await pool.query("SELECT count(*)::int FROM delivery_round WHERE assignment_id = $1", [fx.assignment]);
+    expect(rows[0].count).toBe(0);
+  });
+});

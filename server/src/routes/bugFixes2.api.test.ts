@@ -26,7 +26,7 @@ describe("BUG 1 (fixed) — free/busy label consistent with the Pitch flat-load 
     // fx.otherDelivererAlpha starts with no assignments at all.
     const { rows } = await pool.query<{ id: string }>(
       `INSERT INTO project (pl_id, client, project_link, project_type, expert_pool, status)
-       VALUES ($1, 'Client_PitchOnly', 'https://example.test/proj/pitchonly', 'Pitch', 'Global', 'matched') RETURNING id`,
+       VALUES ($1, 'Client_PitchOnly', 'https://example.test/proj/pitchonly', 'Pitch', 'Global', 'active') RETURNING id`,
       [fx.plAlpha]
     );
     const { rows: angleRows } = await pool.query<{ id: string }>(
@@ -54,7 +54,7 @@ describe("BUG 1 (fixed) — free/busy label consistent with the Pitch flat-load 
     const cookie = await loginAs(app, fx.plAlpha);
     const { rows } = await pool.query<{ id: string }>(
       `INSERT INTO project (pl_id, client, project_link, project_type, expert_pool, status)
-       VALUES ($1, 'Client_PitchOnly2', 'https://example.test/proj/pitchonly2', 'Pitch', 'Global', 'matched') RETURNING id`,
+       VALUES ($1, 'Client_PitchOnly2', 'https://example.test/proj/pitchonly2', 'Pitch', 'Global', 'active') RETURNING id`,
       [fx.plAlpha]
     );
     const { rows: angleRows } = await pool.query<{ id: string }>(

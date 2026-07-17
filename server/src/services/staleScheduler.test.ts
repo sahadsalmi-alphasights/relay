@@ -87,4 +87,15 @@ describe("§9 (built) — stale-first-deliverable scheduler: notify once, then a
     await checkStaleAssignments(new Date());
     expect(await listForPerson(fx.delivererAlpha)).toHaveLength(0);
   });
+
+  // Project lifecycle change — idle projects go quiet, same as archived: a
+  // parked project's assignments shouldn't ping anyone just because time
+  // passed on something nobody's meant to be actively working right now.
+  it("does not fire for a project that's been parked idle, however long stale", async () => {
+    await pool.query(`UPDATE project SET status = 'idle' WHERE id = $1`, [fx.project]);
+    await backdate(fx.assignment, 120);
+    await checkStaleAssignments(new Date());
+    expect(await listForPerson(fx.delivererAlpha)).toHaveLength(0);
+    expect(await listForPerson(fx.plAlpha)).toHaveLength(0);
+  });
 });

@@ -57,7 +57,7 @@ export async function listAssignmentsWithProjectByDeliverer(delivererId: string)
             a.custom_goal AS "customGoal", a.custom_delivered AS "customDelivered",
             a.stage, a.stage_entered_at AS "stageEnteredAt", p.expert_pool AS "projectExpertPool"
      FROM assignment a JOIN angle ang ON ang.id = a.angle_id JOIN project p ON p.id = ang.project_id
-     WHERE a.deliverer_id = $1 AND p.archived = false`,
+     WHERE a.deliverer_id = $1 AND p.status NOT IN ('idle', 'archived')`,
     [delivererId]
   );
   return rows;
@@ -176,7 +176,9 @@ export async function listFirstDeliverableAssignments(): Promise<StaleCandidate[
             a.stale_notified_threshold_minutes AS "staleNotifiedThresholdMinutes",
             p.pl_id AS "projectPlId"
      FROM assignment a JOIN angle ang ON ang.id = a.angle_id JOIN project p ON p.id = ang.project_id
-     WHERE a.stage = 'First Deliverable' AND p.archived = false`
+     -- Project lifecycle change — idle projects go quiet too, same as archived
+     -- (see rules/project.ts isProjectLifecycleQuiet, which this mirrors).
+     WHERE a.stage = 'First Deliverable' AND p.status NOT IN ('idle', 'archived')`
   );
   return rows;
 }

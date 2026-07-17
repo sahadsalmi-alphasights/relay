@@ -29,7 +29,8 @@ export interface ProjectRow {
   earliestStage: Stage | null;
   callsSold: number;
   status: ProjectStatus;
-  archived: boolean;
+  /** New set-up field — groups the PL board into rows, 1-5, no meaning beyond a label the PL assigns. */
+  clientEntity: number;
 }
 
 const SELECT = `
@@ -38,7 +39,7 @@ const SELECT = `
          (SELECT COALESCE(SUM(ang.calls_n), 0)::int FROM angle ang WHERE ang.project_id = project.id) AS "callsN",
          (SELECT COALESCE(SUM(ang.goal_total), 0)::int FROM angle ang WHERE ang.project_id = project.id) AS "goalTotal",
          (SELECT COALESCE(SUM(ang.calls_sold), 0)::int FROM angle ang WHERE ang.project_id = project.id) AS "callsSold",
-         status, archived,
+         status, client_entity AS "clientEntity",
          (SELECT a.stage FROM assignment a JOIN angle ang ON ang.id = a.angle_id WHERE ang.project_id = project.id
           ORDER BY CASE a.stage
             WHEN 'First Deliverable' THEN 0 WHEN 'Second Deliverable' THEN 1
@@ -57,6 +58,15 @@ export interface ProjectFilter {
   delivererId?: string;
   delivererIdIn?: string[];
   status?: ProjectStatus;
+  /**
+   * Project lifecycle change — `archived` is no longer its own column, but
+   * every existing caller still asks in these terms (the archived-vs-active
+   * split on the PL board predates idle/open even mattering to it), so this
+   * stays a boolean at the filter layer and translates to `status`:
+   * archived=true -> status = 'archived'; archived=false -> status <> 'archived'
+   * (still includes open/active/idle — exactly the "not archived" set the
+   * callers actually mean).
+   */
   archived?: boolean;
 }
 
@@ -77,8 +87,7 @@ export async function listProjects(filter: ProjectFilter): Promise<ProjectRow[]>
     clauses.push(`status = $${params.length}`);
   }
   if (filter.archived !== undefined) {
-    params.push(filter.archived);
-    clauses.push(`archived = $${params.length}`);
+    clauses.push(filter.archived ? `status = 'archived'` : `status <> 'archived'`);
   }
   if (filter.delivererId) {
     params.push(filter.delivererId);
@@ -107,13 +116,14 @@ export interface CreateProjectInput {
   projectType: string;
   expertPool: string;
   status: ProjectStatus;
+  clientEntity: number;
 }
 
 /** Creates the project row only -- angles (and their assignments) are created separately via repositories/angles.ts, since a project always needs >=1. */
 export async function createProject(input: CreateProjectInput): Promise<ProjectRow> {
   const { rows } = await pool.query(
-    `INSERT INTO project (pl_id, client, account, topic, project_link, project_type, expert_pool, status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+    `INSERT INTO project (pl_id, client, account, topic, project_link, project_type, expert_pool, status, client_entity)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
     [
       input.plId,
       input.client,
@@ -123,6 +133,7 @@ export async function createProject(input: CreateProjectInput): Promise<ProjectR
       input.projectType,
       input.expertPool,
       input.status,
+      input.clientEntity,
     ]
   );
   return (await findProjectById(rows[0].id))!;
@@ -135,6 +146,7 @@ const PATCHABLE_COLUMNS: Record<string, string> = {
   projectLink: "project_link",
   projectType: "project_type",
   expertPool: "expert_pool",
+  clientEntity: "client_entity",
 };
 
 /** callsN/goalTotal/callsSold are no longer project fields -- edit them via repositories/angles.ts (updateAngleFields) instead. */
@@ -154,17 +166,57 @@ export async function updateProjectFields(id: string, patch: Record<string, unkn
   return (await findProjectById(id))!;
 }
 
-export async function setArchived(id: string, archived: boolean): Promise<ProjectRow> {
-  await pool.query(`UPDATE project SET archived = $2 WHERE id = $1`, [id, archived]);
-  return (await findProjectById(id))!;
+async function countAssignments(projectId: string): Promise<number> {
+  const { rows } = await pool.query(
+    `SELECT count(*)::int AS n FROM assignment a JOIN angle ang ON ang.id = a.angle_id WHERE ang.project_id = $1`,
+    [projectId]
+  );
+  return rows[0].n;
 }
 
 /** §4 — first-commit-wins claim of an open project. Returns null if it was already claimed. */
 export async function claimOpenProject(id: string): Promise<ProjectRow | null> {
   const { rows } = await pool.query(
-    `UPDATE project SET status = 'matched' WHERE id = $1 AND status = 'open' RETURNING id`,
+    `UPDATE project SET status = 'active' WHERE id = $1 AND status = 'open' RETURNING id`,
     [id]
   );
   if (rows.length === 0) return null;
+  return (await findProjectById(id))!;
+}
+
+/** PL parks a project — only valid from 'active' (nothing to pause on an unstaffed or already-quiet project). Returns null if the transition wasn't valid. */
+export async function setIdle(id: string): Promise<ProjectRow | null> {
+  const { rows } = await pool.query(
+    `UPDATE project SET status = 'idle' WHERE id = $1 AND status = 'active' RETURNING id`,
+    [id]
+  );
+  if (rows.length === 0) return null;
+  return (await findProjectById(id))!;
+}
+
+/** One-tap reactivate — only valid from 'idle'. Returns null if the transition wasn't valid. */
+export async function reactivateProject(id: string): Promise<ProjectRow | null> {
+  const { rows } = await pool.query(
+    `UPDATE project SET status = 'active' WHERE id = $1 AND status = 'idle' RETURNING id`,
+    [id]
+  );
+  if (rows.length === 0) return null;
+  return (await findProjectById(id))!;
+}
+
+export async function archiveProject(id: string): Promise<ProjectRow> {
+  await pool.query(`UPDATE project SET status = 'archived' WHERE id = $1`, [id]);
+  return (await findProjectById(id))!;
+}
+
+/**
+ * Un-archives back to whichever of active/open it would be now, derived the
+ * same way project creation decides it -- staffed means active, unstaffed
+ * means back in the open pool -- since archiving doesn't remember which one
+ * it was (nor should it: a project's assignments could have changed since).
+ */
+export async function resurfaceProject(id: string): Promise<ProjectRow> {
+  const n = await countAssignments(id);
+  await pool.query(`UPDATE project SET status = $2 WHERE id = $1`, [id, n > 0 ? "active" : "open"]);
   return (await findProjectById(id))!;
 }

@@ -69,3 +69,23 @@ export async function markRead(id: string, personId: string): Promise<Notificati
 export async function markAllRead(personId: string): Promise<void> {
   await pool.query(`UPDATE notification SET read = true WHERE person_id = $1 AND read = false`, [personId]);
 }
+
+/**
+ * CHANGE 3 — the 15-minute re-ping needs to know "when did we last broadcast
+ * this," and there's no dedicated broadcast table to ask (no-schema-changes
+ * constraint for this batch) — so this derives it from the notification rows
+ * the broadcast itself already writes (one per recipient, same entityType/
+ * entityId/type every round). No new schema: just the newest timestamp
+ * among rows that already exist for this entity.
+ */
+export async function lastNotificationAt(
+  entityType: string,
+  entityId: string,
+  type: NotificationType
+): Promise<string | null> {
+  const { rows } = await pool.query(
+    `SELECT MAX(created_at) AS "lastAt" FROM notification WHERE entity_type = $1 AND entity_id = $2 AND type = $3`,
+    [entityType, entityId, type]
+  );
+  return rows[0].lastAt ?? null;
+}

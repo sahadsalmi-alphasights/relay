@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { needsCallsSoldUpdateToday, needsChaseClient, shouldWarnOnStatusChange } from "./project";
+import { isProjectLifecycleQuiet, needsCallsSoldUpdateToday, needsChaseClient, shouldWarnOnStatusChange } from "./project";
 
 describe("needsChaseClient — §8.1 (corrected)", () => {
   it("flags when profiles have been delivered but not all calls have sold", () => {
@@ -37,6 +37,18 @@ describe("needsCallsSoldUpdateToday — §8.1 (manual for now, phase-two: auto-p
     const now = new Date("2026-07-13T10:00:00Z");
     const lateUtcPrevDay = new Date("2026-07-12T23:30:00Z");
     expect(needsCallsSoldUpdateToday(lateUtcPrevDay, now)).toBe(false);
+  });
+});
+
+describe("isProjectLifecycleQuiet — project lifecycle change", () => {
+  it("is quiet for idle and archived", () => {
+    expect(isProjectLifecycleQuiet("idle")).toBe(true);
+    expect(isProjectLifecycleQuiet("archived")).toBe(true);
+  });
+
+  it("is not quiet for active or open", () => {
+    expect(isProjectLifecycleQuiet("active")).toBe(false);
+    expect(isProjectLifecycleQuiet("open")).toBe(false);
   });
 });
 

@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { api, ApiError } from "../api/client";
-import type { Assignment, Project, RankedCandidate } from "../api/types";
+import type { Angle, Assignment, Project, RankedCandidate } from "../api/types";
 import Sheet from "../components/Sheet";
 import { initials } from "../lib/format";
 import { useApp } from "../state/AppContext";
 
-type Action = { mode: "swap"; assignmentId: string; currentDelivererId: string } | { mode: "add" };
+type Action =
+  | { mode: "swap"; assignmentId: string; currentDelivererId: string }
+  | { mode: "add"; angleId: string | null };
 
 /**
  * §3/§6 (eight changes) — "Edit team": change deliverers on a project and add
@@ -14,6 +16,11 @@ type Action = { mode: "swap"; assignmentId: string; currentDelivererId: string }
  * candidate is an override (§6) and requires a written justification, logged
  * to the audit trail server-side — never a notification about the override
  * itself.
+ *
+ * Big structural change — assignments attach to an angle now. Adding a
+ * deliverer to a single-angle ("simple") project needs no angle chrome at
+ * all (silently targets that one angle, exactly like before); a multi-angle
+ * project asks which angle first.
  */
 export default function TeamEditSheet({
   projectId,
@@ -27,6 +34,7 @@ export default function TeamEditSheet({
   const { nameOf, practiceOf } = useApp();
   const [project, setProject] = useState<Project | null>(null);
   const [assignments, setAssignments] = useState<Assignment[] | null>(null);
+  const [angles, setAngles] = useState<Angle[] | null>(null);
   const [ranked, setRanked] = useState<RankedCandidate[] | null>(null);
   const [action, setAction] = useState<Action | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -36,9 +44,12 @@ export default function TeamEditSheet({
   const [busy, setBusy] = useState(false);
 
   const reload = async () => {
-    const detail = await api.get<{ project: Project; assignments: Assignment[] }>(`/projects/${projectId}`);
+    const detail = await api.get<{ project: Project; assignments: Assignment[]; angles: Angle[] }>(
+      `/projects/${projectId}`
+    );
     setProject(detail.project);
     setAssignments(detail.assignments);
+    setAngles(detail.angles);
     const match = await api.post<{ ranked: RankedCandidate[] }>("/projects/intake/match", { staffCount: 1 });
     setRanked(match.ranked);
   };
@@ -48,7 +59,7 @@ export default function TeamEditSheet({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
-  if (!project || !assignments || !ranked) {
+  if (!project || !assignments || !angles || !ranked) {
     return (
       <Sheet onClose={onClose}>
         <div className="empty">Loading…</div>
@@ -56,6 +67,7 @@ export default function TeamEditSheet({
     );
   }
 
+  const multiAngle = angles.length > 1;
   const alreadyOnProject = new Set(assignments.map((a) => a.delivererId));
   const candidates = ranked.filter((r) => !alreadyOnProject.has(r.personId));
   const suggestedId = candidates.find((r) => r.eligible)?.personId;
@@ -66,12 +78,25 @@ export default function TeamEditSheet({
     setJustification("");
     setError(null);
   };
+  const goalForAngle = (angleId: string) => {
+    const angle = angles.find((a) => a.id === angleId);
+    const angleAssignmentCount = assignments.filter((a) => a.angleId === angleId).length;
+    return Math.max(1, Math.ceil((angle?.goalTotal ?? 1) / (angleAssignmentCount + 1)));
+  };
   const startAdd = () => {
-    setAction({ mode: "add" });
+    if (multiAngle) {
+      setAction({ mode: "add", angleId: null });
+    } else {
+      setAction({ mode: "add", angleId: angles[0].id });
+      setAddGoal(goalForAngle(angles[0].id));
+    }
     setSelectedId(null);
     setJustification("");
-    setAddGoal(Math.max(1, Math.ceil(project.goalTotal / (assignments.length + 1))));
     setError(null);
+  };
+  const pickAngleForAdd = (angleId: string) => {
+    setAction({ mode: "add", angleId });
+    setAddGoal(goalForAngle(angleId));
   };
   const cancelAction = () => {
     setAction(null);
@@ -84,6 +109,7 @@ export default function TeamEditSheet({
   const confirm = async () => {
     if (!action || !selectedId) return;
     if (isOverride && !justification.trim()) return;
+    if (action.mode === "add" && !action.angleId) return;
     setBusy(true);
     setError(null);
     try {
@@ -91,7 +117,12 @@ export default function TeamEditSheet({
       if (action.mode === "swap") {
         await api.post(`/assignments/${action.assignmentId}/swap`, { newDelivererId: selectedId, override });
       } else {
-        await api.post(`/projects/${projectId}/assignments`, { delivererId: selectedId, goal: addGoal, override });
+        await api.post(`/projects/${projectId}/assignments`, {
+          angleId: action.angleId,
+          delivererId: selectedId,
+          goal: addGoal,
+          override,
+        });
       }
       onChanged();
     } catch (err) {
@@ -99,6 +130,8 @@ export default function TeamEditSheet({
       setBusy(false);
     }
   };
+
+  const angleName = (angleId: string) => angles.find((a) => a.id === angleId)?.name ?? "";
 
   return (
     <Sheet onClose={onClose}>
@@ -117,6 +150,7 @@ export default function TeamEditSheet({
                   {nameOf(a.delivererId)} <span style={{ color: "var(--soft)", fontWeight: 500 }}>· {practiceOf(a.delivererId)}</span>
                 </div>
                 <div className="assignee-sub">
+                  {multiAngle ? `${a.angleName} · ` : ""}
                   goal {a.goal} · {a.delivered + a.customDelivered} delivered
                 </div>
               </div>
@@ -136,10 +170,36 @@ export default function TeamEditSheet({
         </>
       )}
 
-      {action && (
+      {action && action.mode === "add" && !action.angleId && (
+        <>
+          <div className="section-lbl spaced">Which angle?</div>
+          {angles.map((ang) => (
+            <button
+              key={ang.id}
+              className="match-line"
+              style={{ width: "100%", textAlign: "left", cursor: "pointer" }}
+              onClick={() => pickAngleForAdd(ang.id)}
+            >
+              <div>
+                <div className="assignee-name">{ang.name}</div>
+                <div className="assignee-sub">
+                  N {ang.callsN} · goal {ang.goalTotal} · {assignments.filter((a) => a.angleId === ang.id).length} staffed
+                </div>
+              </div>
+            </button>
+          ))}
+          <div className="sheet-footer">
+            <button className="close" onClick={cancelAction}>
+              ← Back
+            </button>
+          </div>
+        </>
+      )}
+
+      {action && (action.mode === "swap" || action.angleId) && (
         <>
           <div className="section-lbl spaced">
-            {action.mode === "swap" ? `Replace ${nameOf(action.currentDelivererId)}` : "Add a deliverer"}
+            {action.mode === "swap" ? `Replace ${nameOf(action.currentDelivererId)}` : `Add a deliverer — ${angleName(action.angleId!)}`}
           </div>
           {action.mode === "add" && (
             <div className="suggest" style={{ marginBottom: 12 }}>

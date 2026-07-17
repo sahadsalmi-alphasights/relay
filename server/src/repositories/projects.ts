@@ -11,6 +11,14 @@ export interface ProjectRow {
   projectLink: string;
   projectType: "Pitch" | "Due Diligence" | "Strategy";
   expertPool: ExpertPool;
+  /**
+   * Big structural change — a project always has >=1 angle now (N, goal,
+   * calls_sold all live on angle, not project). These three are the SUM
+   * across the project's angles, computed at query time, not stored columns
+   * — every existing "project totals" display keeps working unchanged for
+   * the common one-angle case, and correctly sums for multi-angle projects.
+   * See RELAY_BUILD_SPEC.md §3a and repositories/angles.ts.
+   */
   callsN: number;
   goalTotal: number;
   /**
@@ -20,18 +28,18 @@ export interface ProjectRow {
    */
   earliestStage: Stage | null;
   callsSold: number;
-  /** §8.1 — when calls_sold was last written; drives the end-of-day update prompt. */
-  callsSoldUpdatedAt: string;
   status: ProjectStatus;
   archived: boolean;
 }
 
 const SELECT = `
   SELECT id, pl_id AS "plId", client, account, topic, project_link AS "projectLink",
-         project_type AS "projectType", expert_pool AS "expertPool", calls_n AS "callsN",
-         goal_total AS "goalTotal", calls_sold AS "callsSold",
-         calls_sold_updated_at AS "callsSoldUpdatedAt", status, archived,
-         (SELECT a.stage FROM assignment a WHERE a.project_id = project.id
+         project_type AS "projectType", expert_pool AS "expertPool",
+         (SELECT COALESCE(SUM(ang.calls_n), 0)::int FROM angle ang WHERE ang.project_id = project.id) AS "callsN",
+         (SELECT COALESCE(SUM(ang.goal_total), 0)::int FROM angle ang WHERE ang.project_id = project.id) AS "goalTotal",
+         (SELECT COALESCE(SUM(ang.calls_sold), 0)::int FROM angle ang WHERE ang.project_id = project.id) AS "callsSold",
+         status, archived,
+         (SELECT a.stage FROM assignment a JOIN angle ang ON ang.id = a.angle_id WHERE ang.project_id = project.id
           ORDER BY CASE a.stage
             WHEN 'First Deliverable' THEN 0 WHEN 'Second Deliverable' THEN 1
             WHEN 'Hail Mary' THEN 2 WHEN 'Selling' THEN 3 END ASC
@@ -74,11 +82,15 @@ export async function listProjects(filter: ProjectFilter): Promise<ProjectRow[]>
   }
   if (filter.delivererId) {
     params.push(filter.delivererId);
-    clauses.push(`id IN (SELECT project_id FROM assignment WHERE deliverer_id = $${params.length})`);
+    clauses.push(
+      `id IN (SELECT ang.project_id FROM assignment a JOIN angle ang ON ang.id = a.angle_id WHERE a.deliverer_id = $${params.length})`
+    );
   }
   if (filter.delivererIdIn) {
     params.push(filter.delivererIdIn);
-    clauses.push(`id IN (SELECT project_id FROM assignment WHERE deliverer_id = ANY($${params.length}))`);
+    clauses.push(
+      `id IN (SELECT ang.project_id FROM assignment a JOIN angle ang ON ang.id = a.angle_id WHERE a.deliverer_id = ANY($${params.length}))`
+    );
   }
 
   const where = clauses.length ? ` WHERE ${clauses.join(" AND ")}` : "";
@@ -94,15 +106,14 @@ export interface CreateProjectInput {
   projectLink: string;
   projectType: string;
   expertPool: string;
-  callsN: number;
-  goalTotal: number;
   status: ProjectStatus;
 }
 
+/** Creates the project row only -- angles (and their assignments) are created separately via repositories/angles.ts, since a project always needs >=1. */
 export async function createProject(input: CreateProjectInput): Promise<ProjectRow> {
   const { rows } = await pool.query(
-    `INSERT INTO project (pl_id, client, account, topic, project_link, project_type, expert_pool, calls_n, goal_total, status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+    `INSERT INTO project (pl_id, client, account, topic, project_link, project_type, expert_pool, status)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
     [
       input.plId,
       input.client,
@@ -111,8 +122,6 @@ export async function createProject(input: CreateProjectInput): Promise<ProjectR
       input.projectLink,
       input.projectType,
       input.expertPool,
-      input.callsN,
-      input.goalTotal,
       input.status,
     ]
   );
@@ -126,11 +135,9 @@ const PATCHABLE_COLUMNS: Record<string, string> = {
   projectLink: "project_link",
   projectType: "project_type",
   expertPool: "expert_pool",
-  callsN: "calls_n",
-  goalTotal: "goal_total",
-  callsSold: "calls_sold",
 };
 
+/** callsN/goalTotal/callsSold are no longer project fields -- edit them via repositories/angles.ts (updateAngleFields) instead. */
 export async function updateProjectFields(id: string, patch: Record<string, unknown>): Promise<ProjectRow> {
   const sets: string[] = [];
   const params: unknown[] = [id];
@@ -140,11 +147,6 @@ export async function updateProjectFields(id: string, patch: Record<string, unkn
       params.push(patch[key]);
       sets.push(`${column} = $${params.length}`);
     }
-  }
-  // §8.1 — calls_sold is manual for now; stamp when it was last touched so
-  // the PL board can prompt for an end-of-day update once it goes stale.
-  if ("callsSold" in patch) {
-    sets.push(`calls_sold_updated_at = now()`);
   }
   if (sets.length > 0) {
     await pool.query(`UPDATE project SET ${sets.join(", ")} WHERE id = $1`, params);

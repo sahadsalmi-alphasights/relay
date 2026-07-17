@@ -9,6 +9,8 @@ export interface Fixture {
   otherDelivererAlpha: string;
   managerBeta: string;
   project: string;
+  /** The project's one (default) angle -- every existing test that only cares about "the project" keeps working against this. */
+  angle: string;
   assignment: string;
 }
 
@@ -52,20 +54,26 @@ export async function resetAndSeedFixture(): Promise<Fixture> {
   const managerBeta = await insertPerson("manager.beta@test.example", "Manager_Beta", teamBeta, true, "Energy");
 
   const { rows: projectRows } = await pool.query<{ id: string }>(
-    `INSERT INTO project (pl_id, client, project_link, project_type, expert_pool, calls_n, goal_total, status)
-     VALUES ($1, 'Client_Test', 'https://example.test/proj/fixture', 'Pitch', 'Global', 4, 8, 'matched') RETURNING id`,
+    `INSERT INTO project (pl_id, client, project_link, project_type, expert_pool, status)
+     VALUES ($1, 'Client_Test', 'https://example.test/proj/fixture', 'Pitch', 'Global', 'matched') RETURNING id`,
     [plAlpha]
   );
   const project = projectRows[0].id;
 
+  const { rows: angleRows } = await pool.query<{ id: string }>(
+    `INSERT INTO angle (project_id, name, calls_n, goal_total) VALUES ($1, 'Main', 4, 8) RETURNING id`,
+    [project]
+  );
+  const angle = angleRows[0].id;
+
   const { rows: assignmentRows } = await pool.query<{ id: string }>(
-    `INSERT INTO assignment (project_id, deliverer_id, goal, delivered, custom_goal, custom_delivered)
+    `INSERT INTO assignment (angle_id, deliverer_id, goal, delivered, custom_goal, custom_delivered)
      VALUES ($1, $2, 8, 2, 0, 0) RETURNING id`,
-    [project, delivererAlpha]
+    [angle, delivererAlpha]
   );
   const assignment = assignmentRows[0].id;
 
-  return { teamAlpha, teamBeta, plAlpha, delivererAlpha, otherDelivererAlpha, managerBeta, project, assignment };
+  return { teamAlpha, teamBeta, plAlpha, delivererAlpha, otherDelivererAlpha, managerBeta, project, angle, assignment };
 }
 
 /** Logs in via the DEV_AUTH endpoint through the real HTTP route and returns a `Cookie` header value. */

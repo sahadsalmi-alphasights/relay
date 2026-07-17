@@ -23,9 +23,7 @@ const basePayload = {
   client: "Client_Link",
   projectType: "Strategy",
   expertPool: "Global",
-  callsN: 2,
-  goalTotal: 6,
-  assignments: [],
+  angles: [{ name: "Main", callsN: 2, goalTotal: 6, assignments: [] }],
 };
 
 describe("project_link — required at intake, validated server-side (bug fix)", () => {

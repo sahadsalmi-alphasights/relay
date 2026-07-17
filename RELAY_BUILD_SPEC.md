@@ -109,21 +109,18 @@ Unique on (rota_date, person_id).
 | account | text | sub-account |
 | topic | text | |
 | project_link | text NOT NULL | **required at intake, validated server-side as a http(s) URL** (bug fix — it used to be optional and, it turned out, never surfaced anywhere once collected). The project/client name is a hyperlink to this everywhere a project appears: PL board, Delivery board, First Deliverables, Team view. Opens in a new tab. |
-| project_type | enum | `Pitch` \| `Due Diligence` \| `Strategy` — changes the goal/staffing formula (§5a/§5b) and, for a Pitch with no calls agreed, the load formula too (§5c) |
-| expert_pool | enum | see §4 |
-| calls_n | int | **N = calls the client wants to take** |
-| goal_total | int | **profiles to source** (suggested by §5, PL-editable) |
-| calls_sold | int | how many actually sold. **PL-editable, enforced server-side** (§5e) — a simple stepper on the PL board, same pattern as goal editing. **This is manual for now**: the PL types it in; a later phase wires this up to the CRM/dialer/whatever system actually knows this, so it populates automatically. |
-| calls_sold_updated_at | timestamptz | when `calls_sold` was last written; drives the end-of-day nudge below. Stamped automatically whenever `calls_sold` changes — not itself editable. |
-| status | enum | `matched` \| `open` (open = unmatched, up for grabs) |
+| project_type | enum | `Pitch` \| `Due Diligence` \| `Strategy` — **one per project**, shared by all its angles. Changes the goal/staffing formula (§5a/§5b, run once per angle) and, for a Pitch with no calls agreed, the load formula too (§5c) |
+| expert_pool | enum | see §4. **One per project**, shared by all its angles — angles don't get their own pool |
+| status | enum | `matched` \| `open` (open = unmatched, up for grabs). Project-wide: `open` only if there are zero assignments across **every** angle; a project with at least one assignment anywhere is `matched`, even if some angle is still fully unstaffed (a known limitation — see §3a) |
 | archived | bool | |
 
-**End-of-day calls_sold nudge.** If a PL has an active (non-archived) led
-project whose `calls_sold` hasn't been touched yet today (Asia/Dubai calendar
-day, per `calls_sold_updated_at`), the Project Leading tab shows a banner
-prompting them to update it. This is what makes the chase-client flag below
-meaningful — without ever updating `calls_sold`, that flag would just fire
-forever from the moment any custom_/delivered profile lands.
+**Big structural change (§3a): calls_n, goal_total, calls_sold, and
+calls_sold_updated_at moved to `angle`.** A project no longer stores any of
+these directly — they're per-workstream now, not per-project. Everywhere the
+API returns a `project`, `callsN`/`goalTotal`/`callsSold` are still present
+on it, computed as the **sum across the project's angles** at query time
+(§3a), so every existing "project totals" display kept working unchanged for
+the common one-angle case.
 
 **No `stage` or `stage_entered_at` column** (domain change 8) — stage lives on
 `assignment` now, per deliverer. The project's `earliestStage` is still
@@ -134,18 +131,106 @@ label on the PL board card**; stage is per-deliverer now, so the roll-up
 doesn't need its own display. It's still returned by the API and still
 drives the "not yet staffed" pill and the pace indicator.
 
-### assignment  (one per deliverer per project)
+### angle  (big structural change — see §3a)
 | field | type | notes |
 |---|---|---|
 | id | uuid | |
 | project_id | uuid → project | |
+| name | text | e.g. "Buy-side diligence" — pre-filled from the project's `topic` (or "Main") for the default first angle, so a simple project never surfaces the word "angle" in the UI |
+| calls_n | int | **N = calls the client wants to take, for THIS angle** |
+| goal_total | int | **profiles to source for this angle** (suggested by §5a from this angle's own `calls_n`, PL-editable) |
+| calls_sold | int | how many of **this angle's** calls have actually sold. **PL-editable, enforced server-side** (§5e) — a stepper on the PL board, one per angle when a project has more than one. **Manual for now**, same as before the angle split. |
+| calls_sold_updated_at | timestamptz | when this angle's `calls_sold` was last written; drives the end-of-day nudge below. Stamped automatically whenever `calls_sold` changes. |
+
+**A project always has at least one angle.** There is no separate
+"project-level vs angle-level" mode — a "simple" project is just a project
+with a single angle, and the intake/board UI keeps that case visually
+identical to how it looked before angles existed (§8). Deliverers are
+assigned per angle (`assignment.angle_id`, below); auto-match, the goal/
+staffing formula, and calls_sold all run per angle, never off a project-wide
+number.
+
+**End-of-day calls_sold nudge.** If a PL has an active (non-archived) led
+project with **any** angle whose `calls_sold` hasn't been touched yet today
+(Asia/Dubai calendar day, per that angle's own `calls_sold_updated_at`), the
+Project Leading tab shows a banner prompting them to update it — the flag is
+computed per angle then OR'd across the project's angles, not from a summed
+total (see the chase-client note in §5d for why summing would be wrong).
+
+**Editing an angle's `calls_n` re-suggests its `goal_total`** from §5a using
+the new N (unless the caller also explicitly sets `goal_total`, e.g. a PL
+revising the suggestion down — same downward-revision audit rule as intake,
+§5g). If the goal actually changes **and the angle already has staffed
+assignments** (an active goal), each of those assignments' own `goal` is
+recalculated and pushed through the exact same rounds mechanism a
+stage-driven goal change already uses (§3, `delivery_round` below): the
+closed round is archived, `delivered` resets to 0 under the new goal. Editing
+N on an unstaffed angle just updates the angle's own numbers — there's
+nothing to cascade to.
+
+### assignment  (one per deliverer per angle)
+| field | type | notes |
+|---|---|---|
+| id | uuid | |
+| angle_id | uuid → angle | **Big structural change** — assignments attach to an angle, not directly to a project (an assignment's `project_id`, as returned by the API, is a derived join through its angle — `angle.project_id` — kept on every API response so existing consumers didn't need to change). Uniqueness is on `(angle_id, deliverer_id)`, not `(project_id, deliverer_id)` — a person may hold assignments on two different angles of the same project (different workstreams), which was never possible before. |
 | deliverer_id | uuid → person | |
 | goal | int | profiles from our system pool |
 | delivered | int | |
 | custom_goal | int | **auto-calculated from `goal`, never set by hand** (§5) — the portion of `goal` expected to come from outside our system |
-| stage | enum | see §6. **Per-deliverer, not per-project** (domain change 8) — one assignee can be on Second Deliverable while another on the same project is still on First. |
+| stage | enum | see §6. **Per-deliverer, not per-project** (domain change 8) — one assignee can be on Second Deliverable while another on the same project (or the same angle) is still on First. Unaffected by the angle split — stage and load both stay exactly as they were, still summed/read per assignment regardless of which angle or project it belongs to. |
 | stage_entered_at | timestamptz | drives *this assignment's* elapsed timer |
 | custom_delivered | int | |
+
+### 3a. Angles — one uniform structure, no special cases
+
+**A project always has at least one angle.** A "simple" project is just a
+project with a single angle — there is no separate "project-level vs
+angle-level" mode. Everything (N, the suggested goal, staffing, assignments,
+matching, calls_sold) attaches to an angle, always. One code path, not two.
+
+- **Project type stays on the project** (one type per project) — the
+  goal/staffing formula for that type runs **per angle**, using that angle's
+  own `calls_n` (§5a/§5b).
+- **A project's totals are the sum across its angles** — `callsN`,
+  `goalTotal`, and `callsSold`, everywhere they appear in the API/UI
+  (`project.callsN` etc.), are computed as `SUM(angle.*)` at query time, not
+  stored columns. This is deliberate: it means every screen that displayed a
+  project's totals before angles existed kept working with **zero changes**
+  for the common one-angle case, and correctly sums for multi-angle projects.
+- **Chase-client and the calls-sold nudge are the one exception to "just
+  sum it."** Both are computed **per angle** and then OR'd across a
+  project's angles — never derived from summed totals. A resolved angle
+  (fully delivered and fully sold) can hide a genuinely lagging one if you
+  sum first: e.g. angle A delivered=3/callsSold=3/callsN=3 (resolved) and
+  angle B delivered=0/callsSold=0/callsN=2 (not started yet, no chase
+  needed) sums to delivered=3>0 and callsSold=3<callsN=5 — a false
+  positive that summing would produce and per-angle-then-OR does not.
+- **Stage and load are unchanged.** Stage stays per-assignment (§6); load
+  still sums across every assignment a person holds, regardless of which
+  angle or project it belongs to (§5c). Neither rule needed to change at all
+  — they already operated at the assignment level, angles or not.
+- **A person may hold assignments on two different angles of the same
+  project** (different workstreams) — the uniqueness constraint moved from
+  `(project_id, deliverer_id)` to `(angle_id, deliverer_id)` specifically to
+  allow this; it was never possible before.
+- **Manual override + justification (§5g), auto-match, and the goal/
+  staffing suggestion all run per angle.** Auto-match for a two-angle
+  project is two independent ranking calls, one per angle — the same
+  ranking logic, unaware of anything angle-specific, just invoked twice.
+
+**Deliberate simplification — accepting an open-pool project.** An
+unstaffed (`status = open`) project could in principle have more than one
+angle, all unstaffed. Claiming one (§4, first-commit-wins) always lands the
+claimant on the project's **first (earliest-created) angle** — there's no
+angle picker in the accept flow. Multi-angle open-pool projects aren't a
+described product scenario yet; if that becomes real, accepting needs its
+own angle-selection step.
+
+**Migration.** Every project that existed before this change became a
+project with exactly one angle: named from its `topic` (or "Main" if the
+topic was never set), carrying over its existing `calls_n`/`goal_total`/
+`calls_sold`/`calls_sold_updated_at` unchanged, with every one of its
+existing assignments re-pointed at that one new angle. No data loss.
 
 ### delivery_round  (domain change 9 — one row per CLOSED round; the live round lives on `assignment` itself)
 | field | type | notes |
@@ -320,6 +405,12 @@ accept takes it). Phase two sends this as a push notification.
 label.** Show the calculation on the suggestion screen for every type, so a
 deliverer can always see why their goal is what it is.
 
+**(big structural change, §3a) This formula runs per angle, using that
+angle's own N** — never a project-wide N. Project type is shared by every
+angle on a project (it's a project field, not an angle field), so the same
+formula branch below applies to all of a project's angles; only the N (and
+therefore the goal) differs per angle.
+
 **Strategy** — the original formula, unchanged:
 ```
 SMALL_CALLS  = 2
@@ -364,6 +455,13 @@ The suggestion is a default, not a constraint: whatever headcount the PL sets
 (before confirming) is exactly how many are matched and staffed — the server
 is authoritative on this (`autoMatch()`), not the client.
 
+**(big structural change, §3a) Staffing, like the goal, is suggested and
+matched per angle.** Auto-match for a project with N angles is N independent
+`autoMatch()` calls, one per angle with that angle's own suggested headcount
+— `rankCandidates`/`autoMatch` themselves are completely unaware angles
+exist; the caller just invokes them once per angle instead of once per
+project.
+
 ### 5b2. Custom goal — always derived, never set by hand
 ```
 custom_goal = IF(goal <= 1, 0, MAX(ROUNDUP(goal * 0.33), 1))
@@ -397,10 +495,13 @@ load(person)   = SUM over their assignments of
 
 **(eight changes, change 4) Pitch with no calls agreed (N=0) pins load at a
 flat 1**, regardless of `remaining(a)` — a preview list must not consume the
-deliverer's capacity proportionally. This reads live off the project's
-current `calls_n`: the instant it's set > 0, the project converts to the
-normal `load(person)` formula above, same as Strategy — nothing needs to
-explicitly "convert" it.
+deliverer's capacity proportionally. **(big structural change, §3a)** this
+reads live off the assignment's own **angle's** current `calls_n` (N is an
+angle field, not a project field) — the instant that angle's N is set > 0,
+it converts to the normal `load(person)` formula above, same as Strategy —
+nothing needs to explicitly "convert" it. A person holding a no-calls-Pitch
+angle alongside other, ordinary assignments still gets the flat pin only on
+that one angle's contribution to their total load; the rest sums normally.
 
 ### 5d. Matching / auto-staffing — sort order
 Given a project and the current Dubai hour, rank all people:
@@ -410,13 +511,13 @@ Given a project and the current Dubai hour, rank all people:
    **PL's practice area** who is **free**, ahead of a lower-load person outside it.
    - `free` := that person's **raw remaining profiles** (unweighted sum of
      `remaining(a)`) is **<= the median** raw remaining across all `Available` people.
-   - **(bug fix)** A no-calls Pitch's (`calls_n = 0`) `remaining(a)` is
+   - **(bug fix)** A no-calls Pitch angle's (`calls_n = 0`) `remaining(a)` is
      **excluded** from this sum, exactly as it's excluded from `load` above —
      otherwise someone carrying only a Pitch would read as busy in the
      free/busy label while the load model itself says they aren't. Someone
      whose only work is a no-calls Pitch has raw remaining of 0 and shows as
-     free. Once the Pitch converts (`calls_n > 0`) its profiles count
-     normally again, same as it does for `load`.
+     free. Once that angle's Pitch converts (`calls_n > 0`) its profiles
+     count normally again, same as it does for `load`.
 3. **Then lowest `load`** (§5c).
 
 Pick the top `staff_count`. If zero eligible people exist → `status = open` (§4).
@@ -470,6 +571,11 @@ someone other than the suggested candidate is an **override**:
   was picked instead of whom, the justification, and a timestamp. Applies
   both at intake (staffing a new project) and later (swapping someone in via
   "Edit team").
+- **(big structural change, §3a)** at intake, this is per angle — a
+  two-angle project's override flow (and the justification requirement) is
+  independent per angle, since each angle runs its own auto-match. "Edit
+  team" asks which angle a new deliverer is being added to first, when a
+  project has more than one (silently the project's one angle otherwise).
 
 ---
 
@@ -625,14 +731,18 @@ rota, the headcount, and a link to view the rota.
 
 1. **Project Leading (PL board)** — projects you lead, as cards: client/topic/type, N,
    pool (with live/asleep state), profiles progress bar, pace indicator,
-   "delivered, not yet sold — chase client" flag when `(delivered +
-   custom_delivered summed across assignments) > 0 AND calls_sold < calls_n`.
-   (Profiles and calls are different units — this is not a numeric comparison
-   between them; it flags "we've sourced experts for this client but they
-   haven't booked the calls yet.") **No rolled-up "Earliest: X" stage label**
-   (bug 2, eight changes) — stage is per-deliverer, the roll-up doesn't need
-   its own display; a project with nothing staffed yet still shows "Not yet
-   staffed."
+   "delivered, not yet sold — chase client" flag. **(big structural change,
+   §3a)** N/goal/calls_sold shown on the card are the **sum across the
+   project's angles** — the card itself doesn't change for a one-angle
+   project; the chase-client flag is computed **per angle then OR'd**, never
+   from those summed totals (a resolved angle could otherwise mask a
+   genuinely lagging one — see §3a for the worked example). **No rolled-up
+   "Earliest: X" stage label** (bug 2, eight changes) — stage is
+   per-deliverer, the roll-up doesn't need its own display; a project with
+   nothing staffed yet still shows "Not yet staffed."
+   **Assignees are grouped under their angle when a project has more than
+   one; a single-angle project shows the exact same flat assignee list as
+   before angles existed** — no angle chrome at all for the simple case.
    Each **assignee row** carries its own stage pill, elapsed timer, an
    **"Edit goals"** stepper for that one assignee (bug 3 — this used to be
    "swap"), and advance/back controls. **Advancing a stage prompts for a new
@@ -643,13 +753,18 @@ rota, the headcount, and a link to view the rota.
    goals," and actually edited goals; it now does what its name says: change
    deliverers or add new ones, picking anyone currently free including an
    override of the suggested candidate, which requires a justification and
-   is audit-logged, never notified, §5g), **edit calls sold** (PL-only, same
-   stepper pattern — **manual for now**: a PL types it in; phase two wires
-   this to whatever system actually tracks sold calls, so it populates
-   automatically instead), notes, archive. Pending goal-change requests
-   appear as a badge + banner to resolve, and a separate banner prompts the
-   PL to update calls_sold for any active led project it hasn't been touched
-   on yet today.
+   is audit-logged, never notified, §5g — on a multi-angle project it asks
+   which angle first; silently the project's one angle otherwise), **edit
+   calls sold** (PL-only, same stepper pattern, now **one stepper per angle**
+   when there's more than one — **manual for now**: a PL types it in; phase
+   two wires this to whatever system actually tracks sold calls, so it
+   populates automatically instead), an **edit (pencil) button** opening the
+   project's set-up details — client, topic, project link, type, and its
+   angles (rename, add, edit an angle's N, remove an angle) — PL-only,
+   enforced server-side, audit-logged (§3a), notes, archive. Pending
+   goal-change requests appear as a badge + banner to resolve, and a separate
+   banner prompts the PL to update calls_sold for any active led project
+   with any angle that hasn't been touched yet today.
 2. **Delivering (associate board)** — projects assigned to you. Your goal, your
    progress. Steppers to log **delivered** and **custom delivered** — **always
    enabled for your own assignment, at any hour, on any pool** (bug 1, eight
@@ -675,6 +790,16 @@ rota, the headcount, and a link to view the rota.
    showing each candidate's load and why they were picked, **plus the option
    to override and pick anyone else currently free instead, with a required
    justification** (§5g, change 6) → confirm.
+   **(big structural change, §3a) Angles.** By default, step 1 shows exactly
+   one N input and no other angle chrome — the user sets N and moves on,
+   barely aware "angle" is a concept. A **"+ Add angle"** control reveals a
+   second N input plus a name field for each angle (the first angle's name
+   defaults to the topic, or "Main," if never typed); only once a second
+   angle exists does the angle structure become visible at all. Steps 2 and
+   3 then repeat **once per angle** — each angle gets its own suggested
+   goal/staffing with its own calculation shown, and its own independent
+   auto-match reveal and override flow — while staying visually identical to
+   the original single-section flow for the common one-angle case.
 
 ### UI requirements
 - **Live Dubai time** is always visible (header on mobile, top bar on desktop);

@@ -66,14 +66,18 @@ describe("change 4 — project type changes goal and staffing", () => {
   it("a no-calls Pitch's load is a flat 1 end-to-end (capacity ranking), regardless of remaining profiles", async () => {
     const cookie = await loginAs(app, fx.plAlpha);
     const { rows } = await pool.query<{ id: string }>(
-      `INSERT INTO project (pl_id, client, project_link, project_type, expert_pool, calls_n, goal_total, status)
-       VALUES ($1, 'Client_PitchZero', 'https://example.test/proj/pitchzero', 'Pitch', 'US only', 0, 8, 'matched') RETURNING id`,
+      `INSERT INTO project (pl_id, client, project_link, project_type, expert_pool, status)
+       VALUES ($1, 'Client_PitchZero', 'https://example.test/proj/pitchzero', 'Pitch', 'US only', 'matched') RETURNING id`,
       [fx.plAlpha]
     );
+    const { rows: angleRows } = await pool.query<{ id: string }>(
+      `INSERT INTO angle (project_id, name, calls_n, goal_total) VALUES ($1, 'Main', 0, 8) RETURNING id`,
+      [rows[0].id]
+    );
     await pool.query(
-      `INSERT INTO assignment (project_id, deliverer_id, goal, delivered, custom_goal, custom_delivered, stage)
+      `INSERT INTO assignment (angle_id, deliverer_id, goal, delivered, custom_goal, custom_delivered, stage)
        VALUES ($1, $2, 8, 0, 3, 0, 'First Deliverable')`,
-      [rows[0].id, fx.otherDelivererAlpha]
+      [angleRows[0].id, fx.otherDelivererAlpha]
     );
 
     const res = await app.inject({
@@ -90,14 +94,18 @@ describe("change 4 — project type changes goal and staffing", () => {
   it("a Pitch converts to normal load the moment its calls_n is set above 0", async () => {
     const cookie = await loginAs(app, fx.plAlpha);
     const { rows } = await pool.query<{ id: string }>(
-      `INSERT INTO project (pl_id, client, project_link, project_type, expert_pool, calls_n, goal_total, status)
-       VALUES ($1, 'Client_PitchConverts', 'https://example.test/proj/pitchconverts', 'Pitch', 'Global', 0, 8, 'matched') RETURNING id`,
+      `INSERT INTO project (pl_id, client, project_link, project_type, expert_pool, status)
+       VALUES ($1, 'Client_PitchConverts', 'https://example.test/proj/pitchconverts', 'Pitch', 'Global', 'matched') RETURNING id`,
       [fx.plAlpha]
     );
+    const { rows: angleRows } = await pool.query<{ id: string }>(
+      `INSERT INTO angle (project_id, name, calls_n, goal_total) VALUES ($1, 'Main', 0, 8) RETURNING id`,
+      [rows[0].id]
+    );
     await pool.query(
-      `INSERT INTO assignment (project_id, deliverer_id, goal, delivered, custom_goal, custom_delivered, stage)
+      `INSERT INTO assignment (angle_id, deliverer_id, goal, delivered, custom_goal, custom_delivered, stage)
        VALUES ($1, $2, 8, 0, 3, 0, 'First Deliverable')`,
-      [rows[0].id, fx.otherDelivererAlpha]
+      [angleRows[0].id, fx.otherDelivererAlpha]
     );
 
     const before = await app.inject({
@@ -107,12 +115,14 @@ describe("change 4 — project type changes goal and staffing", () => {
     });
     expect(before.json().find((r: { personId: string }) => r.personId === fx.otherDelivererAlpha).load).toBe(1);
 
-    // The client agrees to calls -> PATCH calls_n above 0.
+    // The client agrees to calls -> PATCH calls_n above 0. goalTotal pinned
+    // explicitly at 8 so this test isolates the Pitch-conversion load
+    // calculation, not the separate "editing N re-suggests goal" cascade.
     await app.inject({
       method: "PATCH",
-      url: `/projects/${rows[0].id}`,
+      url: `/angles/${angleRows[0].id}`,
       cookies: { relay_session: cookie.split("=")[1] },
-      payload: { callsN: 3 },
+      payload: { callsN: 3, goalTotal: 8 },
     });
 
     const after = await app.inject({
@@ -128,14 +138,18 @@ describe("change 4 — project type changes goal and staffing", () => {
 describe("BUG 1 (fixed) — pool weight never gates logging work", () => {
   it("a deliverer can log delivered/custom profiles on a dormant US-pool project before 15:00 Dubai", async () => {
     const { rows } = await pool.query<{ id: string }>(
-      `INSERT INTO project (pl_id, client, project_link, project_type, expert_pool, calls_n, goal_total, status)
-       VALUES ($1, 'Client_Dormant', 'https://example.test/proj/dormant', 'Strategy', 'US only', 4, 8, 'matched') RETURNING id`,
+      `INSERT INTO project (pl_id, client, project_link, project_type, expert_pool, status)
+       VALUES ($1, 'Client_Dormant', 'https://example.test/proj/dormant', 'Strategy', 'US only', 'matched') RETURNING id`,
       [fx.plAlpha]
     );
+    const { rows: angleRows } = await pool.query<{ id: string }>(
+      `INSERT INTO angle (project_id, name, calls_n, goal_total) VALUES ($1, 'Main', 4, 8) RETURNING id`,
+      [rows[0].id]
+    );
     const { rows: aRows } = await pool.query<{ id: string }>(
-      `INSERT INTO assignment (project_id, deliverer_id, goal, delivered, custom_goal, custom_delivered)
+      `INSERT INTO assignment (angle_id, deliverer_id, goal, delivered, custom_goal, custom_delivered)
        VALUES ($1, $2, 8, 0, 3, 0) RETURNING id`,
-      [rows[0].id, fx.delivererAlpha]
+      [angleRows[0].id, fx.delivererAlpha]
     );
 
     const cookie = await loginAs(app, fx.delivererAlpha);
@@ -197,13 +211,18 @@ describe("change 6 — manual override and downward goal revisions land in the a
         projectLink: "https://example.test/proj/override",
         projectType: "Strategy",
         expertPool: "Global",
-        callsN: 2,
-        goalTotal: 6,
-        assignments: [
+        angles: [
           {
-            delivererId: fx.otherDelivererAlpha,
-            goal: 6,
-            override: { justification: "client specifically asked for this person" },
+            name: "Main",
+            callsN: 2,
+            goalTotal: 6,
+            assignments: [
+              {
+                delivererId: fx.otherDelivererAlpha,
+                goal: 6,
+                override: { justification: "client specifically asked for this person" },
+              },
+            ],
           },
         ],
       },
@@ -268,17 +287,16 @@ describe("change 6 — manual override and downward goal revisions land in the a
         projectLink: "https://example.test/proj/lowergoal",
         projectType: "Strategy",
         expertPool: "Global",
-        callsN: 4,
-        goalTotal: 5,
-        assignments: [],
+        angles: [{ name: "Main", callsN: 4, goalTotal: 5, assignments: [] }],
       },
     });
     expect(createRes.statusCode).toBe(200);
     const projectId = createRes.json().id;
+    const { rows: angleRows } = await pool.query(`SELECT id FROM angle WHERE project_id = $1`, [projectId]);
 
     const { rows } = await pool.query(
-      `SELECT * FROM audit_log WHERE entity_type = 'project' AND action = 'downward_goal_revision' AND entity_id = $1`,
-      [projectId]
+      `SELECT * FROM audit_log WHERE entity_type = 'angle' AND action = 'downward_goal_revision' AND entity_id = $1`,
+      [angleRows[0].id]
     );
     expect(rows).toHaveLength(1);
     expect(rows[0].old_value.suggestedGoal).toBe(8);
@@ -296,16 +314,15 @@ describe("change 6 — manual override and downward goal revisions land in the a
         projectLink: "https://example.test/proj/meetsgoal",
         projectType: "Strategy",
         expertPool: "Global",
-        callsN: 4,
-        goalTotal: 8,
-        assignments: [],
+        angles: [{ name: "Main", callsN: 4, goalTotal: 8, assignments: [] }],
       },
     });
     const projectId = createRes.json().id;
+    const { rows: angleRows } = await pool.query(`SELECT id FROM angle WHERE project_id = $1`, [projectId]);
 
     const { rows } = await pool.query(
-      `SELECT * FROM audit_log WHERE entity_type = 'project' AND action = 'downward_goal_revision' AND entity_id = $1`,
-      [projectId]
+      `SELECT * FROM audit_log WHERE entity_type = 'angle' AND action = 'downward_goal_revision' AND entity_id = $1`,
+      [angleRows[0].id]
     );
     expect(rows).toHaveLength(0);
   });

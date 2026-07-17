@@ -87,15 +87,19 @@ describe("bugs 1+2 — capacity ranking recomputes live at the previewed Dubai t
     // assignment (constant weight 1 regardless of hour); using them here
     // would add a hour-independent +12 baseline and mask the assertion.
     const { rows } = await pool.query<{ id: string }>(
-      `INSERT INTO project (pl_id, client, project_link, project_type, expert_pool, calls_n, goal_total, status)
-       VALUES ($1, 'Client_Apac', 'https://example.test/proj/apac', 'Pitch', 'AUS / NZ / Sing / JP', 2, 6, 'matched')
+      `INSERT INTO project (pl_id, client, project_link, project_type, expert_pool, status)
+       VALUES ($1, 'Client_Apac', 'https://example.test/proj/apac', 'Pitch', 'AUS / NZ / Sing / JP', 'matched')
        RETURNING id`,
       [fx.plAlpha]
     );
+    const { rows: angleRows } = await pool.query<{ id: string }>(
+      `INSERT INTO angle (project_id, name, calls_n, goal_total) VALUES ($1, 'Main', 2, 6) RETURNING id`,
+      [rows[0].id]
+    );
     await pool.query(
-      `INSERT INTO assignment (project_id, deliverer_id, goal, delivered, custom_goal, custom_delivered, stage)
+      `INSERT INTO assignment (angle_id, deliverer_id, goal, delivered, custom_goal, custom_delivered, stage)
        VALUES ($1, $2, 3, 0, 0, 0, 'First Deliverable')`,
-      [rows[0].id, fx.otherDelivererAlpha]
+      [angleRows[0].id, fx.otherDelivererAlpha]
     );
   }
 
@@ -173,9 +177,7 @@ describe("domain change 6 — evening projects are ASSIGNED, not floated (end-to
         projectLink: "https://example.test/proj/evening",
         projectType: "Pitch",
         expertPool: "Global",
-        callsN: 2,
-        goalTotal: 6,
-        assignments: [{ delivererId: picked[0].personId, goal: 6 }],
+        angles: [{ name: "Main", callsN: 2, goalTotal: 6, assignments: [{ delivererId: picked[0].personId, goal: 6 }] }],
       },
     });
     expect(createRes.json().status).toBe("matched");
@@ -208,9 +210,7 @@ describe("domain change 6 — evening projects are ASSIGNED, not floated (end-to
         projectLink: "https://example.test/proj/nooneonline",
         projectType: "Pitch",
         expertPool: "Global",
-        callsN: 2,
-        goalTotal: 6,
-        assignments: [],
+        angles: [{ name: "Main", callsN: 2, goalTotal: 6, assignments: [] }],
       },
     });
     expect(createRes.json().status).toBe("open");

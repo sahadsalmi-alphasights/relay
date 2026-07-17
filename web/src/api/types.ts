@@ -32,22 +32,36 @@ export interface Project {
   projectLink: string;
   projectType: "Pitch" | "Due Diligence" | "Strategy";
   expertPool: ExpertPool;
+  /** Big structural change — SUM across the project's angles (N/goal/calls_sold all live on angle now, not project). Reads identically to before when there's one angle. */
   callsN: number;
   goalTotal: number;
+  callsSold: number;
   /** §3/§8 — computed (earliest among assignments), null if no assignments yet (open pool). Never stored. */
   earliestStage: Stage | null;
-  callsSold: number;
-  /** §8.1 — when calls_sold was last written; manual for now (see spec). */
-  callsSoldUpdatedAt: string;
-  /** §8.1 — computed: calls_sold hasn't been touched yet today (Asia/Dubai). */
+  /** §8.1 — computed per angle then OR'd: true if ANY angle hasn't had calls_sold touched today (Asia/Dubai). */
   needsCallsSoldUpdate: boolean;
+  /** §8.1 (corrected) — computed per angle then OR'd, NOT from summed totals (a resolved angle could otherwise mask a genuinely lagging one). */
+  chaseClient: boolean;
   status: ProjectStatus;
   archived: boolean;
+}
+
+/** Big structural change — a project always has >=1 angle. N/goal/staffing are suggested per angle from that angle's own N; a "simple" project is just one with a single angle. */
+export interface Angle {
+  id: string;
+  projectId: string;
+  name: string;
+  callsN: number;
+  goalTotal: number;
+  callsSold: number;
+  callsSoldUpdatedAt: string;
 }
 
 export interface Assignment {
   id: string;
   projectId: string;
+  angleId: string;
+  angleName: string;
   delivererId: string;
   goal: number;
   delivered: number;

@@ -114,7 +114,9 @@ async function seed(client: PoolClient) {
     projectLink: string;
     projectType: "Pitch" | "Due Diligence" | "Strategy";
     expertPool: "Global" | "EU & MEA & India" | "AUS / NZ / Sing / JP" | "US only";
-    status: "matched" | "open";
+    status: "active" | "open" | "idle";
+    /** New set-up field — groups the PL board into rows, 1-5. */
+    clientEntity: 1 | 2 | 3 | 4 | 5;
     angles: AngleSeed[];
   };
 
@@ -127,7 +129,8 @@ async function seed(client: PoolClient) {
       projectLink: "https://example.test/proj/1001",
       projectType: "Pitch",
       expertPool: "US only",
-      status: "matched",
+      status: "active",
+      clientEntity: 1,
       angles: [
         {
           name: "Market sizing — widget sector",
@@ -150,7 +153,8 @@ async function seed(client: PoolClient) {
       projectLink: "https://example.test/proj/1002",
       projectType: "Due Diligence",
       expertPool: "EU & MEA & India",
-      status: "matched",
+      status: "active",
+      clientEntity: 2,
       angles: [
         {
           name: "Competitive landscape",
@@ -169,7 +173,8 @@ async function seed(client: PoolClient) {
       projectLink: "https://example.test/proj/1003",
       projectType: "Strategy",
       expertPool: "AUS / NZ / Sing / JP",
-      status: "matched",
+      status: "active",
+      clientEntity: 3,
       angles: [
         {
           name: "Regulatory expert sourcing",
@@ -192,6 +197,7 @@ async function seed(client: PoolClient) {
       projectType: "Pitch",
       expertPool: "Global",
       status: "open",
+      clientEntity: 4,
       angles: [{ name: "Unmatched — needs staffing", callsN: 2, goalTotal: 6, callsSold: 0, assignments: [] }],
     },
     {
@@ -207,7 +213,8 @@ async function seed(client: PoolClient) {
       projectLink: "https://example.test/proj/1005",
       projectType: "Due Diligence",
       expertPool: "Global",
-      status: "matched",
+      status: "active",
+      clientEntity: 1,
       angles: [
         {
           name: "Buy-side diligence",
@@ -225,12 +232,36 @@ async function seed(client: PoolClient) {
         },
       ],
     },
+    {
+      // Idle demo — parked mid-work (its one assignee is left as-is, still
+      // staffed, just not being asked about): shows the idle card treatment,
+      // the "Reactivate" action, and the morning dialog's collapsed "Parked"
+      // section without needing any interaction to see it.
+      pl: "Lead_User_Beta",
+      client: "Client_F",
+      account: "Account_6",
+      topic: "Bench research — on hold",
+      projectLink: "https://example.test/proj/1006",
+      projectType: "Strategy",
+      expertPool: "Global",
+      status: "idle",
+      clientEntity: 5,
+      angles: [
+        {
+          name: "Bench research — on hold",
+          callsN: 2,
+          goalTotal: 4,
+          callsSold: 0,
+          assignments: [{ deliverer: "Resource_Lambda", goal: 4, delivered: 1, customDelivered: 0, stage: "First Deliverable" }],
+        },
+      ],
+    },
   ];
 
   for (const p of PROJECTS) {
     const { rows } = await client.query<{ id: string }>(
-      `INSERT INTO project (pl_id, client, account, topic, project_link, project_type, expert_pool, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+      `INSERT INTO project (pl_id, client, account, topic, project_link, project_type, expert_pool, status, client_entity)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
       [
         personIdByName.get(p.pl),
         p.client,
@@ -240,6 +271,7 @@ async function seed(client: PoolClient) {
         p.projectType,
         p.expertPool,
         p.status,
+        p.clientEntity,
       ]
     );
     const projectId = rows[0].id;

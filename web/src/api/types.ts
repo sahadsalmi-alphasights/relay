@@ -4,7 +4,8 @@ export type ExpertPool = "Global" | "EU & MEA & India" | "AUS / NZ / Sing / JP" 
 
 export type Stage = "First Deliverable" | "Second Deliverable" | "Hail Mary" | "Selling";
 
-export type ProjectStatus = "matched" | "open";
+/** Project lifecycle — open (unclaimed) -> active (staffed) -> idle (parked) -> active again, archived from any of the three. */
+export type ProjectStatus = "open" | "active" | "idle" | "archived";
 
 export interface Person {
   id: string;
@@ -43,7 +44,8 @@ export interface Project {
   /** §8.1 (corrected) — computed per angle then OR'd, NOT from summed totals (a resolved angle could otherwise mask a genuinely lagging one). */
   chaseClient: boolean;
   status: ProjectStatus;
-  archived: boolean;
+  /** New set-up field — groups the PL board into rows, 1-5. */
+  clientEntity: number;
 }
 
 /** Big structural change — a project always has >=1 angle. N/goal/staffing are suggested per angle from that angle's own N; a "simple" project is just one with a single angle. */
@@ -108,7 +110,7 @@ export interface SundaySwapRequest {
 export interface RankedCandidate {
   personId: string;
   eligible: boolean;
-  ineligibleReason?: "not_on_sunday_rota" | "no_evening_coverage";
+  ineligibleReason?: "not_on_sunday_rota" | "no_evening_coverage" | "first_deliverable_conflict";
   load: number;
   rawRemaining: number;
   practiceAreaMatch: boolean;
@@ -122,6 +124,23 @@ export interface CapacityRankRow {
   rawRemaining: number;
   free: boolean;
   eligible: boolean;
+}
+
+/** docs/AUDIT_LOG_SPEC.md — GET /audit-log. `actor` is null for a rare system-triggered entry with no acting person. */
+export interface AuditLogEntry {
+  id: string;
+  entityType: string;
+  entityId: string;
+  action: string;
+  actor: { id: string; name: string; email: string } | null;
+  oldValue: unknown;
+  newValue: unknown;
+  createdAt: string;
+}
+
+export interface AuditLogPage {
+  items: AuditLogEntry[];
+  total: number;
 }
 
 /** §9 (built) — an in-app notification (also pushed live over WS, and to Web Push if opted in). */

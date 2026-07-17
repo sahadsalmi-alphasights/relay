@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, ApiError } from "../api/client";
 import type { Assignment, Project } from "../api/types";
-import { barColor, initials, stageClass, typeClass } from "../lib/format";
+import { barColor, initials, stageClass, stageLabel, typeClass } from "../lib/format";
 import { fmtElapsed, poolState, timerClass } from "../lib/time";
 import { useApp } from "../state/AppContext";
 import type { NotesTarget } from "../Shell";
@@ -12,6 +12,28 @@ interface DeliveryItem {
   assignment: Assignment;
   /** Big structural change — only shown when the project has more than one angle; the simple (one-angle) case stays exactly as before. */
   multiAngle: boolean;
+}
+
+/**
+ * CHANGE 3 — one row per angle still needing seats, not one card per
+ * project: a multi-angle project can have some angles fully staffed and
+ * others still broadcasting. `remaining` is recomputed server-side on every
+ * fetch (rules/suggestedGoal.ts's suggestStaffing(), the same formula
+ * intake itself suggests — see repositories/angles.ts seatTargetForAngle()
+ * for why there's no stored target).
+ */
+interface BroadcastRow {
+  projectId: string;
+  client: string;
+  topic: string | null;
+  projectLink: string;
+  projectType: Project["projectType"];
+  expertPool: Project["expertPool"];
+  angleId: string;
+  angleName: string;
+  callsN: number;
+  goalTotal: number;
+  remaining: number;
 }
 
 function RequestChange({ onSend }: { onSend: (text: string) => Promise<void> }) {
@@ -72,12 +94,12 @@ export default function DeliveryTab({
 }) {
   const { actor, people, nameOf, nowMs, effectiveHour, effectiveAfterHours } = useApp();
   const [items, setItems] = useState<DeliveryItem[] | null>(null);
-  const [openPool, setOpenPool] = useState<Project[]>([]);
+  const [broadcasts, setBroadcasts] = useState<BroadcastRow[]>([]);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [acceptError, setAcceptError] = useState<string | null>(null);
 
   const load = async () => {
-    const list = await api.get<Project[]>(`/projects?role=delivering&scope=${scope}&status=matched&archived=false`);
+    const list = await api.get<Project[]>(`/projects?role=delivering&scope=${scope}&status=active`);
     const details = await Promise.all(
       list.map((p) => api.get<{ project: Project; assignments: Assignment[]; angles: unknown[] }>(`/projects/${p.id}`))
     );
@@ -94,7 +116,10 @@ export default function DeliveryTab({
       }
     }
     setItems(rows);
-    setOpenPool(await api.get<Project[]>(`/projects?status=open&archived=false`));
+    // CHANGE 3 — broadcast fallback: one row per angle still needing seats
+    // (org-wide, same visibility the old whole-project open pool always
+    // had), not one card per project.
+    setBroadcasts(await api.get<BroadcastRow[]>(`/projects/broadcasts`));
   };
 
   useEffect(() => {
@@ -107,19 +132,26 @@ export default function DeliveryTab({
     onReload();
   };
 
-  const accept = async (projectId: string) => {
+  // CHANGE 3 — claims ONE seat on this specific angle; unlike the old
+  // whole-project accept, the same angle (or a sibling angle on the same
+  // project) can still show up here afterward if it isn't fully staffed yet.
+  const claim = async (angleId: string) => {
     setAcceptError(null);
     try {
-      await api.post(`/projects/${projectId}/accept`, {});
+      await api.post(`/angles/${angleId}/claim`, {});
       onReload();
     } catch (err) {
-      setAcceptError(err instanceof ApiError ? err.message : "Could not accept this project");
+      setAcceptError(err instanceof ApiError ? err.message : "Could not claim this seat");
     }
   };
 
   if (!items) return <div className="empty">Loading…</div>;
 
-  const visibleOpenPool = openPool.filter((p) => !dismissed.has(p.id));
+  // Decline hides it for THIS person only, this session — same client-side-only
+  // pattern the open pool already used before broadcasts existed (never
+  // persisted: a real per-person "declined" record would need a new table,
+  // out of scope for this batch's no-schema-changes constraint).
+  const visibleBroadcasts = broadcasts.filter((b) => !dismissed.has(b.angleId));
 
   // §8 Team view — grouped by person, not just a wider flat list: one
   // section per team member (including those with nothing on), each
@@ -146,11 +178,11 @@ export default function DeliveryTab({
               {multiAngle ? ` · ${a.angleName}` : ""}
             </div>
           </div>
-          <span className={"stage-pill " + stageClass(a.stage)}>{a.stage}</span>
+          <span className={"stage-pill " + stageClass(a.stage)}>{stageLabel(a.stage)}</span>
         </div>
         <div className="meta">
           <div className={"chip timer " + timerClass(elapsed)}>
-            ⏱ {fmtElapsed(elapsed)} in {a.stage.replace(" Deliverable", "")}
+            ⏱ {fmtElapsed(elapsed)} in {stageLabel(a.stage).replace(" Deliverable", "")}
           </div>
           {ps === "dormant" && <div className="chip dormant">💤 {p.expertPool} asleep — goal inactive now</div>}
           {ps === "live" && <div className="chip live">⚡ {p.expertPool} live — double weight, convert now</div>}
@@ -241,42 +273,47 @@ export default function DeliveryTab({
 
   return (
     <>
-      {visibleOpenPool.length > 0 && (
+      {visibleBroadcasts.length > 0 && (
         <>
           <div className="section-lbl" style={{ color: "#9A5F0C" }}>
-            Open — up for grabs <span className="count">{visibleOpenPool.length}</span>
+            Open — up for grabs <span className="count">{visibleBroadcasts.length}</span>
           </div>
           {acceptError && <div className="err-line">{acceptError}</div>}
           <div className="card-grid">
-          {visibleOpenPool.map((p) => (
-            <div key={p.id} className="card" style={{ borderColor: "#F0DCB0", background: "#FFFDF8" }}>
+          {visibleBroadcasts.map((b) => (
+            <div key={b.angleId} className="card" style={{ borderColor: "#F0DCB0", background: "#FFFDF8" }}>
               <div className="card-top">
                 <div>
-                  <a className="client" href={p.projectLink} target="_blank" rel="noopener noreferrer">
-                    {p.client}
+                  <a className="client" href={b.projectLink} target="_blank" rel="noopener noreferrer">
+                    {b.client}
                   </a>
                   <div className="topic">
-                    {p.topic} · {p.expertPool}
+                    {b.topic}
+                    {/* CHANGE 1/3 — angle name shown whenever a project has more than one broadcasting angle, same convention as the assigned-board cards. */}
+                    {broadcasts.filter((o) => o.projectId === b.projectId).length > 1 ? ` · ${b.angleName}` : ""} · {b.expertPool}
                   </div>
                 </div>
-                <div className={"tag " + typeClass(p.projectType)}>{p.projectType}</div>
+                <div className={"tag " + typeClass(b.projectType)}>{b.projectType}</div>
               </div>
               <div className="meta">
                 <div className="chip">
-                  N <b>{p.callsN}</b> calls
+                  N <b>{b.callsN}</b> calls
                 </div>
                 <div className="chip">
-                  goal <b>{p.goalTotal}</b>
+                  goal <b>{b.goalTotal}</b>
+                </div>
+                <div className="chip">
+                  <b>{b.remaining}</b> seat{b.remaining > 1 ? "s" : ""} open
                 </div>
               </div>
               <p style={{ fontSize: 12, color: "var(--soft)", margin: "10px 0 0" }}>
-                No one was free to auto-match. {effectiveAfterHours ? "Evening volunteers — first to accept takes it." : "First to accept takes it."}
+                Everyone's busy on fresh projects. {effectiveAfterHours ? "Evening volunteers — first to accept takes a seat." : "First to accept takes a seat."}
               </p>
               <div className="actions">
-                <button className="btn btn-ghost" onClick={() => setDismissed((d) => new Set(d).add(p.id))}>
+                <button className="btn btn-ghost" onClick={() => setDismissed((d) => new Set(d).add(b.angleId))}>
                   Decline
                 </button>
-                <button className="btn btn-dl" onClick={() => accept(p.id)}>
+                <button className="btn btn-dl" onClick={() => claim(b.angleId)}>
                   Accept
                 </button>
               </div>

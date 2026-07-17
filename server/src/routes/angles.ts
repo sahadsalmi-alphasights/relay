@@ -1,18 +1,27 @@
 import type { FastifyPluginAsync } from "fastify";
+import { pool } from "../db";
 import {
+  claimAngleSeat,
   countAnglesForProject,
   countAssignmentsForAngle,
   deleteAngle,
   findAngleById,
+  listAnglesByProject,
+  seatTargetForAngle,
   updateAngleFields,
 } from "../repositories/angles";
 import { listAssignmentsByAngle, updateAssignmentGoal } from "../repositories/assignments";
 import { insertAuditLog } from "../repositories/auditLog";
 import { findProjectById } from "../repositories/projects";
-import { badRequest, forbidden, notFound } from "../errors";
+import { sundayRotaPersonIdsForDate } from "../services/candidates";
+import { badRequest, conflict, forbidden, notFound } from "../errors";
+import { isEligible } from "../rules/eligibility";
 import { canEditProjectFields } from "../rules/permissions";
 import { suggestGoal } from "../rules/suggestedGoal";
+import { dubaiDateKey } from "../rules/time";
 import type { ProjectType } from "../rules/types";
+import { notify } from "../services/notify";
+import { resolveNow } from "../lib/requestTime";
 import { publish } from "../ws/hub";
 import { projectRecipientIds } from "../ws/recipients";
 
@@ -119,6 +128,81 @@ const anglesRoutes: FastifyPluginAsync = async (app) => {
     await publishProjectChanged(project.id, [project.plId]);
     return { ok: true };
   });
+
+  /**
+   * CHANGE 3 — claim one seat on a specific angle from the broadcast
+   * fallback. No PL/manager gate: any currently-eligible person may claim,
+   * same spirit as the existing project-level `/:id/accept` (§4). Unlike
+   * that route, this angle stays claimable by MORE people until its own
+   * seat target is met — first-come per seat, not first-come for the whole
+   * project. `claimAngleSeat()` is the sole place the seat count is
+   * authoritative (row-locked transaction); WebSockets only ever tell
+   * clients to refetch, never enforce the count themselves.
+   */
+  app.post<{ Params: { id: string }; Body: { goal?: number } }>(
+    "/:id/claim",
+    { preHandler: [app.requireAuth] },
+    async (request) => {
+      const actor = request.actor!;
+      const angle = await findAngleById(request.params.id);
+      if (!angle) throw notFound("angle not found");
+      const project = await findProjectById(angle.projectId);
+      if (!project) throw notFound("project not found");
+      if (project.status !== "open") throw badRequest("this angle is not open for claiming");
+
+      const now = resolveNow(request);
+      const rotaSet = await sundayRotaPersonIdsForDate(dubaiDateKey(now));
+      const elig = isEligible(
+        { id: actor.id, status: actor.status, eveningCoverage: actor.eveningCoverage },
+        { now, sundayRotaPersonIds: rotaSet }
+      );
+      if (!elig.eligible) throw forbidden(`not eligible right now: ${elig.reason}`);
+
+      const target = seatTargetForAngle(angle.callsN, project.projectType as ProjectType);
+      const goal = request.body?.goal ?? Math.max(1, Math.ceil(angle.goalTotal / target));
+      const claimed = await claimAngleSeat(angle.id, actor.id, goal);
+      if (!claimed) throw conflict("that seat is no longer available");
+
+      // Once every angle on the project has reached its own target, the
+      // project is fully staffed -- flip it active so it drops off the
+      // broadcast list entirely. Until then it stays 'open' so its
+      // still-short angle(s) (this one or a sibling) keep broadcasting.
+      const allAngles = await listAnglesByProject(project.id);
+      let fullyStaffed = true;
+      for (const a of allAngles) {
+        const aTarget = seatTargetForAngle(a.callsN, project.projectType as ProjectType);
+        const filled = await countAssignmentsForAngle(a.id);
+        if (filled < aTarget) {
+          fullyStaffed = false;
+          break;
+        }
+      }
+      if (fullyStaffed) {
+        await pool.query(`UPDATE project SET status = 'active' WHERE id = $1 AND status = 'open'`, [project.id]);
+      }
+
+      await insertAuditLog({
+        entityType: "assignment",
+        entityId: claimed.id,
+        actorId: actor.id,
+        action: "claim_broadcast_seat",
+        newValue: { angleId: angle.id, delivererId: actor.id, goal },
+      });
+      await publishProjectChanged(project.id, [project.plId, actor.id]);
+      // §4 first-commit-wins pattern — everyone else's broadcast list must drop this seat immediately.
+      publish({ type: "open-pool" });
+      publish({ type: "capacity-ranking" });
+      await notify({
+        personId: project.plId,
+        type: "assigned",
+        title: "Seat claimed from the broadcast",
+        body: `${project.client} — ${angle.name} just got a new deliverer from the broadcast.`,
+        entityType: "project",
+        entityId: project.id,
+      });
+      return { angleId: angle.id, assignmentId: claimed.id, fullyStaffed };
+    }
+  );
 };
 
 export default anglesRoutes;

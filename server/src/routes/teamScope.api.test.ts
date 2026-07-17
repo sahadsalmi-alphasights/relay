@@ -50,14 +50,14 @@ describe("bug 4 — scope=team returns a teammate's project, not just the actor'
 
     const teamRes = await app.inject({
       method: "GET",
-      url: "/projects?role=delivering&scope=team&status=matched&archived=false",
+      url: "/projects?role=delivering&scope=team&status=active&archived=false",
       cookies: { relay_session: cookie.split("=")[1] },
     });
     expect(teamRes.json().some((p: { id: string }) => p.id === fx.project)).toBe(true);
 
     const mineRes = await app.inject({
       method: "GET",
-      url: "/projects?role=delivering&scope=mine&status=matched&archived=false",
+      url: "/projects?role=delivering&scope=mine&status=active&archived=false",
       cookies: { relay_session: cookie.split("=")[1] },
     });
     expect(mineRes.json().some((p: { id: string }) => p.id === fx.project)).toBe(false);

@@ -1,5 +1,20 @@
 import { dubaiDateKey } from "./time";
-import type { PersonStatus } from "./types";
+import type { PersonStatus, ProjectStatus } from "./types";
+
+/**
+ * Project lifecycle — idle ("parked, nothing to do now") and archived both
+ * go quiet: no load, no calls-sold nudge, no chase-client flag, no
+ * stale-first-deliverable ping. The single source of truth for "which
+ * statuses go quiet," referenced by candidates.ts (load query),
+ * assignments.ts (stale scheduler query), and routes/projects.ts
+ * (withProjectFlags) — those three can't literally call this function (two
+ * are SQL WHERE clauses evaluated before any JS sees a row), so they inline
+ * the equivalent `status NOT IN ('idle', 'archived')`, but this is the
+ * definition they're each keeping in sync with.
+ */
+export function isProjectLifecycleQuiet(status: ProjectStatus): boolean {
+  return status === "idle" || status === "archived";
+}
 
 /**
  * §8.1 (corrected) — "delivered, not yet sold — chase client". Profiles and

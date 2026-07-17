@@ -2,12 +2,14 @@ import { useState, type ReactNode } from "react";
 import Header, { type Scope, type Tab } from "./components/Header";
 import Sidebar from "./components/Sidebar";
 import TopBar from "./components/TopBar";
+import AuditLogTab from "./tabs/AuditLogTab";
 import CapacityRankingTab from "./tabs/CapacityRankingTab";
 import DeliveryTab from "./tabs/DeliveryTab";
 import FirstDeliverablesTab from "./tabs/FirstDeliverablesTab";
 import ProjectLeadingTab from "./tabs/ProjectLeadingTab";
 import EditProjectSheet from "./sheets/EditProjectSheet";
 import IntakeWizard from "./sheets/IntakeWizard";
+import MorningCallsSoldDialog from "./sheets/MorningCallsSoldDialog";
 import NotesSheet from "./sheets/NotesSheet";
 import RotaSheet from "./sheets/RotaSheet";
 import TeamEditSheet from "./sheets/TeamEditSheet";
@@ -130,12 +132,14 @@ export default function Shell() {
       )}
       {tab === "Ranking" && <CapacityRankingTab reloadTick={reloadTick} />}
       {tab === "FirstDel" && <FirstDeliverablesTab scope={scope} reloadTick={reloadTick} onCount={setFdCount} />}
+      {tab === "AuditLog" && <AuditLogTab reloadTick={reloadTick} />}
     </>
   );
 
   if (isDesktop) {
     return (
       <div className="app-shell">
+        <MorningCallsSoldDialog onActioned={bumpReload} />
         <Sidebar
           tab={tab}
           setTab={setTab}
@@ -158,10 +162,12 @@ export default function Shell() {
     );
   }
 
-  const modeClass = tab === "PL" ? "pl" : tab === "Delivery" ? "dl" : tab === "Ranking" ? "rk" : "fd";
+  const modeClass =
+    tab === "PL" ? "pl" : tab === "Delivery" ? "dl" : tab === "Ranking" ? "rk" : tab === "FirstDel" ? "fd" : "al";
 
   return (
     <div className="relay">
+      <MorningCallsSoldDialog onActioned={bumpReload} />
       <Header
         tab={tab}
         setTab={setTab}

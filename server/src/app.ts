@@ -7,6 +7,7 @@ import { pool } from "./db";
 import { HttpError } from "./errors";
 import anglesRoutes from "./routes/angles";
 import assignmentsRoutes from "./routes/assignments";
+import auditLogRoutes from "./routes/auditLog";
 import authRoutes from "./routes/auth";
 import capacityRankingRoutes from "./routes/capacityRanking";
 import goalChangeRequestsRoutes from "./routes/goalChangeRequests";
@@ -21,6 +22,7 @@ import teamsRoutes from "./routes/teams";
 import wsRoutes from "./routes/ws";
 import { startHeartbeat } from "./ws/hub";
 import { startStaleScheduler } from "./services/staleScheduler";
+import { startBroadcastRepingScheduler } from "./services/broadcast";
 
 export function buildApp(): FastifyInstance {
   const app = Fastify({ logger: true });
@@ -60,12 +62,15 @@ export function buildApp(): FastifyInstance {
   app.register(wsRoutes, { prefix: "/ws" });
   app.register(notificationsRoutes, { prefix: "/notifications" });
   app.register(pushRoutes, { prefix: "/push" });
+  app.register(auditLogRoutes, { prefix: "/audit-log" });
 
   const heartbeatTimer = startHeartbeat();
   const staleTimer = startStaleScheduler();
+  const broadcastRepingTimer = startBroadcastRepingScheduler();
   app.addHook("onClose", (_instance, done) => {
     clearInterval(heartbeatTimer);
     clearInterval(staleTimer);
+    clearInterval(broadcastRepingTimer);
     done();
   });
 

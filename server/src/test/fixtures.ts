@@ -55,7 +55,7 @@ export async function resetAndSeedFixture(): Promise<Fixture> {
 
   const { rows: projectRows } = await pool.query<{ id: string }>(
     `INSERT INTO project (pl_id, client, project_link, project_type, expert_pool, status)
-     VALUES ($1, 'Client_Test', 'https://example.test/proj/fixture', 'Pitch', 'Global', 'matched') RETURNING id`,
+     VALUES ($1, 'Client_Test', 'https://example.test/proj/fixture', 'Pitch', 'Global', 'active') RETURNING id`,
     [plAlpha]
   );
   const project = projectRows[0].id;

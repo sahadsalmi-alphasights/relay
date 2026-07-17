@@ -9,59 +9,43 @@ import {
 import { listUnresolvedForProject } from "../repositories/goalChangeRequests";
 import { createNote, listNotesForProject } from "../repositories/notes";
 import {
+  archiveProject,
   claimOpenProject,
   createProject,
   findProjectById,
   listProjects,
-  setArchived,
+  reactivateProject,
+  resurfaceProject,
+  setIdle,
   updateProjectFields,
   type ProjectFilter,
   type ProjectRow,
 } from "../repositories/projects";
+import { countAssignmentsForAngle, seatTargetForAngle } from "../repositories/angles";
 import { listPeopleByTeam } from "../repositories/people";
 import { sundayRotaPersonIdsForDate, listAvailableCandidatesWithAssignments } from "../services/candidates";
 import { badRequest, conflict, forbidden, notFound } from "../errors";
 import { isEligible } from "../rules/eligibility";
-import { autoMatch, rankCandidates } from "../rules/matching";
+import { allocateAcrossAngles, applyFirstDeliverableBlock, rankCandidates } from "../rules/matching";
 import { resolveNow } from "../lib/requestTime";
 import { canArchiveProject, canEditProjectFields } from "../rules/permissions";
-import { needsCallsSoldUpdateToday, needsChaseClient } from "../rules/project";
+import { isProjectLifecycleQuiet, needsCallsSoldUpdateToday, needsChaseClient } from "../rules/project";
 import { suggestGoal, suggestStaffing } from "../rules/suggestedGoal";
-import { dubaiDateKey } from "../rules/time";
+import { dubaiDateKey, dubaiHour } from "../rules/time";
 import type { ProjectType } from "../rules/types";
 import { isValidHttpUrl } from "../rules/url";
+import { notifyBroadcastRecipients } from "../services/broadcast";
 import { notify } from "../services/notify";
 import { publish } from "../ws/hub";
 import { projectRecipientIds } from "../ws/recipients";
 
 const PROJECT_TYPES: ProjectType[] = ["Pitch", "Due Diligence", "Strategy"];
+const CLIENT_ENTITIES = [1, 2, 3, 4, 5];
 
 /** §11 step 5 — every write to a project (or its assignments) notifies its PL + assignees + their teammates. */
 async function publishProjectChanged(projectId: string, involvedPersonIds: string[]): Promise<void> {
   const recipients = await projectRecipientIds(involvedPersonIds);
   publish({ type: "project", projectId }, recipients);
-}
-
-/**
- * §4/§9 (built) — computed live at the moment the project actually falls
- * open, not trusted from whatever /intake/match saw earlier: eligibility
- * (status/rota/evening-coverage) can change in the gap between the two calls.
- */
-async function notifyEligibleOfOpenProject(project: ProjectRow, now: Date): Promise<void> {
-  const rotaSet = await sundayRotaPersonIdsForDate(dubaiDateKey(now));
-  const candidates = await listAvailableCandidatesWithAssignments();
-  for (const candidate of candidates) {
-    const elig = isEligible(candidate, { now, sundayRotaPersonIds: rotaSet });
-    if (!elig.eligible) continue;
-    await notify({
-      personId: candidate.id,
-      type: "open_pool",
-      title: "Project up for grabs",
-      body: `${project.client} has no one staffed — first to accept takes it.`,
-      entityType: "project",
-      entityId: project.id,
-    });
-  }
 }
 
 /**
@@ -74,6 +58,13 @@ async function notifyEligibleOfOpenProject(project: ProjectRow, now: Date): Prom
  * case collapses back to exactly the old per-project behavior.
  */
 async function withProjectFlags(project: ProjectRow, now: Date) {
+  // Project lifecycle change — idle and archived projects go quiet: never
+  // asked about in the morning calls-sold dialog, never flagged to chase the
+  // client. Skip the per-angle work entirely rather than compute-then-hide,
+  // since neither flag means anything for a project nobody's working.
+  if (isProjectLifecycleQuiet(project.status)) {
+    return { ...project, needsCallsSoldUpdate: false, chaseClient: false };
+  }
   const angles = await listAnglesByProject(project.id);
   let needsCallsSoldUpdate = false;
   let chaseClient = false;
@@ -115,6 +106,50 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
     return Promise.all(rows.map((p) => withProjectFlags(p, now)));
   });
 
+  /**
+   * Morning calls-sold dialog — the actor's own led projects that need
+   * today's update, plus (separately) their currently-idle projects for the
+   * dialog's skippable "Parked" section. Always scoped to "mine": this is a
+   * personal daily task, not something Team view surfaces on someone else's
+   * behalf. Open (never-staffed) and idle/archived projects are never
+   * "due" — idle/archived by definition (see isProjectLifecycleQuiet), open
+   * because there's no one to chase calls sold for yet.
+   */
+  app.get("/calls-sold-due", { preHandler: [app.requireAuth] }, async (request) => {
+    const actor = request.actor!;
+    const now = resolveNow(request);
+    const projects = await listProjects({ plId: actor.id, archived: false });
+
+    const due: {
+      id: string;
+      client: string;
+      topic: string | null;
+      angles: { id: string; name: string; callsN: number; callsSold: number }[];
+    }[] = [];
+    const parked: { id: string; client: string; topic: string | null }[] = [];
+
+    for (const project of projects) {
+      if (project.status === "idle") {
+        parked.push({ id: project.id, client: project.client, topic: project.topic });
+        continue;
+      }
+      if (project.status !== "active") continue;
+
+      const angles = await listAnglesByProject(project.id);
+      const stale = angles.filter((a) => needsCallsSoldUpdateToday(a.callsSoldUpdatedAt, now));
+      if (stale.length > 0) {
+        due.push({
+          id: project.id,
+          client: project.client,
+          topic: project.topic,
+          angles: stale.map((a) => ({ id: a.id, name: a.name, callsN: a.callsN, callsSold: a.callsSold })),
+        });
+      }
+    }
+
+    return { due, parked };
+  });
+
   app.get<{ Params: { id: string } }>("/:id", { preHandler: [app.requireAuth] }, async (request) => {
     const project = await findProjectById(request.params.id);
     if (!project) throw notFound("project not found");
@@ -146,29 +181,53 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
     }
   );
 
-  // §5d — auto-match reveal. Intake wizard step 3 (read-only; nothing is persisted here).
-  // Uses the same autoMatch() the rules engine is unit-tested against, so
-  // "how many get picked" has one authoritative implementation instead of
-  // being re-derived (and potentially drifting) in the client.
-  app.post<{ Body: { staffCount?: number } }>("/intake/match", { preHandler: [app.requireAuth] }, async (request) => {
-    const actor = request.actor!;
-    const rawStaffCount = request.body?.staffCount;
-    if (!Number.isInteger(rawStaffCount) || (rawStaffCount as number) < 1) {
-      throw badRequest("staffCount must be a positive integer");
+  /**
+   * §5d — auto-match reveal. Intake wizard step 3 (read-only; nothing is
+   * persisted here).
+   *
+   * CHANGE 1 — ONE call covering every angle against ONE candidate snapshot,
+   * not one call per angle. The old per-angle Promise.all from the client
+   * was blind to what other angles picked (nothing had been written to the
+   * DB yet to shift anyone's load between calls), so every angle got
+   * near-identical top-N suggestions. rankCandidates() itself is unchanged;
+   * allocateAcrossAngles() is what fills angle-by-angle without replacement,
+   * reusing already-placed people only once the eligible pool is exhausted.
+   *
+   * CHANGE 2 — applyFirstDeliverableBlock() layers the new auto-assign-time
+   * rule on top of rankCandidates()'s output before allocation ever sees it,
+   * so a blocked person is never silently auto-picked but still appears in
+   * `ranked` (ineligible, with a reason) for the PL to see and override.
+   */
+  app.post<{ Body: { angles?: { key?: string; staffCount?: number }[] } }>(
+    "/intake/match",
+    { preHandler: [app.requireAuth] },
+    async (request) => {
+      const actor = request.actor!;
+      const angleInputs = request.body?.angles ?? [];
+      if (angleInputs.length === 0) throw badRequest("at least one angle is required");
+      for (const a of angleInputs) {
+        if (!a.key || !Number.isInteger(a.staffCount) || (a.staffCount as number) < 1) {
+          throw badRequest("each angle needs a key and a positive integer staffCount");
+        }
+      }
+      const now = resolveNow(request);
+      const hour = dubaiHour(now);
+      const rotaSet = await sundayRotaPersonIdsForDate(dubaiDateKey(now));
+      const candidates = await listAvailableCandidatesWithAssignments();
+      const context = {
+        now,
+        sundayRotaPersonIds: rotaSet,
+        plPracticeArea: actor.practiceArea ?? "",
+      };
+      const ranked = rankCandidates(candidates, context);
+      const blocked = applyFirstDeliverableBlock(ranked, candidates, hour);
+      const { perAngle, totalEligible, projectStatus } = allocateAcrossAngles(
+        blocked,
+        angleInputs as { key: string; staffCount: number }[]
+      );
+      return { ranked: blocked, perAngle, totalEligible, projectStatus };
     }
-    const staffCount = rawStaffCount as number;
-    const now = resolveNow(request);
-    const rotaSet = await sundayRotaPersonIdsForDate(dubaiDateKey(now));
-    const candidates = await listAvailableCandidatesWithAssignments();
-    const context = {
-      now,
-      sundayRotaPersonIds: rotaSet,
-      plPracticeArea: actor.practiceArea ?? "",
-    };
-    const ranked = rankCandidates(candidates, context);
-    const { assigned: picked, projectStatus } = autoMatch(candidates, context, staffCount);
-    return { ranked, picked, projectStatus, staffCount };
-  });
+  );
 
   app.post<{
     Body: {
@@ -178,6 +237,7 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
       projectLink?: string;
       projectType?: string;
       expertPool?: string;
+      clientEntity?: number;
       angles?: {
         name?: string;
         callsN?: number;
@@ -196,6 +256,12 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
     }
     if (!PROJECT_TYPES.includes(body.projectType as ProjectType)) {
       throw badRequest("projectType must be one of Pitch, Due Diligence, Strategy");
+    }
+    // Optional at creation (defaults to 1, matching the column default) --
+    // a cosmetic grouping label, not worth making every existing caller of
+    // this route pass one. Validated when it IS given.
+    if (body.clientEntity !== undefined && !CLIENT_ENTITIES.includes(body.clientEntity)) {
+      throw badRequest("clientEntity must be one of 1, 2, 3, 4, 5");
     }
     // Big structural change — a project always has >=1 angle. A "simple"
     // project is just a project with one angle; there is no separate mode.
@@ -221,7 +287,8 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
       projectLink: body.projectLink,
       projectType: body.projectType,
       expertPool: body.expertPool,
-      status: allAssignments.length > 0 ? "matched" : "open",
+      status: allAssignments.length > 0 ? "active" : "open",
+      clientEntity: body.clientEntity ?? 1,
     });
 
     for (const ang of angleInputs) {
@@ -275,7 +342,7 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
       publish({ type: "open-pool" });
       // §9 (built) — zero eligible people at staffing time -> the true last
       // resort (§4): notify everyone who's currently eligible to claim it.
-      await notifyEligibleOfOpenProject(project, resolveNow(request));
+      await notifyBroadcastRecipients(project, resolveNow(request));
     }
     return findProjectById(project.id);
   });
@@ -391,6 +458,12 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
           throw badRequest("projectLink must be a valid http(s) URL");
         }
       }
+      if (request.body && "clientEntity" in request.body) {
+        const entity = request.body.clientEntity;
+        if (typeof entity !== "number" || !CLIENT_ENTITIES.includes(entity)) {
+          throw badRequest("clientEntity must be one of 1, 2, 3, 4, 5");
+        }
+      }
       const updated = await updateProjectFields(project.id, request.body ?? {});
       await insertAuditLog({
         entityType: "project",
@@ -417,7 +490,7 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
     const project = await findProjectById(request.params.id);
     if (!project) throw notFound("project not found");
     if (!canArchiveProject(actor.id, project)) throw forbidden("only the PL may archive this project");
-    const updated = await setArchived(project.id, true);
+    const updated = await archiveProject(project.id);
     await insertAuditLog({ entityType: "project", entityId: project.id, actorId: actor.id, action: "archive" });
     const assignments = await listAssignmentsByProject(project.id);
     await publishProjectChanged(project.id, [project.plId, ...assignments.map((a) => a.delivererId)]);
@@ -430,8 +503,41 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
     const project = await findProjectById(request.params.id);
     if (!project) throw notFound("project not found");
     if (!canArchiveProject(actor.id, project)) throw forbidden("only the PL may resurface this project");
-    const updated = await setArchived(project.id, false);
+    const updated = await resurfaceProject(project.id);
     await insertAuditLog({ entityType: "project", entityId: project.id, actorId: actor.id, action: "resurface" });
+    const assignments = await listAssignmentsByProject(project.id);
+    await publishProjectChanged(project.id, [project.plId, ...assignments.map((a) => a.delivererId)]);
+    publish({ type: "capacity-ranking" });
+    return updated;
+  });
+
+  // Project lifecycle change — "idle": parked, waiting on something external,
+  // nothing to do now. PL-only, same permission check as archive. Only valid
+  // from 'active' (repository enforces the guard); a project that's still
+  // unstaffed or already quiet has nothing to park.
+  app.post<{ Params: { id: string } }>("/:id/idle", { preHandler: [app.requireAuth] }, async (request) => {
+    const actor = request.actor!;
+    const project = await findProjectById(request.params.id);
+    if (!project) throw notFound("project not found");
+    if (!canArchiveProject(actor.id, project)) throw forbidden("only the PL may park this project");
+    const updated = await setIdle(project.id);
+    if (!updated) throw badRequest("only an active project can be parked");
+    await insertAuditLog({ entityType: "project", entityId: project.id, actorId: actor.id, action: "idle" });
+    const assignments = await listAssignmentsByProject(project.id);
+    await publishProjectChanged(project.id, [project.plId, ...assignments.map((a) => a.delivererId)]);
+    publish({ type: "capacity-ranking" });
+    return updated;
+  });
+
+  // One-tap reactivate — only valid from 'idle'.
+  app.post<{ Params: { id: string } }>("/:id/reactivate", { preHandler: [app.requireAuth] }, async (request) => {
+    const actor = request.actor!;
+    const project = await findProjectById(request.params.id);
+    if (!project) throw notFound("project not found");
+    if (!canArchiveProject(actor.id, project)) throw forbidden("only the PL may reactivate this project");
+    const updated = await reactivateProject(project.id);
+    if (!updated) throw badRequest("only an idle project can be reactivated");
+    await insertAuditLog({ entityType: "project", entityId: project.id, actorId: actor.id, action: "reactivate" });
     const assignments = await listAssignmentsByProject(project.id);
     await publishProjectChanged(project.id, [project.plId, ...assignments.map((a) => a.delivererId)]);
     publish({ type: "capacity-ranking" });
@@ -474,6 +580,59 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
       return { project: claimed, assignment };
     }
   );
+
+  /**
+   * CHANGE 3 — broadcast fallback listing. Org-wide, no team scoping (same
+   * visibility as the existing open pool — never restricted to the PL's own
+   * team, since eligibility never was). Only projects that are still
+   * `status = 'open'` qualify: that's precisely "auto-assign filled zero
+   * seats anywhere" (a partially-filled project already has assignments
+   * somewhere, so its status is 'active', not 'open' — Change 4's
+   * partial-fill case can never show up here, by construction). Each
+   * qualifying angle's target headcount is `seatTargetForAngle()`, the same
+   * formula intake itself suggests, recomputed live — see that function's
+   * doc comment for why (no schema change to store a PL-adjusted override).
+   */
+  app.get("/broadcasts", { preHandler: [app.requireAuth] }, async () => {
+    const openProjects = await listProjects({ status: "open" });
+    const out: {
+      projectId: string;
+      client: string;
+      topic: string | null;
+      projectLink: string;
+      projectType: ProjectType;
+      expertPool: string;
+      angleId: string;
+      angleName: string;
+      callsN: number;
+      goalTotal: number;
+      remaining: number;
+    }[] = [];
+    for (const project of openProjects) {
+      const angles = await listAnglesByProject(project.id);
+      for (const angle of angles) {
+        const target = seatTargetForAngle(angle.callsN, project.projectType as ProjectType);
+        const filled = await countAssignmentsForAngle(angle.id);
+        const remaining = target - filled;
+        if (remaining > 0) {
+          out.push({
+            projectId: project.id,
+            client: project.client,
+            topic: project.topic,
+            projectLink: project.projectLink,
+            projectType: project.projectType as ProjectType,
+            expertPool: project.expertPool,
+            angleId: angle.id,
+            angleName: angle.name,
+            callsN: angle.callsN,
+            goalTotal: angle.goalTotal,
+            remaining,
+          });
+        }
+      }
+    }
+    return out;
+  });
 
   app.post<{ Params: { id: string }; Body: { body?: string; isPublic?: boolean } }>(
     "/:id/notes",

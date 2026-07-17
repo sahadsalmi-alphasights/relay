@@ -2,8 +2,10 @@ import { useEffect, useState } from "react";
 import { api, ApiError } from "../api/client";
 import type { Angle, Project } from "../api/types";
 import Sheet from "../components/Sheet";
+import { CLIENT_ENTITY_IDS, entityName } from "../lib/format";
 
 const TYPES = ["Pitch", "Due Diligence", "Strategy"] as const;
+const CLIENT_ENTITIES = CLIENT_ENTITY_IDS;
 
 function isValidHttpUrl(value: string): boolean {
   if (!value) return false;
@@ -40,6 +42,7 @@ export default function EditProjectSheet({
   const [topic, setTopic] = useState("");
   const [link, setLink] = useState("");
   const [projectType, setProjectType] = useState<(typeof TYPES)[number]>("Pitch");
+  const [clientEntity, setClientEntity] = useState<(typeof CLIENT_ENTITIES)[number]>(1);
   const [savingFields, setSavingFields] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [newAngleOpen, setNewAngleOpen] = useState(false);
@@ -56,6 +59,7 @@ export default function EditProjectSheet({
     setTopic(detail.project.topic ?? "");
     setLink(detail.project.projectLink);
     setProjectType(detail.project.projectType);
+    setClientEntity(detail.project.clientEntity as (typeof CLIENT_ENTITIES)[number]);
     const counts: Record<string, number> = {};
     for (const a of detail.assignments) counts[a.angleId] = (counts[a.angleId] ?? 0) + 1;
     setAssignmentCounts(counts);
@@ -75,7 +79,11 @@ export default function EditProjectSheet({
   }
 
   const minCallsN = projectType === "Pitch" ? 0 : 1;
-  const fieldsChanged = client !== project.client || topic !== (project.topic ?? "") || link !== project.projectLink || projectType !== project.projectType;
+  const fieldsChanged =
+    client !== project.client ||
+    topic !== (project.topic ?? "") ||
+    link !== project.projectLink ||
+    projectType !== project.projectType;
 
   const saveFields = async () => {
     setSavingFields(true);
@@ -88,6 +96,27 @@ export default function EditProjectSheet({
       setError(err instanceof ApiError ? err.message : "Could not save project details");
     } finally {
       setSavingFields(false);
+    }
+  };
+
+  /**
+   * Client Entity is a single, low-consequence pick (which board row a card
+   * groups under) -- same category as an angle's name or N, both of which
+   * already auto-save immediately elsewhere in this sheet. Batching it
+   * behind "Save project details" alongside client/topic/link/type (each of
+   * which genuinely warrants a deliberate, validated save) made it easy to
+   * pick a new entity, close the sheet, and never actually persist the
+   * change -- the card silently never moved rows.
+   */
+  const patchEntity = async (next: (typeof CLIENT_ENTITIES)[number]) => {
+    setClientEntity(next);
+    setError(null);
+    try {
+      await api.patch(`/projects/${projectId}`, { clientEntity: next });
+      onChanged();
+      await reload();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not update Client Entity");
     }
   };
 
@@ -158,6 +187,19 @@ export default function EditProjectSheet({
             </button>
           ))}
         </div>
+      </div>
+      <div className="field">
+        <label>Client Entity</label>
+        <select
+          value={clientEntity}
+          onChange={(e) => patchEntity(Number(e.target.value) as (typeof CLIENT_ENTITIES)[number])}
+        >
+          {CLIENT_ENTITIES.map((n) => (
+            <option key={n} value={n}>
+              {entityName(n)}
+            </option>
+          ))}
+        </select>
       </div>
       <button
         className="btn btn-pl"

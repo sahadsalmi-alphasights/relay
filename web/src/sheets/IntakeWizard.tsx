@@ -2,11 +2,12 @@ import { useState } from "react";
 import { api, ApiError } from "../api/client";
 import type { ExpertPool, RankedCandidate } from "../api/types";
 import Sheet from "../components/Sheet";
-import { initials, previewCustomGoal } from "../lib/format";
+import { CLIENT_ENTITY_IDS, entityName, initials, previewCustomGoal } from "../lib/format";
 import { useApp } from "../state/AppContext";
 
 const POOLS: ExpertPool[] = ["Global", "EU & MEA & India", "AUS / NZ / Sing / JP", "US only"];
 const TYPES = ["Pitch", "Due Diligence", "Strategy"] as const;
+const CLIENT_ENTITIES = CLIENT_ENTITY_IDS;
 
 /** Required at intake (bug fix) — mirrors the server's own check (never trust client-side validation alone). */
 function isValidHttpUrl(value: string): boolean {
@@ -26,6 +27,8 @@ interface FormState {
   link: string;
   projectType: (typeof TYPES)[number];
   expertPool: ExpertPool;
+  /** New set-up field — groups the PL board into rows, 1-5. */
+  clientEntity: (typeof CLIENT_ENTITIES)[number];
 }
 
 /**
@@ -73,9 +76,14 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
     link: "",
     projectType: "Pitch",
     expertPool: "Global",
+    clientEntity: 1,
   });
   const [angles, setAngles] = useState<AngleForm[]>([newAngle("0")]);
   const [matching, setMatching] = useState(false);
+  // CHANGE 1 — how many candidates were eligible at all, across the WHOLE
+  // multi-angle request. 0 means the true zero-eligible broadcast case
+  // (Change 3); >0 with some angle still short means partial-fill (Change 4).
+  const [totalEligible, setTotalEligible] = useState<number | null>(null);
   // Only one override panel open at a time, app-wide -- which angle it's acting on.
   const [overridingAngle, setOverridingAngle] = useState<number | null>(null);
   const [overridingId, setOverridingId] = useState<string | null>(null);
@@ -126,23 +134,44 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
     setError(null);
     setAngles((prev) => prev.map((a) => ({ ...a, overrides: {} })));
     try {
-      // staffCount is authoritative server-side (autoMatch()) — whatever the
-      // PL set here is exactly who gets picked, not re-derived client-side.
-      // Auto-match runs per angle (§ big structural change) — independent
-      // calls, one per angle.
-      const results = await Promise.all(
-        angles.map((a) =>
-          api.post<{ ranked: RankedCandidate[]; picked: RankedCandidate[] }>("/projects/intake/match", {
-            staffCount: a.staffCount,
-          })
-        )
+      // CHANGE 1 — ONE call covering every angle against ONE candidate
+      // snapshot, not one call per angle. The old per-angle Promise.all was
+      // blind to what other angles picked (nothing had been written to the
+      // DB yet to shift anyone's load between calls), so every angle got
+      // near-identical top-N suggestions. The server now allocates
+      // without replacement across angles, reusing already-placed people
+      // only once the eligible pool is exhausted.
+      const result = await api.post<{
+        ranked: RankedCandidate[];
+        perAngle: { key: string; picked: RankedCandidate[] }[];
+        totalEligible: number;
+        projectStatus: "active" | "open";
+      }>("/projects/intake/match", {
+        angles: angles.map((a, i) => ({ key: String(i), staffCount: a.staffCount })),
+      });
+      const pickedByKey = new Map(result.perAngle.map((p) => [p.key, p.picked]));
+      // `ranked` is the SAME shared snapshot for every angle now (one
+      // ranking, allocated across all of them) — each angle keeps its own
+      // copy only because the rendering below already reads `a.ranked`
+      // per-angle; it's the identical array reference for all of them.
+      setAngles((prev) =>
+        prev.map((a, i) => ({ ...a, ranked: result.ranked, picked: pickedByKey.get(String(i)) ?? [] }))
       );
-      setAngles((prev) => prev.map((a, i) => ({ ...a, ranked: results[i].ranked, picked: results[i].picked })));
+      setTotalEligible(result.totalEligible);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not run matching");
     } finally {
       setMatching(false);
     }
+  };
+
+  /** CHANGE 1 — which angle (if any, other than `forIndex`) a candidate is already placed on in THIS project, so the UI can show "without replacement" honestly instead of implying they were simply skipped. */
+  const placedOnOtherAngle = (personId: string, forIndex: number): string | null => {
+    for (let i = 0; i < angles.length; i++) {
+      if (i === forIndex) continue;
+      if (angles[i].picked.some((p) => p.personId === personId)) return angleName(angles[i], i);
+    }
+    return null;
   };
 
   // §6 (eight changes) — override the auto-match: pick anyone currently free
@@ -169,6 +198,18 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
   };
 
   const totalPicked = angles.reduce((sum, a) => sum + a.picked.length, 0);
+  // CHANGE 2 — surfaced prominently at the top of step 3 (moved up from
+  // being buried per-row at the bottom of the old flow): candidates blocked
+  // by the new first-deliverable rule, shared across every angle (one
+  // ranked snapshot). Still overridable — the loosened "Pick instead" gate
+  // below lets the PL assign them anyway, with the usual justification.
+  const sharedRanked = angles[0]?.ranked ?? null;
+  const blockedByFirstDeliverable = sharedRanked?.filter((r) => r.ineligibleReason === "first_deliverable_conflict") ?? [];
+  // CHANGE 4 — partial fill: some (not zero, not all) of an angle's wanted
+  // seats got filled. Zero eligible anywhere (totalEligible === 0) is
+  // Change 3's broadcast case instead, handled by the existing "No one
+  // available now" box per angle — never this prompt.
+  const hasUnresolvedPartialFill = angles.some((a) => a.ranked && a.picked.length > 0 && a.picked.length < a.staffCount);
 
   const confirm = async () => {
     setBusy(true);
@@ -181,6 +222,7 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
         projectLink: f.link,
         projectType: f.projectType,
         expertPool: f.expertPool,
+        clientEntity: f.clientEntity,
         angles: angles.map((a, i) => {
           const perPerson = Math.ceil(a.goalTotal / (a.picked.length || 1));
           return {
@@ -218,6 +260,19 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
             <div className="field">
               <label>Topic / account</label>
               <input value={f.topic} onChange={(e) => setF({ ...f, topic: e.target.value })} placeholder="e.g. Market sizing" />
+            </div>
+            <div className="field">
+              <label>Client Entity</label>
+              <select
+                value={f.clientEntity}
+                onChange={(e) => setF({ ...f, clientEntity: Number(e.target.value) as FormState["clientEntity"] })}
+              >
+                {CLIENT_ENTITIES.map((n) => (
+                  <option key={n} value={n}>
+                    {entityName(n)}
+                  </option>
+                ))}
+              </select>
             </div>
 
             {/* Big structural change — the simple (one-angle) case shows just
@@ -417,6 +472,23 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
                 Not who you want? Click "Pick instead" on anyone else free below (needs a reason).
               </div>
             )}
+            {/* CHANGE 2 — moved up and made prominent: this used to be
+                impossible to act on at all (a blocked candidate had no
+                affordance, just grey text). Now shown right at the top of
+                the match step, and every blocked row below gets a real
+                "Pick instead" override button. */}
+            {!matching && blockedByFirstDeliverable.length > 0 && (
+              <div className="suggest" style={{ background: "var(--red-bg)", borderColor: "#F3C6C6", marginBottom: 14 }}>
+                <div className="suggest-lbl" style={{ color: "#A82F2F" }}>
+                  {blockedByFirstDeliverable.length} blocked by the first-deliverable rule
+                </div>
+                <p style={{ fontSize: 12, margin: "6px 0 0", color: "var(--ink)" }}>
+                  Already on a First Deliverable for a Strategy/Due Diligence project while that pool is currently
+                  online — auto-assign skips them, but you can still assign them yourself: click "Pick instead" on
+                  their row below (needs a reason).
+                </p>
+              </div>
+            )}
             {matching && (
               <div style={{ textAlign: "center", padding: 30, fontFamily: "'Space Grotesk'", color: "var(--soft)" }}>ranking…</div>
             )}
@@ -435,13 +507,30 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
                         No one available now
                       </div>
                       <p style={{ fontSize: 13, margin: "6px 0 0", color: "var(--ink)" }}>
-                        It'll go to the open pool — eligible people can accept or decline.
+                        {totalEligible === 0
+                          ? "Nobody's eligible anywhere right now — it'll broadcast to the wider team (everyone except Sick/Vacation, plus Offline after hours). First to accept a seat takes it."
+                          : "It'll go to the open pool — eligible people can accept or decline."}
                       </p>
+                    </div>
+                  )}
+                  {a.ranked && a.picked.length > 0 && a.picked.length < a.staffCount && (
+                    <div className="suggest" style={{ background: "var(--amber-bg)", borderColor: "#F0DCB0" }}>
+                      <div className="suggest-lbl" style={{ color: "#9A5F0C" }}>
+                        Only {a.picked.length} of {a.staffCount} available for this angle
+                      </div>
+                      <p style={{ fontSize: 13, margin: "6px 0 8px", color: "var(--ink)" }}>
+                        Not enough people available — reduce the number of required deliverers?
+                      </p>
+                      <button className="btn-sm btn-pl" onClick={() => updateAngle(angleIndex, { staffCount: a.picked.length })}>
+                        Reduce to {a.picked.length} & continue
+                      </button>
                     </div>
                   )}
                   {a.ranked?.slice(0, 8).map((r) => {
                     const isPicked = a.picked.some((p) => p.personId === r.personId);
                     const isOverridden = !!a.overrides[r.personId];
+                    const isBlockedByFDConflict = r.ineligibleReason === "first_deliverable_conflict";
+                    const placedElsewhere = !isPicked ? placedOnOtherAngle(r.personId, angleIndex) : null;
                     return (
                       <div key={r.personId} className={"match-line " + (isPicked ? "picked " : "") + (r.eligible ? "" : "blocked")}>
                         <div className="avatar">{initials(nameOf(r.personId))}</div>
@@ -453,9 +542,13 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
                             {!r.eligible
                               ? r.ineligibleReason === "not_on_sunday_rota"
                                 ? "not on today's Sunday rota"
+                                : r.ineligibleReason === "first_deliverable_conflict"
+                                ? "busy — first deliverable elsewhere"
                                 : "evening coverage off"
                               : isPicked
                               ? <span className="picktag">picked ✓{isOverridden ? " · override" : r.practiceAreaMatch ? " · your practice" : ""}</span>
+                              : placedElsewhere
+                              ? `picked on ${placedElsewhere}`
                               : r.free
                               ? "free"
                               : "available"}
@@ -465,7 +558,7 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
                           <b>{r.load.toFixed(1)}</b>
                           <small>load</small>
                         </div>
-                        {!isPicked && r.eligible && a.picked.length > 0 && (
+                        {!isPicked && (r.eligible || isBlockedByFDConflict) && a.picked.length > 0 && (
                           <button className="btn-sm btn-ghost" style={{ marginLeft: 8 }} onClick={() => startOverride(angleIndex, r.personId)}>
                             Pick instead
                           </button>
@@ -515,7 +608,17 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
 
             {!matching && (
               <div className="sheet-footer">
-                <button className="btn btn-pl" style={{ width: "100%" }} disabled={busy} onClick={confirm}>
+                {/* CHANGE 4 — do not silently reduce and do not proceed while
+                    an angle is only partially filled; the PL must explicitly
+                    confirm the reduced number (the "Reduce to N & continue"
+                    button above) before Assign & notify becomes available. */}
+                <button
+                  className="btn btn-pl"
+                  style={{ width: "100%" }}
+                  disabled={busy || hasUnresolvedPartialFill}
+                  onClick={confirm}
+                  title={hasUnresolvedPartialFill ? "Resolve the partial-fill angle(s) above first" : undefined}
+                >
                   {totalPicked ? `Assign ${totalPicked} & notify` : "Post to open pool"}
                 </button>
                 <button className="close" onClick={() => setStep(2)}>

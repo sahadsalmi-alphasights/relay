@@ -19,8 +19,10 @@ import {
   canRequestGoalChange,
   canSwapDeliverer,
 } from "../rules/permissions";
+import { STAGE_ORDER } from "../rules/config";
 import { advanceStage, backStage } from "../rules/stage";
 import { swapDeliverer } from "../rules/swap";
+import type { Stage } from "../rules/types";
 import { notify } from "../services/notify";
 import { publish } from "../ws/hub";
 import { projectRecipientIds } from "../ws/recipients";
@@ -173,6 +175,43 @@ const assignmentsRoutes: FastifyPluginAsync = async (app) => {
     publish({ type: "capacity-ranking" });
     return updated;
   });
+
+  /**
+   * Phase D, item 1 — a per-deliverer dropdown that can jump straight to any
+   * phase, skipping intermediates (unlike /stage/advance's one-step-forward-
+   * only). Same permission (PL-only) and same setAssignmentStage() write as
+   * advance/back; this is purely a different caller-supplied target instead
+   * of a computed next/prev. No schema change — the stage CHECK constraint
+   * already allows all four values.
+   */
+  app.patch<{ Params: { id: string }; Body: { stage?: Stage } }>(
+    "/:id/stage",
+    { preHandler: [app.requireAuth] },
+    async (request) => {
+      const actor = request.actor!;
+      const assignment = await findAssignmentById(request.params.id);
+      if (!assignment) throw notFound("assignment not found");
+      const project = await findProjectById(assignment.projectId);
+      if (!project) throw notFound("project not found");
+      if (!canChangeStage(actor.id, project)) throw forbidden("only the PL may change stage");
+      const stage = request.body?.stage;
+      if (!stage || !STAGE_ORDER.includes(stage)) {
+        throw badRequest(`stage must be one of: ${STAGE_ORDER.join(", ")}`);
+      }
+      const updated = await setAssignmentStage(assignment.id, stage);
+      await insertAuditLog({
+        entityType: "assignment",
+        entityId: assignment.id,
+        actorId: actor.id,
+        action: "set_stage",
+        oldValue: { stage: assignment.stage },
+        newValue: { stage },
+      });
+      await publishProjectChanged(project.id, [project.plId, assignment.delivererId]);
+      publish({ type: "capacity-ranking" });
+      return updated;
+    }
+  );
 
   // §5f/§6 (built) — PL-only; keeps delivered/custom_delivered, credits the
   // original person in the audit trail. An override (picking someone other

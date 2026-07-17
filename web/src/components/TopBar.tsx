@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { dubaiHour, dubaiMinute } from "../lib/time";
 import { useApp } from "../state/AppContext";
 import type { LiveStatus } from "../lib/useLiveSocket";
@@ -6,6 +7,26 @@ import NotificationBell from "./NotificationBell";
 
 export default function TopBar({ liveStatus, notif }: { liveStatus: LiveStatus; notif: NotificationsState }) {
   const { nowMs, demoHour, setDemoHour, effectiveHour, effectiveAfterHours } = useApp();
+  const barRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * Phase D (v2), item 11 — the team capacity panel (ProjectLeadingTab)
+   * pins itself below this bar, not under it. Rather than hardcoding a
+   * pixel guess that drifts if this bar's content ever wraps or grows, we
+   * measure its real rendered height and publish it as a shared layout
+   * token (--topbar-h) any sticky element below can read from. A
+   * ResizeObserver keeps it correct across demo-clock content changes and
+   * window resizes, not just on first mount.
+   */
+  useEffect(() => {
+    const el = barRef.current;
+    if (!el) return;
+    const publish = () => document.documentElement.style.setProperty("--topbar-h", `${el.offsetHeight}px`);
+    publish();
+    const observer = new ResizeObserver(publish);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   const liveHour = dubaiHour(nowMs);
   const liveMinute = dubaiMinute(nowMs);
@@ -15,7 +36,7 @@ export default function TopBar({ liveStatus, notif }: { liveStatus: LiveStatus; 
       : `${String(liveHour).padStart(2, "0")}:${String(liveMinute).padStart(2, "0")}`;
 
   return (
-    <div className="topbar">
+    <div className="topbar" ref={barRef}>
       <span
         className={"live-dot " + (liveStatus === "connected" ? "on" : "off")}
         title={liveStatus === "connected" ? "Live updates connected" : "Reconnecting…"}

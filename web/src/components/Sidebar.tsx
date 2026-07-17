@@ -3,7 +3,7 @@ import type { Person } from "../api/types";
 import { useApp } from "../state/AppContext";
 import type { Scope, Tab } from "./Header";
 
-const NAV_ITEMS: { tab: Tab; icon: string; label: string; managerOnly?: boolean }[] = [
+const NAV_ITEMS: { tab: Tab; icon: string; label: string; managerOnly?: boolean; ownerOnly?: boolean }[] = [
   { tab: "PL", icon: "📋", label: "Project Leading" },
   { tab: "Delivery", icon: "📦", label: "Delivery" },
   { tab: "Ranking", icon: "📊", label: "Capacity Ranking" },
@@ -11,6 +11,8 @@ const NAV_ITEMS: { tab: Tab; icon: string; label: string; managerOnly?: boolean 
   // docs/AUDIT_LOG_SPEC.md — sensitive, manager-only, same gate the read API
   // itself enforces server-side (never rely on hiding the button alone).
   { tab: "AuditLog", icon: "🕵", label: "Audit Log", managerOnly: true },
+  // User management — owner-only, same gate the /users API enforces server-side.
+  { tab: "Users", icon: "👥", label: "User Management", ownerOnly: true },
 ];
 
 export default function Sidebar({
@@ -59,7 +61,10 @@ export default function Sidebar({
       </button>
 
       <div className="sidebar-nav">
-        {NAV_ITEMS.filter((item) => !item.managerOnly || actor.isManager).map((item) => (
+        {NAV_ITEMS.filter(
+          (item) =>
+            (!item.managerOnly || actor.isManager || actor.isOwner) && (!item.ownerOnly || actor.isOwner)
+        ).map((item) => (
           <button key={item.tab} className={tab === item.tab ? "active" : ""} onClick={() => setTab(item.tab)}>
             <span className="nav-icon">{item.icon}</span>
             <span className="nav-label">{item.label}</span>

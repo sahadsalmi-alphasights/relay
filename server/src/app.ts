@@ -8,6 +8,7 @@ import { HttpError } from "./errors";
 import anglesRoutes from "./routes/angles";
 import assignmentsRoutes from "./routes/assignments";
 import auditLogRoutes from "./routes/auditLog";
+import usersRoutes from "./routes/users";
 import authRoutes from "./routes/auth";
 import capacityRankingRoutes from "./routes/capacityRanking";
 import goalChangeRequestsRoutes from "./routes/goalChangeRequests";
@@ -63,6 +64,7 @@ export function buildApp(): FastifyInstance {
   app.register(notificationsRoutes, { prefix: "/notifications" });
   app.register(pushRoutes, { prefix: "/push" });
   app.register(auditLogRoutes, { prefix: "/audit-log" });
+  app.register(usersRoutes, { prefix: "/users" });
 
   const heartbeatTimer = startHeartbeat();
   const staleTimer = startStaleScheduler();

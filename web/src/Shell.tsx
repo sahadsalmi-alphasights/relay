@@ -7,6 +7,7 @@ import CapacityRankingTab from "./tabs/CapacityRankingTab";
 import DeliveryTab from "./tabs/DeliveryTab";
 import FirstDeliverablesTab from "./tabs/FirstDeliverablesTab";
 import ProjectLeadingTab from "./tabs/ProjectLeadingTab";
+import UserManagementTab from "./tabs/UserManagementTab";
 import EditProjectSheet from "./sheets/EditProjectSheet";
 import IntakeWizard from "./sheets/IntakeWizard";
 import MorningCallsSoldDialog from "./sheets/MorningCallsSoldDialog";
@@ -133,6 +134,7 @@ export default function Shell() {
       {tab === "Ranking" && <CapacityRankingTab reloadTick={reloadTick} />}
       {tab === "FirstDel" && <FirstDeliverablesTab scope={scope} reloadTick={reloadTick} onCount={setFdCount} />}
       {tab === "AuditLog" && <AuditLogTab reloadTick={reloadTick} />}
+      {tab === "Users" && <UserManagementTab reloadTick={reloadTick} />}
     </>
   );
 

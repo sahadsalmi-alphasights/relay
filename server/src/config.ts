@@ -15,6 +15,14 @@ export const config = {
   oidcClientId: process.env.OIDC_CLIENT_ID ?? "",
   oidcClientSecret: process.env.OIDC_CLIENT_SECRET ?? "",
   oidcRedirectUri: process.env.OIDC_REDIRECT_URI ?? "",
+  // User management — the OWNER allowlist. These emails are always granted
+  // Owner on login and can never be locked out (see routes/auth.ts). Kept in
+  // env, not source, so real addresses aren't committed to the repo. Comma
+  // separated, case-insensitive.
+  ownerEmails: (process.env.OWNER_EMAILS ?? "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean),
 };
 
 // Spec §7: DEV_AUTH must be impossible to enable in production. Refuse to boot

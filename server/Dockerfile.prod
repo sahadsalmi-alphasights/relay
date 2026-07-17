@@ -1,4 +1,6 @@
 FROM node:20-slim
+# Upgrade system packages to pick up security patches (e.g. libgnutls30)
+RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY package*.json ./
 RUN npm install

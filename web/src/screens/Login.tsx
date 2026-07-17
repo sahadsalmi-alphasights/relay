@@ -25,14 +25,32 @@ function ssoErrorFromUrl(): boolean {
 
 function SsoLogin() {
   const [error] = useState(ssoErrorFromUrl());
+
+  // Behind the Cloudflare Access gate the user has already authenticated with
+  // Okta, so the app's own login is a redundant click — go straight to the
+  // OIDC flow, which returns silently via the existing Okta session. The
+  // button is only shown if a prior attempt errored, to avoid a redirect loop.
+  useEffect(() => {
+    if (!error) window.location.href = `${apiBaseUrl}/auth/oidc/login`;
+  }, [error]);
+
+  if (!error) {
+    return (
+      <div className="center-screen">
+        <div className="login-card">
+          <h1>CapTracker</h1>
+          <div className="sub">Signing you in…</div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="center-screen">
       <div className="login-card">
         <h1>CapTracker</h1>
         <div className="sub">Sign in with your company account.</div>
-        {error && (
-          <div className="err-line">Sign-in didn't complete. Please try again, or contact IT if it keeps happening.</div>
-        )}
+        <div className="err-line">Sign-in didn't complete. Please try again, or contact IT if it keeps happening.</div>
         <button
           className="btn btn-pl"
           style={{ width: "100%", marginTop: 4 }}
@@ -40,7 +58,7 @@ function SsoLogin() {
             window.location.href = `${apiBaseUrl}/auth/oidc/login`;
           }}
         >
-          Sign in with SSO
+          Try again
         </button>
       </div>
     </div>
@@ -97,7 +115,7 @@ function DevAuthLogin({ onLoggedIn }: { onLoggedIn: (person: Person) => void }) 
 export default function Login({ onLoggedIn }: { onLoggedIn: (person: Person) => void }) {
   const mode = useAuthMode();
 
-  if (!mode) return <div className="center-screen">Loading Relay…</div>;
+  if (!mode) return <div className="center-screen">Loading CapTracker…</div>;
   if (!mode.devAuth) return <SsoLogin />;
   return <DevAuthLogin onLoggedIn={onLoggedIn} />;
 }

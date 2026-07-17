@@ -51,7 +51,7 @@ export default function Header({
     <div className="hdr">
       <div className="hdr-top">
         <div className="brand">
-          <h1>Relay</h1>
+          <h1>CapTracker</h1>
           <span>capacity &amp; delivery</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>

@@ -28,7 +28,7 @@ function SsoLogin() {
   return (
     <div className="center-screen">
       <div className="login-card">
-        <h1>Relay</h1>
+        <h1>CapTracker</h1>
         <div className="sub">Sign in with your company account.</div>
         {error && (
           <div className="err-line">Sign-in didn't complete. Please try again, or contact IT if it keeps happening.</div>
@@ -74,7 +74,7 @@ function DevAuthLogin({ onLoggedIn }: { onLoggedIn: (person: Person) => void }) 
   return (
     <div className="center-screen">
       <div className="login-card">
-        <h1>Relay</h1>
+        <h1>CapTracker</h1>
         <div className="sub">DEV_AUTH — pick a seeded person to log in as. Production uses real SSO.</div>
         {error && <div className="err-line">{error}</div>}
         {!users && !error && <div className="empty">Loading seeded users…</div>}

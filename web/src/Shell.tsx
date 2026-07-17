@@ -6,6 +6,7 @@ import CapacityRankingTab from "./tabs/CapacityRankingTab";
 import DeliveryTab from "./tabs/DeliveryTab";
 import FirstDeliverablesTab from "./tabs/FirstDeliverablesTab";
 import ProjectLeadingTab from "./tabs/ProjectLeadingTab";
+import EditProjectSheet from "./sheets/EditProjectSheet";
 import IntakeWizard from "./sheets/IntakeWizard";
 import NotesSheet from "./sheets/NotesSheet";
 import RotaSheet from "./sheets/RotaSheet";
@@ -35,6 +36,7 @@ export default function Shell() {
   const [teamOpen, setTeamOpen] = useState(false);
   const [rotaOpen, setRotaOpen] = useState(false);
   const [teamEditFor, setTeamEditFor] = useState<string | null>(null);
+  const [editProjectFor, setEditProjectFor] = useState<string | null>(null);
   const [notesFor, setNotesFor] = useState<NotesTarget | null>(null);
 
   const bumpReload = () => setReloadTick((t) => t + 1);
@@ -82,6 +84,9 @@ export default function Shell() {
           }}
         />
       )}
+      {editProjectFor && (
+        <EditProjectSheet projectId={editProjectFor} onClose={() => setEditProjectFor(null)} onChanged={bumpReload} />
+      )}
       {notesFor && <NotesSheet target={notesFor} onClose={() => setNotesFor(null)} />}
       {rotaOpen && <RotaSheet onClose={() => setRotaOpen(false)} />}
       {teamOpen && (
@@ -116,6 +121,7 @@ export default function Shell() {
           onReload={bumpReload}
           onPendingCount={setPlPendingCount}
           onEditTeam={setTeamEditFor}
+          onEditProject={setEditProjectFor}
           onNotes={setNotesFor}
         />
       )}

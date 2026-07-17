@@ -84,6 +84,28 @@ async function seed(client: PoolClient) {
     [upcomingSundays[0], personIdByName.get("Resource_Zeta"), "Can anyone take this? I'm away that weekend."]
   );
 
+  type AssignmentSeed = {
+    deliverer: string;
+    goal: number;
+    delivered: number;
+    customDelivered: number;
+    // §3/§8 (domain change 8) — stage lives on the assignment now.
+    stage: "First Deliverable" | "Second Deliverable" | "Hail Mary" | "Selling";
+  };
+
+  // Big structural change — a project always has >=1 angle. Most seeded
+  // projects here have exactly one (the common, "simple" case: name comes
+  // from the topic, nothing about angles is visible in the UI). Client_E
+  // deliberately has two, to demonstrate independent per-angle N/goal/staffing
+  // and per-angle calls_sold in the seeded demo data.
+  type AngleSeed = {
+    name: string;
+    callsN: number;
+    goalTotal: number;
+    callsSold: number;
+    assignments: AssignmentSeed[];
+  };
+
   type ProjectSeed = {
     pl: string;
     client: string;
@@ -92,18 +114,8 @@ async function seed(client: PoolClient) {
     projectLink: string;
     projectType: "Pitch" | "Due Diligence" | "Strategy";
     expertPool: "Global" | "EU & MEA & India" | "AUS / NZ / Sing / JP" | "US only";
-    callsN: number;
-    goalTotal: number;
-    callsSold: number;
     status: "matched" | "open";
-    assignments: {
-      deliverer: string;
-      goal: number;
-      delivered: number;
-      customDelivered: number;
-      // §3/§8 (domain change 8) — stage lives on the assignment now.
-      stage: "First Deliverable" | "Second Deliverable" | "Hail Mary" | "Selling";
-    }[];
+    angles: AngleSeed[];
   };
 
   const PROJECTS: ProjectSeed[] = [
@@ -115,14 +127,19 @@ async function seed(client: PoolClient) {
       projectLink: "https://example.test/proj/1001",
       projectType: "Pitch",
       expertPool: "US only",
-      callsN: 4,
-      goalTotal: 8,
-      callsSold: 0,
       status: "matched",
-      assignments: [
-        // Demonstrates §8: two deliverers on the same project, different stages.
-        { deliverer: "Resource_Zeta", goal: 4, delivered: 2, customDelivered: 0, stage: "First Deliverable" },
-        { deliverer: "Resource_Epsilon", goal: 4, delivered: 1, customDelivered: 1, stage: "Second Deliverable" },
+      angles: [
+        {
+          name: "Market sizing — widget sector",
+          callsN: 4,
+          goalTotal: 8,
+          callsSold: 0,
+          assignments: [
+            // Demonstrates §8: two deliverers on the same project, different stages.
+            { deliverer: "Resource_Zeta", goal: 4, delivered: 2, customDelivered: 0, stage: "First Deliverable" },
+            { deliverer: "Resource_Epsilon", goal: 4, delivered: 1, customDelivered: 1, stage: "Second Deliverable" },
+          ],
+        },
       ],
     },
     {
@@ -133,11 +150,16 @@ async function seed(client: PoolClient) {
       projectLink: "https://example.test/proj/1002",
       projectType: "Due Diligence",
       expertPool: "EU & MEA & India",
-      callsN: 2,
-      goalTotal: 6,
-      callsSold: 1,
       status: "matched",
-      assignments: [{ deliverer: "Resource_Iota", goal: 6, delivered: 6, customDelivered: 0, stage: "Selling" }],
+      angles: [
+        {
+          name: "Competitive landscape",
+          callsN: 2,
+          goalTotal: 6,
+          callsSold: 1,
+          assignments: [{ deliverer: "Resource_Iota", goal: 6, delivered: 6, customDelivered: 0, stage: "Selling" }],
+        },
+      ],
     },
     {
       pl: "Lead_User_Beta",
@@ -147,13 +169,18 @@ async function seed(client: PoolClient) {
       projectLink: "https://example.test/proj/1003",
       projectType: "Strategy",
       expertPool: "AUS / NZ / Sing / JP",
-      callsN: 3,
-      goalTotal: 6,
-      callsSold: 0,
       status: "matched",
-      assignments: [
-        { deliverer: "Resource_Gamma", goal: 3, delivered: 3, customDelivered: 0, stage: "Second Deliverable" },
-        { deliverer: "Resource_Kappa", goal: 3, delivered: 0, customDelivered: 0, stage: "First Deliverable" },
+      angles: [
+        {
+          name: "Regulatory expert sourcing",
+          callsN: 3,
+          goalTotal: 6,
+          callsSold: 0,
+          assignments: [
+            { deliverer: "Resource_Gamma", goal: 3, delivered: 3, customDelivered: 0, stage: "Second Deliverable" },
+            { deliverer: "Resource_Kappa", goal: 3, delivered: 0, customDelivered: 0, stage: "First Deliverable" },
+          ],
+        },
       ],
     },
     {
@@ -164,19 +191,46 @@ async function seed(client: PoolClient) {
       projectLink: "https://example.test/proj/1004",
       projectType: "Pitch",
       expertPool: "Global",
-      callsN: 2,
-      goalTotal: 6,
-      callsSold: 0,
       status: "open",
-      assignments: [],
+      angles: [{ name: "Unmatched — needs staffing", callsN: 2, goalTotal: 6, callsSold: 0, assignments: [] }],
+    },
+    {
+      // Multi-angle demo: one project, two independent workstreams. Each
+      // angle has its own N/goal/staffing (from the shared Due Diligence
+      // formula) and its own calls_sold -- the buy-side angle is fully sold,
+      // the sell-side angle deliberately lags, so the chase-client flag
+      // demonstrates being correct per-angle, not from a summed total.
+      pl: "Lead_User_Alpha",
+      client: "Client_E",
+      account: "Account_5",
+      topic: "Buy-side / sell-side diligence",
+      projectLink: "https://example.test/proj/1005",
+      projectType: "Due Diligence",
+      expertPool: "Global",
+      status: "matched",
+      angles: [
+        {
+          name: "Buy-side diligence",
+          callsN: 3,
+          goalTotal: 9,
+          callsSold: 3,
+          assignments: [{ deliverer: "Resource_Theta", goal: 9, delivered: 5, customDelivered: 0, stage: "First Deliverable" }],
+        },
+        {
+          name: "Sell-side diligence",
+          callsN: 2,
+          goalTotal: 6,
+          callsSold: 0,
+          assignments: [{ deliverer: "Resource_Mu", goal: 6, delivered: 0, customDelivered: 0, stage: "First Deliverable" }],
+        },
+      ],
     },
   ];
 
   for (const p of PROJECTS) {
     const { rows } = await client.query<{ id: string }>(
-      `INSERT INTO project (pl_id, client, account, topic, project_link, project_type,
-         expert_pool, calls_n, goal_total, calls_sold, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
+      `INSERT INTO project (pl_id, client, account, topic, project_link, project_type, expert_pool, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
       [
         personIdByName.get(p.pl),
         p.client,
@@ -185,28 +239,33 @@ async function seed(client: PoolClient) {
         p.projectLink,
         p.projectType,
         p.expertPool,
-        p.callsN,
-        p.goalTotal,
-        p.callsSold,
         p.status,
       ]
     );
     const projectId = rows[0].id;
 
-    for (const a of p.assignments) {
-      await client.query(
-        `INSERT INTO assignment (project_id, deliverer_id, goal, delivered, custom_goal, custom_delivered, stage)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [
-          projectId,
-          personIdByName.get(a.deliverer),
-          a.goal,
-          a.delivered,
-          computeCustomGoal(a.goal),
-          a.customDelivered,
-          a.stage,
-        ]
+    for (const ang of p.angles) {
+      const { rows: angleRows } = await client.query<{ id: string }>(
+        `INSERT INTO angle (project_id, name, calls_n, goal_total, calls_sold) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+        [projectId, ang.name, ang.callsN, ang.goalTotal, ang.callsSold]
       );
+      const angleId = angleRows[0].id;
+
+      for (const a of ang.assignments) {
+        await client.query(
+          `INSERT INTO assignment (angle_id, deliverer_id, goal, delivered, custom_goal, custom_delivered, stage)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [
+            angleId,
+            personIdByName.get(a.deliverer),
+            a.goal,
+            a.delivered,
+            computeCustomGoal(a.goal),
+            a.customDelivered,
+            a.stage,
+          ]
+        );
+      }
     }
 
     await client.query(

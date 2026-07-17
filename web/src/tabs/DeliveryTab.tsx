@@ -10,6 +10,8 @@ import type { Scope } from "../components/Header";
 interface DeliveryItem {
   project: Project;
   assignment: Assignment;
+  /** Big structural change — only shown when the project has more than one angle; the simple (one-angle) case stays exactly as before. */
+  multiAngle: boolean;
 }
 
 function RequestChange({ onSend }: { onSend: (text: string) => Promise<void> }) {
@@ -77,7 +79,7 @@ export default function DeliveryTab({
   const load = async () => {
     const list = await api.get<Project[]>(`/projects?role=delivering&scope=${scope}&status=matched&archived=false`);
     const details = await Promise.all(
-      list.map((p) => api.get<{ project: Project; assignments: Assignment[] }>(`/projects/${p.id}`))
+      list.map((p) => api.get<{ project: Project; assignments: Assignment[]; angles: unknown[] }>(`/projects/${p.id}`))
     );
     // §8 scope toggle — "team" means every teammate's assignments, broken out
     // per person, not just the actor's own. Filtering to `actor.id` here (as
@@ -88,7 +90,7 @@ export default function DeliveryTab({
     const rows: DeliveryItem[] = [];
     for (const d of details) {
       for (const a of d.assignments) {
-        if (relevantIds.has(a.delivererId)) rows.push({ project: d.project, assignment: a });
+        if (relevantIds.has(a.delivererId)) rows.push({ project: d.project, assignment: a, multiAngle: d.angles.length > 1 });
       }
     }
     setItems(rows);
@@ -125,7 +127,7 @@ export default function DeliveryTab({
   const teamMembers =
     scope === "team" ? [...people].filter((p) => p.teamId === actor.teamId).sort((a, b) => a.name.localeCompare(b.name)) : [];
 
-  const renderCard = ({ project: p, assignment: a }: DeliveryItem) => {
+  const renderCard = ({ project: p, assignment: a, multiAngle }: DeliveryItem) => {
     const doneAll = a.delivered + a.customDelivered;
     const remaining = Math.max(a.goal - doneAll, 0);
     const pct = a.goal ? Math.min(100, Math.round((doneAll / a.goal) * 100)) : 0;
@@ -140,6 +142,8 @@ export default function DeliveryTab({
             </a>
             <div className="topic">
               {p.topic} · PL {nameOf(p.plId)}
+              {/* Big structural change — which angle this assignment is on, only when the project has more than one. */}
+              {multiAngle ? ` · ${a.angleName}` : ""}
             </div>
           </div>
           <span className={"stage-pill " + stageClass(a.stage)}>{a.stage}</span>

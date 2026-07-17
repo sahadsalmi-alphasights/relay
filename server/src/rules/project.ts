@@ -6,15 +6,21 @@ import type { PersonStatus } from "./types";
  * calls are different units, so this is never a numeric comparison between
  * them: it flags "we've sourced experts for this client but they haven't
  * booked the calls yet."
+ *
+ * Angles — this is a per-angle fact (each angle has its own delivered/sold
+ * count), never computed from project-wide sums: a resolved angle's
+ * delivered count could paper over a genuinely-lagging one if you summed
+ * first. The route layer calls this once per angle and ORs the results.
  */
 export function needsChaseClient(totalDelivered: number, callsSold: number, callsN: number): boolean {
   return totalDelivered > 0 && callsSold < callsN;
 }
 
 /**
- * §8.1 — calls_sold is manual for now (a PL types it in); this flags a
- * project whose calls_sold hasn't been touched yet today (Asia/Dubai
- * calendar day), so the PL board can nudge for an end-of-day update.
+ * §8.1 — calls_sold is manual for now (a PL types it in); this flags an
+ * angle whose calls_sold hasn't been touched yet today (Asia/Dubai calendar
+ * day), so the PL board can nudge for an end-of-day update. Per-angle, same
+ * reasoning as needsChaseClient above — the route layer ORs across angles.
  */
 export function needsCallsSoldUpdateToday(callsSoldUpdatedAt: string | Date, now: Date): boolean {
   return dubaiDateKey(new Date(callsSoldUpdatedAt)) !== dubaiDateKey(now);

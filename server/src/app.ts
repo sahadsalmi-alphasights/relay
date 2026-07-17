@@ -5,6 +5,7 @@ import authPlugin from "./auth/plugin";
 import { config } from "./config";
 import { pool } from "./db";
 import { HttpError } from "./errors";
+import anglesRoutes from "./routes/angles";
 import assignmentsRoutes from "./routes/assignments";
 import authRoutes from "./routes/auth";
 import capacityRankingRoutes from "./routes/capacityRanking";
@@ -50,6 +51,7 @@ export function buildApp(): FastifyInstance {
   app.register(peopleRoutes, { prefix: "/people" });
   app.register(teamsRoutes, { prefix: "/teams" });
   app.register(projectsRoutes, { prefix: "/projects" });
+  app.register(anglesRoutes, { prefix: "/angles" });
   app.register(assignmentsRoutes, { prefix: "/assignments" });
   app.register(goalChangeRequestsRoutes, { prefix: "/goal-change-requests" });
   app.register(sundayRotaRoutes, { prefix: "/sunday-rota" });

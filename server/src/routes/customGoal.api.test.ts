@@ -32,17 +32,25 @@ describe("domain change 7 — custom_goal is always auto-calculated, never set b
         projectLink: "https://example.test/proj/customgoal",
         projectType: "Pitch",
         expertPool: "Global",
-        callsN: 4,
-        goalTotal: 10,
-        // A malicious or stale client tries to set customGoal directly —
-        // the server must ignore it and derive its own value from goal.
-        assignments: [{ delivererId: fx.delivererAlpha, goal: 10, customGoal: 999 }],
+        angles: [
+          {
+            name: "Main",
+            callsN: 4,
+            goalTotal: 10,
+            // A malicious or stale client tries to set customGoal directly —
+            // the server must ignore it and derive its own value from goal.
+            assignments: [{ delivererId: fx.delivererAlpha, goal: 10, customGoal: 999 }],
+          },
+        ],
       },
     });
     expect(res.statusCode).toBe(200);
     const project = res.json();
 
-    const { rows } = await pool.query("SELECT custom_goal FROM assignment WHERE project_id = $1", [project.id]);
+    const { rows } = await pool.query(
+      "SELECT a.custom_goal FROM assignment a JOIN angle ang ON ang.id = a.angle_id WHERE ang.project_id = $1",
+      [project.id]
+    );
     expect(rows[0].custom_goal).toBe(4); // MAX(ROUNDUP(10*0.33), 1) = 4
   });
 

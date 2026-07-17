@@ -93,6 +93,12 @@ a.client:hover { text-decoration:underline; }
    padding per row, smaller chip/button chrome -- name, progress and actions
    stay legible, they just carry less whitespace around them. */
 .assignees { margin-top:12px; padding-top:12px; border-top:1px dashed var(--line); }
+/* Big structural change — angle grouping only appears once a project has
+   more than one angle; the first group skips its own divider since
+   .assignees already drew one above it. */
+.angle-group { margin-bottom:6px; }
+.angle-group:not(.angle-group-first) { border-top:1px dashed var(--line); margin-top:10px; padding-top:10px; }
+.angle-group-header { display:flex; align-items:baseline; justify-content:space-between; gap:8px; font-size:12px; font-weight:700; color:var(--ink); margin-bottom:4px; }
 .assignee { display:flex; align-items:center; gap:8px; padding:5px 0; }
 .avatar { width:28px; height:28px; border-radius:8px; background:var(--pl-soft); color:var(--pl); font-family:'Space Grotesk'; font-weight:700; font-size:12px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
 .avatar.dl { background:var(--dl-soft); color:var(--dl); }

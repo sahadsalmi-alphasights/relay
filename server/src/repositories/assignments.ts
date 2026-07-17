@@ -4,7 +4,10 @@ import type { ExpertPool, Stage } from "../rules/types";
 
 export interface AssignmentRow {
   id: string;
+  /** Computed via the angle_id -> angle.project_id join — assignments attach to an angle, not directly to a project, but this keeps every existing consumer (findProjectById(assignment.projectId), etc.) working unchanged. */
   projectId: string;
+  angleId: string;
+  angleName: string;
   delivererId: string;
   goal: number;
   delivered: number;
@@ -20,20 +23,26 @@ export interface AssignmentRow {
 }
 
 const SELECT = `
-  SELECT id, project_id AS "projectId", deliverer_id AS "delivererId", goal, delivered,
-         custom_goal AS "customGoal", custom_delivered AS "customDelivered",
-         stage, stage_entered_at AS "stageEnteredAt",
-         progress_updated_at AS "progressUpdatedAt",
-         stale_notified_threshold_minutes AS "staleNotifiedThresholdMinutes"
-  FROM assignment`;
+  SELECT a.id, ang.project_id AS "projectId", a.angle_id AS "angleId", ang.name AS "angleName",
+         a.deliverer_id AS "delivererId", a.goal, a.delivered,
+         a.custom_goal AS "customGoal", a.custom_delivered AS "customDelivered",
+         a.stage, a.stage_entered_at AS "stageEnteredAt",
+         a.progress_updated_at AS "progressUpdatedAt",
+         a.stale_notified_threshold_minutes AS "staleNotifiedThresholdMinutes"
+  FROM assignment a JOIN angle ang ON ang.id = a.angle_id`;
 
 export async function findAssignmentById(id: string): Promise<AssignmentRow | null> {
-  const { rows } = await pool.query(`${SELECT} WHERE id = $1`, [id]);
+  const { rows } = await pool.query(`${SELECT} WHERE a.id = $1`, [id]);
   return rows[0] ?? null;
 }
 
 export async function listAssignmentsByProject(projectId: string): Promise<AssignmentRow[]> {
-  const { rows } = await pool.query(`${SELECT} WHERE project_id = $1`, [projectId]);
+  const { rows } = await pool.query(`${SELECT} WHERE ang.project_id = $1`, [projectId]);
+  return rows;
+}
+
+export async function listAssignmentsByAngle(angleId: string): Promise<AssignmentRow[]> {
+  const { rows } = await pool.query(`${SELECT} WHERE a.angle_id = $1`, [angleId]);
   return rows;
 }
 
@@ -43,21 +52,22 @@ export interface AssignmentWithProject extends AssignmentRow {
 
 export async function listAssignmentsWithProjectByDeliverer(delivererId: string): Promise<AssignmentWithProject[]> {
   const { rows } = await pool.query(
-    `SELECT a.id, a.project_id AS "projectId", a.deliverer_id AS "delivererId", a.goal, a.delivered,
+    `SELECT a.id, p.id AS "projectId", a.angle_id AS "angleId", ang.name AS "angleName",
+            a.deliverer_id AS "delivererId", a.goal, a.delivered,
             a.custom_goal AS "customGoal", a.custom_delivered AS "customDelivered",
             a.stage, a.stage_entered_at AS "stageEnteredAt", p.expert_pool AS "projectExpertPool"
-     FROM assignment a JOIN project p ON p.id = a.project_id
+     FROM assignment a JOIN angle ang ON ang.id = a.angle_id JOIN project p ON p.id = ang.project_id
      WHERE a.deliverer_id = $1 AND p.archived = false`,
     [delivererId]
   );
   return rows;
 }
 
-/** §5 (domain change 7) — custom_goal is always derived from goal, never accepted from a caller. */
-export async function createAssignment(projectId: string, delivererId: string, goal: number): Promise<AssignmentRow> {
+/** §5 (domain change 7) — custom_goal is always derived from goal, never accepted from a caller. Attaches to an angle, not a project directly. */
+export async function createAssignment(angleId: string, delivererId: string, goal: number): Promise<AssignmentRow> {
   const { rows } = await pool.query(
-    `INSERT INTO assignment (project_id, deliverer_id, goal, custom_goal) VALUES ($1, $2, $3, $4) RETURNING id`,
-    [projectId, delivererId, goal, computeCustomGoal(goal)]
+    `INSERT INTO assignment (angle_id, deliverer_id, goal, custom_goal) VALUES ($1, $2, $3, $4) RETURNING id`,
+    [angleId, delivererId, goal, computeCustomGoal(goal)]
   );
   return (await findAssignmentById(rows[0].id))!;
 }
@@ -158,13 +168,14 @@ export interface StaleCandidate extends AssignmentRow {
 
 export async function listFirstDeliverableAssignments(): Promise<StaleCandidate[]> {
   const { rows } = await pool.query(
-    `SELECT a.id, a.project_id AS "projectId", a.deliverer_id AS "delivererId", a.goal, a.delivered,
+    `SELECT a.id, p.id AS "projectId", a.angle_id AS "angleId", ang.name AS "angleName",
+            a.deliverer_id AS "delivererId", a.goal, a.delivered,
             a.custom_goal AS "customGoal", a.custom_delivered AS "customDelivered",
             a.stage, a.stage_entered_at AS "stageEnteredAt",
             a.progress_updated_at AS "progressUpdatedAt",
             a.stale_notified_threshold_minutes AS "staleNotifiedThresholdMinutes",
             p.pl_id AS "projectPlId"
-     FROM assignment a JOIN project p ON p.id = a.project_id
+     FROM assignment a JOIN angle ang ON ang.id = a.angle_id JOIN project p ON p.id = ang.project_id
      WHERE a.stage = 'First Deliverable' AND p.archived = false`
   );
   return rows;

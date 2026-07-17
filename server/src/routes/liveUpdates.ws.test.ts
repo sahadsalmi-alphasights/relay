@@ -133,11 +133,14 @@ describe("§11 step 5 — live updates over WebSocket", () => {
     // eligible claimant on an unrelated team.
     const { pool } = await import("../db");
     const { rows } = await pool.query<{ id: string }>(
-      `INSERT INTO project (pl_id, client, project_link, project_type, expert_pool, calls_n, goal_total, status)
-       VALUES ($1, 'Client_Open', 'https://example.test/proj/open', 'Pitch', 'Global', 2, 6, 'open') RETURNING id`,
+      `INSERT INTO project (pl_id, client, project_link, project_type, expert_pool, status)
+       VALUES ($1, 'Client_Open', 'https://example.test/proj/open', 'Pitch', 'Global', 'open') RETURNING id`,
       [fx.plAlpha]
     );
     const openProjectId = rows[0].id;
+    await pool.query(`INSERT INTO angle (project_id, name, calls_n, goal_total) VALUES ($1, 'Main', 2, 6)`, [
+      openProjectId,
+    ]);
 
     const outsiderCookie = await loginCookie(fx.managerBeta);
     const claimantCookie = await loginCookie(fx.otherDelivererAlpha);

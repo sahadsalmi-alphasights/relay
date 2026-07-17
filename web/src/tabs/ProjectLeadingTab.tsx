@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
-import type { Assignment, GoalChangeRequest, Project } from "../api/types";
+import type { Angle, Assignment, GoalChangeRequest, Project } from "../api/types";
 import { barColor, initials, paceInfo, stageClass, typeClass } from "../lib/format";
 import { fmtElapsed, poolState, timerClass } from "../lib/time";
 import { useApp } from "../state/AppContext";
@@ -10,6 +10,7 @@ import type { Scope } from "../components/Header";
 interface ProjectItem {
   project: Project;
   assignments: Assignment[];
+  angles: Angle[];
   pending: GoalChangeRequest[];
 }
 
@@ -133,10 +134,15 @@ function AdvanceWithGoal({ assignment, onSave }: { assignment: Assignment; onSav
   );
 }
 
-// §8.1 — calls_sold is manual for now: the PL types it in here, same
-// collapsed/expanded pattern as GoalEditor. PL-only; PATCH /projects/:id
-// enforces that server-side (canEditProjectFields), independent of this UI.
-function CallsSoldEditor({ project, onSave }: { project: Project; onSave: () => void }) {
+/**
+ * §8.1 — calls_sold is manual for now: the PL types it in here, same
+ * collapsed/expanded pattern as before. Big structural change — calls_sold
+ * lives on each angle now, not the project: one stepper per angle, PL-only;
+ * PATCH /angles/:id enforces that server-side, independent of this UI. The
+ * one-angle case renders identically to the old single-stepper UI (just
+ * without an angle-name prefix).
+ */
+function CallsSoldEditor({ angles, onSave }: { angles: Angle[]; onSave: () => void }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -148,10 +154,10 @@ function CallsSoldEditor({ project, onSave }: { project: Project; onSave: () => 
     );
   }
 
-  const patch = async (callsSold: number) => {
+  const patch = async (angleId: string, callsSold: number) => {
     setBusy(true);
     try {
-      await api.patch(`/projects/${project.id}`, { callsSold });
+      await api.patch(`/angles/${angleId}`, { callsSold });
       onSave();
     } finally {
       setBusy(false);
@@ -160,20 +166,23 @@ function CallsSoldEditor({ project, onSave }: { project: Project; onSave: () => 
 
   return (
     <div style={{ flex: 1 }}>
-      <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
-        <span style={{ fontSize: 12, fontWeight: 600, flex: 1, color: "var(--ink)" }}>
-          Calls sold <span style={{ color: "var(--soft)", fontWeight: 500 }}>· of {project.callsN}</span>
-        </span>
-        <div className="step">
-          <button disabled={busy} onClick={() => patch(Math.max(0, project.callsSold - 1))}>
-            −
-          </button>
-          <span className="val">{project.callsSold}</span>
-          <button disabled={busy} onClick={() => patch(project.callsSold + 1)}>
-            +
-          </button>
+      {angles.map((ang) => (
+        <div key={ang.id} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
+          <span style={{ fontSize: 12, fontWeight: 600, flex: 1, color: "var(--ink)" }}>
+            {angles.length > 1 ? `${ang.name} — ` : ""}
+            Calls sold <span style={{ color: "var(--soft)", fontWeight: 500 }}>· of {ang.callsN}</span>
+          </span>
+          <div className="step">
+            <button disabled={busy} onClick={() => patch(ang.id, Math.max(0, ang.callsSold - 1))}>
+              −
+            </button>
+            <span className="val">{ang.callsSold}</span>
+            <button disabled={busy} onClick={() => patch(ang.id, ang.callsSold + 1)}>
+              +
+            </button>
+          </div>
         </div>
-      </div>
+      ))}
       <button className="btn btn-ghost" style={{ width: "100%" }} onClick={() => setOpen(false)}>
         Done
       </button>
@@ -187,6 +196,7 @@ export default function ProjectLeadingTab({
   onReload,
   onPendingCount,
   onEditTeam,
+  onEditProject,
   onNotes,
 }: {
   scope: Scope;
@@ -194,6 +204,7 @@ export default function ProjectLeadingTab({
   onReload: () => void;
   onPendingCount: (n: number) => void;
   onEditTeam: (projectId: string) => void;
+  onEditProject: (projectId: string) => void;
   onNotes: (t: NotesTarget) => void;
 }) {
   const { actor, people, nameOf, practiceOf, nowMs, effectiveHour } = useApp();
@@ -204,7 +215,7 @@ export default function ProjectLeadingTab({
     const active = await api.get<Project[]>(`/projects?role=leading&scope=${scope}&archived=false`);
     const archivedList = await api.get<Project[]>(`/projects?role=leading&scope=${scope}&archived=true`);
     const details = await Promise.all(
-      active.map((p) => api.get<{ project: Project; assignments: Assignment[] }>(`/projects/${p.id}`))
+      active.map((p) => api.get<{ project: Project; assignments: Assignment[]; angles: Angle[] }>(`/projects/${p.id}`))
     );
     // §5e — only a project's own PL may view its pending goal-change requests
     // (GET .../goal-change-requests 403s for anyone else). Under Team view,
@@ -219,7 +230,14 @@ export default function ProjectLeadingTab({
           : Promise.resolve<GoalChangeRequest[]>([])
       )
     );
-    setItems(active.map((p, i) => ({ project: details[i].project, assignments: details[i].assignments, pending: pending[i] })));
+    setItems(
+      active.map((p, i) => ({
+        project: details[i].project,
+        assignments: details[i].assignments,
+        angles: details[i].angles,
+        pending: pending[i],
+      }))
+    );
     setArchived(archivedList);
     onPendingCount(pending.reduce((sum, arr) => sum + arr.length, 0));
   };
@@ -263,12 +281,51 @@ export default function ProjectLeadingTab({
   // narrows to the actor's own, same set "mine" scope would show).
   const myStaleProjects = items.filter((it) => it.project.plId === actor.id && it.project.needsCallsSoldUpdate);
 
-  const renderCard = ({ project: p, assignments }: ProjectItem) => {
+  // §6/§8 — one assignee's own row: name, progress, stage/timer/back/advance.
+  // Shared between the single-angle (flat list) and multi-angle (grouped)
+  // renderings below, so there's exactly one place this markup lives.
+  const renderAssigneeRow = (a: Assignment) => {
+    const elapsed = nowMs - new Date(a.stageEnteredAt).getTime();
+    return (
+      <div key={a.id}>
+        <div className="assignee">
+          <div className="avatar">{initials(nameOf(a.delivererId))}</div>
+          <div>
+            <div className="assignee-name">
+              {nameOf(a.delivererId)} <span style={{ color: "var(--soft)", fontWeight: 500 }}>· {practiceOf(a.delivererId)}</span>
+            </div>
+            <div className="assignee-sub">{a.customDelivered > 0 ? `incl. ${a.customDelivered} custom` : "no custom"}</div>
+          </div>
+          <AssigneeGoalEditor assignment={a} onSave={onReload} />
+        </div>
+        {/* §6/§8 — this assignee's own stage, timer, and advance/back (per-deliverer, domain change 8). */}
+        <div className="assignee-actions-row">
+          {/* (bug fix, three-across) the adjacent stage-pill already
+              names the stage, so the timer chip doesn't repeat it --
+              frees up enough width for this row to stay on one line. */}
+          <span className={"stage-pill " + stageClass(a.stage)}>{a.stage}</span>
+          <span className={"chip timer " + timerClass(elapsed)}>⏱ {fmtElapsed(elapsed)}</span>
+          <button
+            className="btn-sm btn-ghost"
+            disabled={a.stage === "First Deliverable"}
+            onClick={() => backAssignmentStage(a.id)}
+          >
+            ← Back
+          </button>
+          <AdvanceWithGoal assignment={a} onSave={onReload} />
+        </div>
+      </div>
+    );
+  };
+
+  const renderCard = ({ project: p, assignments, angles }: ProjectItem) => {
         const { goal, done, pct } = projStats(assignments);
         const pace = paceInfo(pct, p.earliestStage ?? "First Deliverable");
         const ps = poolState(p.expertPool, effectiveHour);
-        const totalDelivered = assignments.reduce((s, a) => s + a.delivered + a.customDelivered, 0);
-        const chase = totalDelivered > 0 && p.callsSold < p.callsN;
+        // §8.1 (corrected) — computed server-side, per angle then OR'd; never
+        // re-derived here from summed totals (see rules/project.ts for why).
+        const chase = p.chaseClient;
+        const multiAngle = angles.length > 1;
 
         return (
           <div key={p.id} className="card">
@@ -329,47 +386,43 @@ export default function ProjectLeadingTab({
               )}
             </div>
             <div className="assignees">
-              {assignments.map((a) => {
-                const elapsed = nowMs - new Date(a.stageEnteredAt).getTime();
-                return (
-                  <div key={a.id}>
-                    <div className="assignee">
-                      <div className="avatar">{initials(nameOf(a.delivererId))}</div>
-                      <div>
-                        <div className="assignee-name">
-                          {nameOf(a.delivererId)} <span style={{ color: "var(--soft)", fontWeight: 500 }}>· {practiceOf(a.delivererId)}</span>
+              {/* Big structural change — group assignees under their angle
+                  only when there's more than one; a single-angle ("simple")
+                  project renders the exact same flat list as before, no
+                  angle chrome at all. */}
+              {multiAngle
+                ? angles.map((ang, i) => {
+                    const angleAssignments = assignments.filter((a) => a.angleId === ang.id);
+                    return (
+                      <div key={ang.id} className={"angle-group" + (i === 0 ? " angle-group-first" : "")}>
+                        <div className="angle-group-header">
+                          {ang.name}
+                          <span className="mono" style={{ fontSize: 11, fontWeight: 600, color: "var(--soft)" }}>
+                            N {ang.callsN} · goal {ang.goalTotal}
+                          </span>
                         </div>
-                        <div className="assignee-sub">{a.customDelivered > 0 ? `incl. ${a.customDelivered} custom` : "no custom"}</div>
+                        {angleAssignments.length === 0 ? (
+                          <div className="empty" style={{ padding: "6px 0 10px", fontSize: 12 }}>
+                            Unstaffed
+                          </div>
+                        ) : (
+                          angleAssignments.map(renderAssigneeRow)
+                        )}
                       </div>
-                      <AssigneeGoalEditor assignment={a} onSave={onReload} />
-                    </div>
-                    {/* §6/§8 — this assignee's own stage, timer, and advance/back (per-deliverer, domain change 8). */}
-                    <div className="assignee-actions-row">
-                      {/* (bug fix, three-across) the adjacent stage-pill already
-                          names the stage, so the timer chip doesn't repeat it --
-                          frees up enough width for this row to stay on one line. */}
-                      <span className={"stage-pill " + stageClass(a.stage)}>{a.stage}</span>
-                      <span className={"chip timer " + timerClass(elapsed)}>⏱ {fmtElapsed(elapsed)}</span>
-                      <button
-                        className="btn-sm btn-ghost"
-                        disabled={a.stage === "First Deliverable"}
-                        onClick={() => backAssignmentStage(a.id)}
-                      >
-                        ← Back
-                      </button>
-                      <AdvanceWithGoal assignment={a} onSave={onReload} />
-                    </div>
-                  </div>
-                );
-              })}
+                    );
+                  })
+                : assignments.map(renderAssigneeRow)}
             </div>
             <div className="actions">
               <button className="btn btn-pl" onClick={() => onEditTeam(p.id)}>
                 Edit team
               </button>
+              <button className="btn btn-ghost" onClick={() => onEditProject(p.id)} title="Edit project set-up">
+                ✏️ Edit
+              </button>
             </div>
             <div className="actions">
-              <CallsSoldEditor project={p} onSave={onReload} />
+              <CallsSoldEditor angles={angles} onSave={onReload} />
             </div>
             <div className="actions">
               <button className="btn btn-ghost" onClick={() => onNotes({ projectId: p.id })}>

@@ -21,12 +21,15 @@ beforeEach(async () => {
   fx = await resetAndSeedFixture();
 });
 
-describe("§8.1 — calls_sold is PL-editable, enforced server-side", () => {
-  it("a deliverer cannot write calls_sold on a project they don't lead", async () => {
+// calls_sold moved from project to angle (big structural change — a project's
+// N/goal/calls_sold are all per-angle now); PL-only enforcement and the
+// end-of-day/chase-client flags are exercised against /angles/:id here.
+describe("§8.1 — calls_sold is PL-editable, enforced server-side (now per angle)", () => {
+  it("a deliverer cannot write calls_sold on an angle of a project they don't lead", async () => {
     const cookie = await loginAs(app, fx.delivererAlpha);
     const res = await app.inject({
       method: "PATCH",
-      url: `/projects/${fx.project}`,
+      url: `/angles/${fx.angle}`,
       cookies: { relay_session: cookie.split("=")[1] },
       payload: { callsSold: 2 },
     });
@@ -41,11 +44,11 @@ describe("§8.1 — calls_sold is PL-editable, enforced server-side", () => {
     expect(check.json().project.callsSold).toBe(0);
   });
 
-  it("the project's own PL can write calls_sold", async () => {
+  it("the project's own PL can write calls_sold on an angle", async () => {
     const cookie = await loginAs(app, fx.plAlpha);
     const res = await app.inject({
       method: "PATCH",
-      url: `/projects/${fx.project}`,
+      url: `/angles/${fx.angle}`,
       cookies: { relay_session: cookie.split("=")[1] },
       payload: { callsSold: 3 },
     });
@@ -58,7 +61,7 @@ describe("§8.1 — calls_sold is PL-editable, enforced server-side", () => {
 
     await app.inject({
       method: "PATCH",
-      url: `/projects/${fx.project}`,
+      url: `/angles/${fx.angle}`,
       cookies: { relay_session: cookie.split("=")[1] },
       payload: { callsSold: 1 },
     });
@@ -92,8 +95,8 @@ describe("§8.1 — calls_sold is PL-editable, enforced server-side", () => {
   it("chase-client flag fires once profiles are delivered but calls_sold lags, and clears once fully sold", async () => {
     const cookie = await loginAs(app, fx.plAlpha);
 
-    // Fixture: fx.assignment has delivered=2, custom_delivered=0 on a
-    // project with calls_n=4 and calls_sold defaulting to 0.
+    // Fixture: fx.assignment has delivered=2, custom_delivered=0 on an angle
+    // with calls_n=4 and calls_sold defaulting to 0.
     let detail = await app.inject({
       method: "GET",
       url: `/projects/${fx.project}`,
@@ -102,11 +105,12 @@ describe("§8.1 — calls_sold is PL-editable, enforced server-side", () => {
     let { project, assignments } = detail.json();
     let totalDelivered = assignments.reduce((s: number, a: { delivered: number; customDelivered: number }) => s + a.delivered + a.customDelivered, 0);
     expect(needsChaseClient(totalDelivered, project.callsSold, project.callsN)).toBe(true);
+    expect(detail.json().project.chaseClient).toBe(true);
 
     // PL sells the remaining calls.
     await app.inject({
       method: "PATCH",
-      url: `/projects/${fx.project}`,
+      url: `/angles/${fx.angle}`,
       cookies: { relay_session: cookie.split("=")[1] },
       payload: { callsSold: project.callsN },
     });
@@ -119,5 +123,6 @@ describe("§8.1 — calls_sold is PL-editable, enforced server-side", () => {
     ({ project, assignments } = detail.json());
     totalDelivered = assignments.reduce((s: number, a: { delivered: number; customDelivered: number }) => s + a.delivered + a.customDelivered, 0);
     expect(needsChaseClient(totalDelivered, project.callsSold, project.callsN)).toBe(false);
+    expect(project.chaseClient).toBe(false);
   });
 });

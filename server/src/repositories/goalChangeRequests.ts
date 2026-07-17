@@ -38,8 +38,10 @@ export async function listUnresolvedForProject(projectId: string): Promise<GoalC
   const { rows } = await pool.query(
     `SELECT gcr.id, gcr.assignment_id AS "assignmentId", gcr.requested_by AS "requestedBy",
             gcr.body, gcr.resolved
-     FROM goal_change_request gcr JOIN assignment a ON a.id = gcr.assignment_id
-     WHERE a.project_id = $1 AND gcr.resolved = false`,
+     FROM goal_change_request gcr
+     JOIN assignment a ON a.id = gcr.assignment_id
+     JOIN angle ang ON ang.id = a.angle_id
+     WHERE ang.project_id = $1 AND gcr.resolved = false`,
     [projectId]
   );
   return rows;

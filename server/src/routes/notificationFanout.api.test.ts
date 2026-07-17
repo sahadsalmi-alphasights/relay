@@ -33,9 +33,7 @@ describe("§9 (built) — notification fan-out reaches only intended recipients"
         projectLink: "https://example.test/proj/notify",
         projectType: "Pitch",
         expertPool: "Global",
-        callsN: 2,
-        goalTotal: 6,
-        assignments: [{ delivererId: fx.otherDelivererAlpha, goal: 6 }],
+        angles: [{ name: "Main", callsN: 2, goalTotal: 6, assignments: [{ delivererId: fx.otherDelivererAlpha, goal: 6 }] }],
       },
     });
     expect(res.statusCode).toBe(200);
@@ -120,9 +118,7 @@ describe("§9 (built) — notification fan-out reaches only intended recipients"
         projectLink: "https://example.test/proj/openpool",
         projectType: "Pitch",
         expertPool: "Global",
-        callsN: 2,
-        goalTotal: 6,
-        assignments: [],
+        angles: [{ name: "Main", callsN: 2, goalTotal: 6, assignments: [] }],
       },
     });
     expect(res.statusCode).toBe(200);

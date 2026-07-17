@@ -1,6 +1,11 @@
 import type { FastifyPluginAsync } from "fastify";
 import { insertAuditLog } from "../repositories/auditLog";
-import { createAssignment, listAssignmentsByProject } from "../repositories/assignments";
+import { createAngle, listAnglesByProject } from "../repositories/angles";
+import {
+  createAssignment,
+  listAssignmentsByAngle,
+  listAssignmentsByProject,
+} from "../repositories/assignments";
 import { listUnresolvedForProject } from "../repositories/goalChangeRequests";
 import { createNote, listNotesForProject } from "../repositories/notes";
 import {
@@ -20,7 +25,7 @@ import { isEligible } from "../rules/eligibility";
 import { autoMatch, rankCandidates } from "../rules/matching";
 import { resolveNow } from "../lib/requestTime";
 import { canArchiveProject, canEditProjectFields } from "../rules/permissions";
-import { needsCallsSoldUpdateToday } from "../rules/project";
+import { needsCallsSoldUpdateToday, needsChaseClient } from "../rules/project";
 import { suggestGoal, suggestStaffing } from "../rules/suggestedGoal";
 import { dubaiDateKey } from "../rules/time";
 import type { ProjectType } from "../rules/types";
@@ -59,8 +64,26 @@ async function notifyEligibleOfOpenProject(project: ProjectRow, now: Date): Prom
   }
 }
 
-function withCallsSoldFlag(project: ProjectRow, now: Date) {
-  return { ...project, needsCallsSoldUpdate: needsCallsSoldUpdateToday(project.callsSoldUpdatedAt, now) };
+/**
+ * Big structural change — calls_sold, and "delivered vs. sold," are both
+ * per-angle facts now, not per-project. Each is computed per angle and then
+ * OR'd across the project's angles: correct even when angles disagree (e.g.
+ * one angle fully sold, another not yet started) in a way that summing
+ * project-wide totals would get wrong (a resolved angle's delivered count
+ * could paper over a genuinely-lagging one, or vice versa). The one-angle
+ * case collapses back to exactly the old per-project behavior.
+ */
+async function withProjectFlags(project: ProjectRow, now: Date) {
+  const angles = await listAnglesByProject(project.id);
+  let needsCallsSoldUpdate = false;
+  let chaseClient = false;
+  for (const angle of angles) {
+    if (needsCallsSoldUpdateToday(angle.callsSoldUpdatedAt, now)) needsCallsSoldUpdate = true;
+    const angleAssignments = await listAssignmentsByAngle(angle.id);
+    const totalDelivered = angleAssignments.reduce((sum, a) => sum + a.delivered + a.customDelivered, 0);
+    if (needsChaseClient(totalDelivered, angle.callsSold, angle.callsN)) chaseClient = true;
+  }
+  return { ...project, needsCallsSoldUpdate, chaseClient };
 }
 
 const projectsRoutes: FastifyPluginAsync = async (app) => {
@@ -89,14 +112,15 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
 
     const rows = await listProjects(filter);
     const now = resolveNow(request);
-    return rows.map((p) => withCallsSoldFlag(p, now));
+    return Promise.all(rows.map((p) => withProjectFlags(p, now)));
   });
 
   app.get<{ Params: { id: string } }>("/:id", { preHandler: [app.requireAuth] }, async (request) => {
     const project = await findProjectById(request.params.id);
     if (!project) throw notFound("project not found");
     const assignments = await listAssignmentsByProject(project.id);
-    return { project: withCallsSoldFlag(project, resolveNow(request)), assignments };
+    const angles = await listAnglesByProject(project.id);
+    return { project: await withProjectFlags(project, resolveNow(request)), assignments, angles };
   });
 
   // §5a/§5b (domain change 4) — pure computation, no DB write. Intake wizard
@@ -154,22 +178,18 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
       projectLink?: string;
       projectType?: string;
       expertPool?: string;
-      callsN?: number;
-      goalTotal?: number;
-      assignments?: { delivererId: string; goal: number; override?: { justification: string } }[];
+      angles?: {
+        name?: string;
+        callsN?: number;
+        goalTotal?: number;
+        assignments?: { delivererId: string; goal: number; override?: { justification: string } }[];
+      }[];
     };
   }>("/", { preHandler: [app.requireAuth] }, async (request) => {
     const actor = request.actor!;
     const body = request.body ?? {};
-    if (
-      !body.client ||
-      !body.projectType ||
-      !body.expertPool ||
-      body.callsN === undefined ||
-      !body.goalTotal ||
-      !body.projectLink
-    ) {
-      throw badRequest("client, projectType, expertPool, callsN, goalTotal, projectLink are required");
+    if (!body.client || !body.projectType || !body.expertPool || !body.projectLink) {
+      throw badRequest("client, projectType, expertPool, projectLink are required");
     }
     if (!isValidHttpUrl(body.projectLink)) {
       throw badRequest("projectLink must be a valid http(s) URL");
@@ -177,12 +197,22 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
     if (!PROJECT_TYPES.includes(body.projectType as ProjectType)) {
       throw badRequest("projectType must be one of Pitch, Due Diligence, Strategy");
     }
-    // §5a (domain change 4) — only a Pitch may have N=0 (no calls agreed yet).
-    const minCallsN = body.projectType === "Pitch" ? 0 : 1;
-    if (body.callsN < minCallsN) {
-      throw badRequest(`callsN must be >= ${minCallsN} for ${body.projectType}`);
+    // Big structural change — a project always has >=1 angle. A "simple"
+    // project is just a project with one angle; there is no separate mode.
+    const angleInputs = body.angles ?? [];
+    if (angleInputs.length === 0) {
+      throw badRequest("at least one angle is required");
     }
-    const assignments = body.assignments ?? [];
+    const minCallsN = body.projectType === "Pitch" ? 0 : 1;
+    for (const ang of angleInputs) {
+      if (!ang.name || !ang.name.trim()) throw badRequest("each angle needs a name");
+      if (ang.callsN === undefined || ang.callsN < minCallsN) {
+        throw badRequest(`callsN must be >= ${minCallsN} for ${body.projectType}`);
+      }
+      if (!ang.goalTotal) throw badRequest("each angle needs a goalTotal");
+    }
+
+    const allAssignments = angleInputs.flatMap((ang) => ang.assignments ?? []);
     const project = await createProject({
       plId: actor.id,
       client: body.client,
@@ -191,44 +221,47 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
       projectLink: body.projectLink,
       projectType: body.projectType,
       expertPool: body.expertPool,
-      callsN: body.callsN,
-      goalTotal: body.goalTotal,
-      status: assignments.length > 0 ? "matched" : "open",
+      status: allAssignments.length > 0 ? "matched" : "open",
     });
-    for (const a of assignments) {
-      await createAssignment(project.id, a.delivererId, a.goal);
-      // §6 (built) — an override (the PL picked someone other than who the
-      // ranking/auto-match suggested) always carries a justification; log it
-      // to the audit trail. Never notify anyone about the override itself —
-      // the ordinary "assigned" notification below still reaches the person.
-      if (a.override?.justification) {
+
+    for (const ang of angleInputs) {
+      const createdAngle = await createAngle(project.id, ang.name!.trim(), ang.callsN!, ang.goalTotal!);
+      for (const a of ang.assignments ?? []) {
+        await createAssignment(createdAngle.id, a.delivererId, a.goal);
+        // §6 (built) — an override (the PL picked someone other than who the
+        // ranking/auto-match suggested) always carries a justification; log it
+        // to the audit trail. Never notify anyone about the override itself —
+        // the ordinary "assigned" notification below still reaches the person.
+        if (a.override?.justification) {
+          await insertAuditLog({
+            entityType: "assignment",
+            entityId: project.id,
+            actorId: actor.id,
+            action: "manual_override",
+            newValue: { pickedInstead: a.delivererId, justification: a.override.justification },
+          });
+        }
+      }
+      // §6 (built) — audit-log whenever the PL revises an angle's suggested goal downwards, before it's ever staffed.
+      const suggested = suggestGoal(ang.callsN!, body.projectType as ProjectType);
+      if (ang.goalTotal! < suggested) {
         await insertAuditLog({
-          entityType: "assignment",
-          entityId: project.id,
+          entityType: "angle",
+          entityId: createdAngle.id,
           actorId: actor.id,
-          action: "manual_override",
-          newValue: { pickedInstead: a.delivererId, justification: a.override.justification },
+          action: "downward_goal_revision",
+          oldValue: { suggestedGoal: suggested },
+          newValue: { goalTotal: ang.goalTotal },
         });
       }
     }
-    // §6 (built) — audit-log whenever the PL revises the suggested goal downwards, before it's ever staffed.
-    const suggested = suggestGoal(body.callsN, body.projectType as ProjectType);
-    if (body.goalTotal < suggested) {
-      await insertAuditLog({
-        entityType: "project",
-        entityId: project.id,
-        actorId: actor.id,
-        action: "downward_goal_revision",
-        oldValue: { suggestedGoal: suggested },
-        newValue: { goalTotal: body.goalTotal },
-      });
-    }
+
     await insertAuditLog({ entityType: "project", entityId: project.id, actorId: actor.id, action: "create", newValue: body });
-    await publishProjectChanged(project.id, [actor.id, ...assignments.map((a) => a.delivererId)]);
-    if (assignments.length > 0) {
+    await publishProjectChanged(project.id, [actor.id, ...allAssignments.map((a) => a.delivererId)]);
+    if (allAssignments.length > 0) {
       publish({ type: "capacity-ranking" });
       // §9 (built) — "project assigned to you," one per newly staffed deliverer.
-      for (const a of assignments) {
+      for (const a of allAssignments) {
         await notify({
           personId: a.delivererId,
           type: "assigned",
@@ -252,51 +285,91 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
    * project, PL-only. Same override/justification handling as swap and
    * creation-time staffing (§6): an override never triggers a notification
    * about itself, only the ordinary "assigned" one for the person landed on.
+   *
+   * Big structural change — assignments attach to an angle now. `angleId` is
+   * only required in the body when the project has more than one angle; the
+   * common (one-angle) case defaults to it automatically so adding someone
+   * to a simple project doesn't get heavier.
    */
-  app.post<{ Params: { id: string }; Body: { delivererId?: string; goal?: number; override?: { justification: string } } }>(
-    "/:id/assignments",
+  app.post<{
+    Params: { id: string };
+    Body: { angleId?: string; delivererId?: string; goal?: number; override?: { justification: string } };
+  }>("/:id/assignments", { preHandler: [app.requireAuth] }, async (request) => {
+    const actor = request.actor!;
+    const project = await findProjectById(request.params.id);
+    if (!project) throw notFound("project not found");
+    if (!canEditProjectFields(actor.id, project)) throw forbidden("only the PL may edit the team");
+    if (!request.body?.delivererId || typeof request.body.goal !== "number") {
+      throw badRequest("delivererId and goal are required");
+    }
+
+    const angles = await listAnglesByProject(project.id);
+    let angleId = request.body.angleId;
+    if (!angleId) {
+      if (angles.length !== 1) throw badRequest("angleId is required when the project has more than one angle");
+      angleId = angles[0].id;
+    } else if (!angles.some((ang) => ang.id === angleId)) {
+      throw badRequest("unknown angle for this project");
+    }
+
+    const angleAssignments = await listAssignmentsByAngle(angleId);
+    if (angleAssignments.some((a) => a.delivererId === request.body.delivererId)) {
+      throw badRequest("that person already has an assignment on this angle");
+    }
+
+    const created = await createAssignment(angleId, request.body.delivererId, request.body.goal);
+    await insertAuditLog({
+      entityType: "assignment",
+      entityId: created.id,
+      actorId: actor.id,
+      action: "add_to_team",
+      newValue: { delivererId: request.body.delivererId, goal: request.body.goal, angleId },
+    });
+    if (request.body.override?.justification) {
+      await insertAuditLog({
+        entityType: "assignment",
+        entityId: created.id,
+        actorId: actor.id,
+        action: "manual_override",
+        newValue: { pickedInstead: request.body.delivererId, justification: request.body.override.justification },
+      });
+    }
+    await publishProjectChanged(project.id, [project.plId, request.body.delivererId]);
+    publish({ type: "capacity-ranking" });
+    await notify({
+      personId: request.body.delivererId,
+      type: "assigned",
+      title: "New project assigned to you",
+      body: `${project.client} — you've been staffed with a goal of ${created.goal}.`,
+      entityType: "project",
+      entityId: project.id,
+    });
+    return created;
+  });
+
+  /**
+   * Big structural change — add another angle to an already-created project.
+   * PL-only, audit-logged. Starts unstaffed; the PL then uses "Edit team"
+   * (above) against this new angle to assign deliverers to it.
+   */
+  app.post<{ Params: { id: string }; Body: { name?: string; callsN?: number; goalTotal?: number } }>(
+    "/:id/angles",
     { preHandler: [app.requireAuth] },
     async (request) => {
       const actor = request.actor!;
       const project = await findProjectById(request.params.id);
       if (!project) throw notFound("project not found");
-      if (!canEditProjectFields(actor.id, project)) throw forbidden("only the PL may edit the team");
-      if (!request.body?.delivererId || typeof request.body.goal !== "number") {
-        throw badRequest("delivererId and goal are required");
+      if (!canEditProjectFields(actor.id, project)) throw forbidden("only the PL may add angles");
+      const body = request.body ?? {};
+      if (!body.name || !body.name.trim()) throw badRequest("name is required");
+      const minCallsN = project.projectType === "Pitch" ? 0 : 1;
+      if (body.callsN === undefined || body.callsN < minCallsN) {
+        throw badRequest(`callsN must be >= ${minCallsN} for ${project.projectType}`);
       }
-
-      const projectAssignments = await listAssignmentsByProject(project.id);
-      if (projectAssignments.some((a) => a.delivererId === request.body.delivererId)) {
-        throw badRequest("that person already has an assignment on this project");
-      }
-
-      const created = await createAssignment(project.id, request.body.delivererId, request.body.goal);
-      await insertAuditLog({
-        entityType: "assignment",
-        entityId: created.id,
-        actorId: actor.id,
-        action: "add_to_team",
-        newValue: { delivererId: request.body.delivererId, goal: request.body.goal },
-      });
-      if (request.body.override?.justification) {
-        await insertAuditLog({
-          entityType: "assignment",
-          entityId: created.id,
-          actorId: actor.id,
-          action: "manual_override",
-          newValue: { pickedInstead: request.body.delivererId, justification: request.body.override.justification },
-        });
-      }
-      await publishProjectChanged(project.id, [project.plId, request.body.delivererId]);
-      publish({ type: "capacity-ranking" });
-      await notify({
-        personId: request.body.delivererId,
-        type: "assigned",
-        title: "New project assigned to you",
-        body: `${project.client} — you've been staffed with a goal of ${created.goal}.`,
-        entityType: "project",
-        entityId: project.id,
-      });
+      const goalTotal = body.goalTotal ?? suggestGoal(body.callsN, project.projectType as ProjectType);
+      const created = await createAngle(project.id, body.name.trim(), body.callsN, goalTotal);
+      await insertAuditLog({ entityType: "angle", entityId: created.id, actorId: actor.id, action: "create", newValue: body });
+      await publishProjectChanged(project.id, [project.plId]);
       return created;
     }
   );
@@ -386,7 +459,13 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
       const claimed = await claimOpenProject(project.id);
       if (!claimed) throw conflict("already claimed by someone else");
 
-      const assignment = await createAssignment(claimed.id, actor.id, request.body?.goal ?? claimed.goalTotal);
+      // Deliberate simplification: an open-pool project's claim always lands
+      // on its first (earliest-created) angle. Multi-angle open-pool
+      // projects aren't a described product flow yet -- if that becomes a
+      // real scenario, accepting needs its own angle picker.
+      const angles = await listAnglesByProject(claimed.id);
+      const angle = angles[0];
+      const assignment = await createAssignment(angle.id, actor.id, request.body?.goal ?? angle.goalTotal);
       await insertAuditLog({ entityType: "project", entityId: claimed.id, actorId: actor.id, action: "accept_open" });
       await publishProjectChanged(claimed.id, [claimed.plId, actor.id]);
       // §4 first-commit-wins — everyone else's open pool must drop this immediately.

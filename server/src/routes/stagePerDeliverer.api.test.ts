@@ -20,12 +20,12 @@ beforeEach(async () => {
   fx = await resetAndSeedFixture();
 });
 
-/** A second assignment on the fixture's project, for a different deliverer. */
+/** A second assignment on the fixture's (only) angle, for a different deliverer. */
 async function addSecondAssignment(): Promise<string> {
   const { rows } = await pool.query<{ id: string }>(
-    `INSERT INTO assignment (project_id, deliverer_id, goal, delivered, custom_goal, custom_delivered)
+    `INSERT INTO assignment (angle_id, deliverer_id, goal, delivered, custom_goal, custom_delivered)
      VALUES ($1, $2, 4, 0, 0, 0) RETURNING id`,
-    [fx.project, fx.otherDelivererAlpha]
+    [fx.angle, fx.otherDelivererAlpha]
   );
   return rows[0].id;
 }
@@ -97,9 +97,7 @@ describe("domain change 8 — stage is per-deliverer, not per-project (end-to-en
         projectLink: "https://example.test/proj/unstaffed",
         projectType: "Pitch",
         expertPool: "Global",
-        callsN: 2,
-        goalTotal: 6,
-        assignments: [],
+        angles: [{ name: "Main", callsN: 2, goalTotal: 6, assignments: [] }],
       },
     });
     expect(createRes.json().earliestStage).toBeNull();

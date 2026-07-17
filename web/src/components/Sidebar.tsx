@@ -3,16 +3,11 @@ import type { Person } from "../api/types";
 import { useApp } from "../state/AppContext";
 import type { Scope, Tab } from "./Header";
 
-const NAV_ITEMS: { tab: Tab; icon: string; label: string; managerOnly?: boolean; ownerOnly?: boolean }[] = [
+const NAV_ITEMS: { tab: Tab; icon: string; label: string }[] = [
   { tab: "PL", icon: "📋", label: "Project Leading" },
   { tab: "Delivery", icon: "📦", label: "Delivery" },
   { tab: "Ranking", icon: "📊", label: "Capacity Ranking" },
   { tab: "FirstDel", icon: "⏱", label: "First Deliverables" },
-  // docs/AUDIT_LOG_SPEC.md — sensitive, manager-only, same gate the read API
-  // itself enforces server-side (never rely on hiding the button alone).
-  { tab: "AuditLog", icon: "🕵", label: "Audit Log", managerOnly: true },
-  // User management — owner-only, same gate the /users API enforces server-side.
-  { tab: "Users", icon: "👥", label: "User Management", ownerOnly: true },
 ];
 
 export default function Sidebar({
@@ -52,8 +47,8 @@ export default function Sidebar({
   return (
     <nav className="sidebar">
       <div className="sidebar-brand">
-        <h1>Relay</h1>
-        <span>capacity &amp; delivery</span>
+        <img className="as-logo" src="/alphasights-logo.png" alt="AlphaSights" />
+        <h1>CapTracker</h1>
       </div>
 
       <button className="sidebar-new-btn" onClick={onNewProject}>
@@ -61,10 +56,7 @@ export default function Sidebar({
       </button>
 
       <div className="sidebar-nav">
-        {NAV_ITEMS.filter(
-          (item) =>
-            (!item.managerOnly || actor.isManager || actor.isOwner) && (!item.ownerOnly || actor.isOwner)
-        ).map((item) => (
+        {NAV_ITEMS.map((item) => (
           <button key={item.tab} className={tab === item.tab ? "active" : ""} onClick={() => setTab(item.tab)}>
             <span className="nav-icon">{item.icon}</span>
             <span className="nav-label">{item.label}</span>
@@ -95,13 +87,30 @@ export default function Sidebar({
         </button>
       </div>
 
-      <div className="sidebar-footer">
-        <button className="persona" onClick={logout} title="Log out and switch seeded user" style={{ width: "100%", justifyContent: "center" }}>
-          <span style={{ color: "var(--soft)" }}>as</span> {actor.name}
-          {actor.isManager ? " (mgr)" : ""}
+      <div className="sidebar-section-lbl">My Team</div>
+      <div className="sidebar-nav">
+        <button onClick={onOpenTeam}>
+          <span className="nav-icon">👥</span>
+          <span className="nav-label">My Team</span>
         </button>
-        <button className="btn-sm btn-ghost" onClick={onOpenTeam} title="My team" style={{ width: "100%" }}>
-          My Team
+        {(actor.isManager || actor.isOwner) && (
+          <button className={tab === "AuditLog" ? "active" : ""} onClick={() => setTab("AuditLog")}>
+            <span className="nav-icon">🕵</span>
+            <span className="nav-label">Audit Log</span>
+          </button>
+        )}
+        {actor.isOwner && (
+          <button className={tab === "Users" ? "active" : ""} onClick={() => setTab("Users")}>
+            <span className="nav-icon">🛠</span>
+            <span className="nav-label">User Management</span>
+          </button>
+        )}
+      </div>
+
+      <div className="sidebar-footer">
+        <button className="persona" onClick={logout} title="Log out" style={{ width: "100%", justifyContent: "center" }}>
+          <span style={{ color: "var(--soft)" }}>as</span> {actor.name}
+          {actor.isOwner ? " (owner)" : actor.isManager ? " (mgr)" : ""}
         </button>
       </div>
     </nav>

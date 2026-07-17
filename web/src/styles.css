@@ -1,9 +1,10 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
 * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
 body { margin:0; }
-:root { --bg:#EDEFF3; --surface:#FFF; --ink:#141922; --soft:#586070; --line:#E3E7EE;
-  --pl:#3B41C9; --pl-soft:#ECEDFB; --dl:#0E8C7F; --dl-soft:#E3F4F1;
-  --green:#2C9E63; --amber:#C77D12; --red:#D14343; --green-bg:#E5F4EC; --amber-bg:#FBF0DE; --red-bg:#FBE7E7; }
+:root { --bg:#F1F2F4; --surface:#FFF; --ink:#14212E; --soft:#6A7A88; --line:#E4E7EB;
+  --pl:#FC8300; --pl-soft:#FFF1E0; --dl:#0E8C7F; --dl-soft:#E3F4F1;
+  --green:#2C9E63; --amber:#C77D12; --red:#D14343; --green-bg:#E5F4EC; --amber-bg:#FBF0DE; --red-bg:#FBE7E7;
+  --navy:#001D3A; --navy-hi:#0A2A4A; --navy-ink:#9FB0C2; }
 .mono { font-family:'Space Grotesk',monospace; font-feature-settings:"tnum"; }
 /* Mobile tree root (<768px) — single narrow column, bottom sheets. Rendered
    only below the desktop breakpoint; see useViewport. */
@@ -300,30 +301,33 @@ a.client:hover { text-decoration:underline; }
 /* ==========================================================================
    Desktop shell (>=768px): sidebar + top bar + full-width content.
    ========================================================================== */
-.sidebar { width:240px; flex-shrink:0; background:var(--surface); border-right:1px solid var(--line);
+.sidebar { width:240px; flex-shrink:0; background:var(--navy); border-right:1px solid var(--navy);
   display:flex; flex-direction:column; padding:20px 14px; position:sticky; top:0; height:100vh; overflow-y:auto; }
-.sidebar-brand { display:flex; align-items:baseline; gap:8px; padding:0 8px; margin-bottom:22px; }
-.sidebar-brand h1 { font-family:'Space Grotesk'; font-size:19px; font-weight:700; letter-spacing:-.5px; margin:0; color:var(--ink); }
-.sidebar-brand span { font-size:11px; color:var(--soft); font-weight:500; }
+.sidebar-brand { display:flex; align-items:center; gap:8px; padding:2px 8px; margin-bottom:22px; }
+.sidebar-brand img.as-logo { height:20px; width:auto; display:block; }
+.sidebar-brand h1 { font-family:'Space Grotesk'; font-size:19px; font-weight:700; letter-spacing:-.5px; margin:0; color:#fff; }
+.sidebar-brand span { font-size:11px; color:var(--navy-ink); font-weight:500; }
 .sidebar-nav { display:flex; flex-direction:column; gap:2px; }
-.sidebar-nav button { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:10px; font-size:13.5px; font-weight:600; color:var(--soft); text-align:left; }
-.sidebar-nav button:hover { background:var(--bg); }
-.sidebar-nav button.active { background:var(--pl-soft); color:var(--pl); }
+.sidebar-nav button { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:10px; font-size:13.5px; font-weight:600; color:var(--navy-ink); text-align:left; }
+.sidebar-nav button:hover { background:var(--navy-hi); color:#fff; }
+.sidebar-nav button.active { background:var(--navy-hi); color:#fff; box-shadow:inset 3px 0 0 var(--pl); }
 .sidebar-nav .nav-icon { width:18px; text-align:center; flex-shrink:0; }
 .sidebar-nav .nav-label { flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 /* Phase D, item 9 — evening-coverage toggle, moved up directly under the nav
    list (last item is First Deliverables); styled like a nav row, not the old
    small icon-only footer square. */
 .eve-btn-nav { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:10px; font-size:13.5px; font-weight:600; color:var(--soft); text-align:left; width:100%; margin-top:8px; }
-.eve-btn-nav:hover { background:var(--bg); }
-.eve-btn-nav.on { background:#2B2F52; color:#fff; }
+.eve-btn-nav { color:var(--navy-ink); }
+.eve-btn-nav:hover { background:var(--navy-hi); color:#fff; }
+.eve-btn-nav.on { background:var(--navy-hi); color:#fff; box-shadow:inset 3px 0 0 var(--pl); }
 .eve-btn-nav .nav-icon { width:18px; text-align:center; flex-shrink:0; }
 .eve-btn-nav .nav-label { flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.sidebar-section-lbl { font-size:10px; font-weight:700; letter-spacing:.6px; text-transform:uppercase; color:var(--soft); margin:20px 0 8px; padding:0 8px; }
+.sidebar-section-lbl { font-size:10px; font-weight:700; letter-spacing:.6px; text-transform:uppercase; color:var(--navy-ink); margin:20px 0 8px; padding:0 8px; }
 .sidebar-scope { display:flex; flex-direction:column; gap:4px; }
-.sidebar-scope button { padding:8px 12px; border-radius:9px; font-size:13px; font-weight:600; color:var(--soft); text-align:left; }
-.sidebar-scope button.on { background:var(--bg); color:var(--ink); }
-.sidebar-footer { margin-top:auto; padding-top:14px; border-top:1px solid var(--line); display:flex; flex-direction:column; gap:8px; }
+.sidebar-scope button { padding:8px 12px; border-radius:9px; font-size:13px; font-weight:600; color:var(--navy-ink); text-align:left; }
+.sidebar-scope button:hover { background:var(--navy-hi); color:#fff; }
+.sidebar-scope button.on { background:var(--navy-hi); color:#fff; }
+.sidebar-footer { margin-top:auto; padding-top:14px; border-top:1px solid var(--navy-hi); display:flex; flex-direction:column; gap:8px; }
 .sidebar-new-btn { width:100%; padding:11px; border-radius:11px; font-size:13px; font-weight:700; background:var(--pl); color:#fff; text-align:center; margin-bottom:14px; }
 @media (max-width:1023px) {
   .sidebar { width:76px; padding:16px 10px; }

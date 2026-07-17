@@ -1,14 +1,18 @@
+import type { CSSProperties } from "react";
 import { api } from "../api/client";
 import type { Person } from "../api/types";
 import { useApp } from "../state/AppContext";
 import type { Scope, Tab } from "./Header";
 
 const NAV_ITEMS: { tab: Tab; icon: string; label: string }[] = [
-  { tab: "PL", icon: "📋", label: "Project Leading" },
-  { tab: "Delivery", icon: "📦", label: "Delivery" },
-  { tab: "Ranking", icon: "📊", label: "Capacity Ranking" },
-  { tab: "FirstDel", icon: "⏱", label: "First Deliverables" },
+  { tab: "PL", icon: "pl.png", label: "Project Leading" },
+  { tab: "Delivery", icon: "delivery.png", label: "Delivery" },
+  { tab: "Ranking", icon: "ranking.png", label: "Capacity Ranking" },
+  { tab: "FirstDel", icon: "first-deliverables.png", label: "First Deliverables" },
 ];
+
+/** AlphaSights deck icon as a CSS mask (auto-coloured via currentColor). */
+const ico = (file: string): CSSProperties => ({ ["--ico"]: `url(/icons/${file})` } as CSSProperties);
 
 export default function Sidebar({
   tab,
@@ -52,28 +56,27 @@ export default function Sidebar({
       </div>
 
       <button className="sidebar-new-btn" onClick={onNewProject}>
-        <span className="label-text">＋ New project</span>
+        <span className="ico" style={ico("new.png")} aria-hidden="true" />
+        <span className="label-text">New project</span>
       </button>
 
       <div className="sidebar-nav">
         {NAV_ITEMS.map((item) => (
           <button key={item.tab} className={tab === item.tab ? "active" : ""} onClick={() => setTab(item.tab)}>
-            <span className="nav-icon">{item.icon}</span>
+            <span className="nav-icon ico" style={ico(item.icon)} aria-hidden="true" />
             <span className="nav-label">{item.label}</span>
             {badgeFor(item.tab) > 0 && <span className="badge">{badgeFor(item.tab)}</span>}
           </button>
         ))}
       </div>
 
-      {/* Phase D, item 9 — moved up from the footer to directly under the
-          First Deliverables nav item, per §4 Rule 3: reachable in one tap,
-          not buried at the bottom. */}
+      {/* §4 Rule 3 — evening-coverage toggle, reachable in one tap. */}
       <button
         className={"eve-btn eve-btn-nav " + (actor.eveningCoverage ? "on" : "")}
         onClick={toggleEvening}
         title={actor.eveningCoverage ? "Evening coverage ON — tap to go off" : "Evening coverage OFF — tap to go on"}
       >
-        <span className="nav-icon">{actor.eveningCoverage ? "🌙" : "💤"}</span>
+        <span className="nav-icon ico" style={ico("coverage.png")} aria-hidden="true" />
         <span className="nav-label">{actor.eveningCoverage ? "Evening coverage: ON" : "Evening coverage: OFF"}</span>
       </button>
 
@@ -87,24 +90,27 @@ export default function Sidebar({
         </button>
       </div>
 
-      <div className="sidebar-section-lbl">My Team</div>
-      <div className="sidebar-nav">
-        <button onClick={onOpenTeam}>
-          <span className="nav-icon">👥</span>
-          <span className="nav-label">My Team</span>
-        </button>
-        {(actor.isManager || actor.isOwner) && (
-          <button className={tab === "AuditLog" ? "active" : ""} onClick={() => setTab("AuditLog")}>
-            <span className="nav-icon">🕵</span>
-            <span className="nav-label">Audit Log</span>
+      {/* Management group, pinned to the bottom and separated from Scope. */}
+      <div className="sidebar-team">
+        <div className="sidebar-section-lbl">My Team</div>
+        <div className="sidebar-nav">
+          <button onClick={onOpenTeam}>
+            <span className="nav-icon ico" style={ico("team.png")} aria-hidden="true" />
+            <span className="nav-label">My Team</span>
           </button>
-        )}
-        {actor.isOwner && (
-          <button className={tab === "Users" ? "active" : ""} onClick={() => setTab("Users")}>
-            <span className="nav-icon">🛠</span>
-            <span className="nav-label">User Management</span>
-          </button>
-        )}
+          {(actor.isManager || actor.isOwner) && (
+            <button className={tab === "AuditLog" ? "active" : ""} onClick={() => setTab("AuditLog")}>
+              <span className="nav-icon ico" style={ico("audit.png")} aria-hidden="true" />
+              <span className="nav-label">Audit Log</span>
+            </button>
+          )}
+          {actor.isOwner && (
+            <button className={tab === "Users" ? "active" : ""} onClick={() => setTab("Users")}>
+              <span className="nav-icon ico" style={ico("users.png")} aria-hidden="true" />
+              <span className="nav-label">User Management</span>
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="sidebar-footer">

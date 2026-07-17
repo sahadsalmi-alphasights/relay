@@ -327,8 +327,15 @@ a.client:hover { text-decoration:underline; }
 .sidebar-scope button { padding:8px 12px; border-radius:9px; font-size:13px; font-weight:600; color:var(--navy-ink); text-align:left; }
 .sidebar-scope button:hover { background:var(--navy-hi); color:#fff; }
 .sidebar-scope button.on { background:var(--navy-hi); color:#fff; }
-.sidebar-footer { margin-top:auto; padding-top:14px; border-top:1px solid var(--navy-hi); display:flex; flex-direction:column; gap:8px; }
-.sidebar-new-btn { width:100%; padding:11px; border-radius:11px; font-size:13px; font-weight:700; background:var(--pl); color:#fff; text-align:center; margin-bottom:14px; }
+.sidebar-footer { margin-top:12px; display:flex; flex-direction:column; gap:8px; }
+.sidebar-new-btn { width:100%; padding:11px; border-radius:11px; font-size:13px; font-weight:700; background:var(--pl); color:#fff; text-align:center; margin-bottom:14px; display:flex; align-items:center; justify-content:center; gap:8px; }
+/* AlphaSights deck icons rendered as CSS masks so a single (white) icon set
+   auto-colours to its context: navy-ink in the sidebar, #fff on hover/active,
+   navy on the light mobile header — all via currentColor. */
+.ico { display:inline-block; width:18px; height:18px; flex-shrink:0; background-color:currentColor;
+  -webkit-mask:var(--ico) no-repeat center/contain; mask:var(--ico) no-repeat center/contain; }
+/* Management group pinned to the bottom of the sidebar, separated from Scope. */
+.sidebar-team { margin-top:auto; padding-top:16px; border-top:1px solid var(--navy-hi); }
 @media (max-width:1023px) {
   .sidebar { width:76px; padding:16px 10px; }
   .sidebar-brand span, .sidebar-nav .nav-label, .sidebar-section-lbl, .sidebar-scope, .sidebar-new-btn span.label-text, .eve-btn-nav .nav-label { display:none; }

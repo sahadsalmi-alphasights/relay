@@ -187,8 +187,15 @@ jobs:
           host: ${{ secrets.GCP_VM_IP }}
           username: ${{ secrets.GCP_VM_USER }}
           key: ${{ secrets.GCP_SSH_PRIVATE_KEY }}
+          # The VM is small (≈1 GB RAM). Building both images at once OOMs/thrashes
+          # and blew past the default 10-minute command limit, so: give the whole
+          # script more time, and build one image at a time to keep peak memory low.
+          command_timeout: "30m"
           script: |
+            set -e
             cd ~/relay
             git pull origin main
-            docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+            docker compose -f docker-compose.prod.yml --env-file .env.production build api
+            docker compose -f docker-compose.prod.yml --env-file .env.production build web
+            docker compose -f docker-compose.prod.yml --env-file .env.production up -d
             docker image prune -f

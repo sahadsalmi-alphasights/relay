@@ -1,10 +1,11 @@
-cat > server/tsconfig.json << 'EOF'
 {
   "compilerOptions": {
     "target": "ES2022",
     "module": "CommonJS",
     "moduleResolution": "node",
-    "lib": ["ES2022"],
+    "lib": [
+      "ES2022"
+    ],
     "outDir": "dist",
     "rootDir": "src",
     "strict": true,
@@ -13,7 +14,11 @@ cat > server/tsconfig.json << 'EOF'
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true
   },
-  "include": ["src"],
-  "exclude": ["src/**/*.test.ts", "src/**/*.spec.ts"]
+  "include": [
+    "src"
+  ],
+  "exclude": [
+    "src/**/*.test.ts",
+    "src/**/*.spec.ts"
+  ]
 }
-EOF

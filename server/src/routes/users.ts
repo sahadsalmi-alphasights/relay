@@ -3,6 +3,7 @@ import { config } from "../config";
 import { badRequest, forbidden, notFound } from "../errors";
 import { insertAuditLog } from "../repositories/auditLog";
 import {
+  createUser,
   findPersonById,
   listPeopleAdmin,
   roleOf,
@@ -11,8 +12,10 @@ import {
   updateProfile,
   type Role,
 } from "../repositories/people";
+import type { PersonStatus } from "../rules/types";
 
 const ROLES: Role[] = ["owner", "manager", "member"];
+const STATUSES: PersonStatus[] = ["Available", "On vacation", "Sick", "Offline"];
 
 function isAllowlistedOwner(email: string): boolean {
   return config.ownerEmails.includes(email.toLowerCase());
@@ -61,26 +64,70 @@ const usersRoutes: FastifyPluginAsync = async (app) => {
 
   app.patch<{
     Params: { id: string };
-    Body: { name?: string; practiceArea?: string | null; teamId?: string | null };
+    Body: { name?: string; practiceArea?: string | null; teamId?: string | null; status?: PersonStatus };
   }>("/:id", { preHandler: [app.requireOwner] }, async (request) => {
     const actor = request.actor!;
     const target = await findPersonById(request.params.id);
     if (!target) throw notFound("unknown person");
 
-    const { name, practiceArea, teamId } = request.body ?? {};
+    const { name, practiceArea, teamId, status } = request.body ?? {};
     if (name !== undefined && name.trim() === "") throw badRequest("name cannot be empty");
+    if (status !== undefined && !STATUSES.includes(status)) throw badRequest("invalid status");
 
-    const updated = await updateProfile(target.id, { name, practiceArea, teamId });
+    const updated = await updateProfile(target.id, { name, practiceArea, teamId, status });
     await insertAuditLog({
       entityType: "person",
       entityId: target.id,
       actorId: actor.id,
       action: "profile_update",
-      oldValue: { name: target.name, practiceArea: target.practiceArea, teamId: target.teamId },
-      newValue: { name: updated.name, practiceArea: updated.practiceArea, teamId: updated.teamId },
+      oldValue: {
+        name: target.name,
+        practiceArea: target.practiceArea,
+        teamId: target.teamId,
+        status: target.status,
+      },
+      newValue: {
+        name: updated.name,
+        practiceArea: updated.practiceArea,
+        teamId: updated.teamId,
+        status: updated.status,
+      },
     });
     return updated;
   });
+
+  // Pre-provision a user by email so their role/team are ready the first time
+  // they sign in via SSO (findOrCreatePersonByEmail matches on email).
+  app.post<{ Body: { email?: string; name?: string; role?: Role; teamId?: string | null } }>(
+    "/",
+    { preHandler: [app.requireOwner] },
+    async (request, reply) => {
+      const actor = request.actor!;
+      const { email, name, role, teamId } = request.body ?? {};
+      if (!email || email.trim() === "") throw badRequest("email is required");
+      if (!name || name.trim() === "") throw badRequest("name is required");
+      if (role && !ROLES.includes(role)) throw badRequest("invalid role");
+
+      let created;
+      try {
+        created = await createUser(email.trim(), name.trim());
+      } catch {
+        throw badRequest("a user with that email already exists");
+      }
+      if (role && role !== "member") created = await setRole(created.id, role);
+      if (teamId) created = await updateProfile(created.id, { teamId });
+
+      await insertAuditLog({
+        entityType: "person",
+        entityId: created.id,
+        actorId: actor.id,
+        action: "create",
+        newValue: { email: created.email, name: created.name, role: roleOf(created), teamId: created.teamId },
+      });
+      reply.code(201);
+      return created;
+    }
+  );
 
   app.post<{ Params: { id: string } }>(
     "/:id/deactivate",

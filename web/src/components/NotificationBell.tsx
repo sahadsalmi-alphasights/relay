@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { Notification as AppNotification } from "../api/types";
 import type { NotificationsState } from "../lib/useNotifications";
 import { requestNotificationPermission, showBrowserNotification } from "../lib/pushNotifications";
+import { isSoundEnabled, playNotificationSound, setSoundEnabled } from "../lib/notificationSound";
 import { disablePush, enablePush, getPushSubscription, isPushSupported } from "../lib/webPush";
 
 const notifSupported = typeof Notification !== "undefined";
@@ -31,6 +32,15 @@ export default function NotificationBell({
   // Web Push. Track it so we can offer a one-click "enable" instead of the
   // pop-ups silently never appearing when permission is still "default".
   const [perm, setPerm] = useState<NotificationPermission>(notifSupported ? Notification.permission : "denied");
+  const [soundOn, setSoundOn] = useState(isSoundEnabled());
+
+  const toggleSound = () => {
+    const next = !soundOn;
+    setSoundEnabled(next);
+    setSoundOn(next);
+    // Audible confirmation when switching on (also serves as a preview).
+    if (next) playNotificationSound();
+  };
 
   const enablePopups = async () => {
     const p = await requestNotificationPermission();
@@ -143,6 +153,12 @@ export default function NotificationBell({
                 <span style={{ color: "var(--soft)" }}>Pop-ups are blocked in your browser settings</span>
               </div>
             )}
+            <div className="notif-panel-footer">
+              <span>Notification sound (gong)</span>
+              <button className="btn-sm btn-ghost" onClick={toggleSound}>
+                {soundOn ? "Turn off" : "Turn on"}
+              </button>
+            </div>
             {isPushSupported() && (
               <div className="notif-panel-footer">
                 <span>Push notifications (tab closed too)</span>

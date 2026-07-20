@@ -332,8 +332,8 @@ a.client:hover { text-decoration:underline; }
    the actual on/off state lives entirely on the switch: a real
    track-and-thumb control rather than a colour fill on the whole row.
    (Navy-theme adaptation: row text/hover follow the sidebar palette.) */
-.eve-toggle-row { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:10px; font-size:13.5px; font-weight:600; color:var(--navy-ink); text-align:left; width:100%; margin-top:8px; }
-.eve-toggle-row:hover { background:var(--navy-hi); color:#fff; }
+.eve-toggle-row { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:10px; font-size:13.5px; font-weight:600; color:#fff; text-align:left; width:100%; margin-top:8px; }
+.eve-toggle-row:hover { background:var(--navy-hi); }
 .eve-toggle-row .nav-icon { width:18px; text-align:center; flex-shrink:0; }
 .eve-toggle-row .nav-label { flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .toggle-switch { width:36px; height:20px; border-radius:999px; background:var(--navy-hi); position:relative; flex-shrink:0; transition:background .15s; }

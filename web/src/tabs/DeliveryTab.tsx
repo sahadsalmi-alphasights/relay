@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { api, ApiError } from "../api/client";
 import type { Assignment, CapacityRankRow, Project, ProjectStatus } from "../api/types";
-import { barColor, entityTint, initials, overDelivered, stageClass, stageLabel, typeClass } from "../lib/format";
+import { barColor, entityBrand, entityTint, initials, overDelivered, stageClass, stageLabel, typeClass } from "../lib/format";
+import EntityLogo from "../components/EntityLogo";
 import { fmtElapsed, poolState, timerClass } from "../lib/time";
 import { useApp } from "../state/AppContext";
 import type { NotesTarget } from "../Shell";
@@ -125,11 +126,13 @@ export default function DeliveryTab({
   reloadTick,
   onReload,
   onNotes,
+  focusProject,
 }: {
   scope: Scope;
   reloadTick: number;
   onReload: () => void;
   onNotes: (t: NotesTarget) => void;
+  focusProject?: { id: string; tick: number } | null;
 }) {
   const { actor, people, nameOf, nowMs, demoHour, effectiveHour, effectiveAfterHours } = useApp();
   const [items, setItems] = useState<DeliveryItem[] | null>(null);
@@ -141,6 +144,18 @@ export default function DeliveryTab({
   // "free", rules/load.ts) -- same computation ProjectLeadingTab's team
   // panel and CapacityRankingTab itself already read, not a new definition.
   const [myCapacity, setMyCapacity] = useState<CapacityRankRow | null>(null);
+
+  // Notification deep-link: scroll + pulse the target card (see Shell).
+  useEffect(() => {
+    if (!focusProject || !items) return;
+    const el = document.querySelector(`[data-project-id="${focusProject.id}"]`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.classList.add("card-flash");
+    const t = setTimeout(() => el.classList.remove("card-flash"), 2600);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusProject?.tick, items]);
 
   const load = async () => {
     const list = await api.get<Project[]>(`/projects?role=delivering&scope=${scope}&status=active`);
@@ -220,13 +235,15 @@ export default function DeliveryTab({
     // width; only the fill colour changes when over.
     const over = overDelivered(doneAll, a.goal);
     return (
-      <div key={a.id} className="card">
+      <div key={a.id} className="card" data-project-id={p.id} style={{ borderTop: `3px solid ${entityBrand(p.clientEntity)}` }}>
         {/* Manager feedback batch, item 2 — same header tint as the project
             board (§format.ts CLIENT_ENTITY_MAP, one shared config, not
             duplicated) -- managers reported the delivery board had no
             colour at all. */}
         <div className="card-top" style={{ background: entityTint(p.clientEntity) }}>
-          <div>
+          <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
+            <EntityLogo entity={p.clientEntity} />
+            <div style={{ minWidth: 0 }}>
             <a className="client" href={p.projectLink} target="_blank" rel="noopener noreferrer">
               {p.client}
             </a>
@@ -236,6 +253,7 @@ export default function DeliveryTab({
               {multiAngle ? ` · ${a.angleName}` : ""}
               {/* "Invisible competition" — visible to everyone, no access gating. */}
               {a.isGhost && <span className="picktag" style={{ marginLeft: 6 }}>👻 Ghost</span>}
+            </div>
             </div>
           </div>
           <span className={"stage-pill " + stageClass(a.stage)}>{stageLabel(a.stage)}</span>

@@ -9,6 +9,8 @@ export interface LiveNotification {
   title: string;
   body: string;
   createdAt: string;
+  entityType: string | null;
+  entityId: string | null;
 }
 
 export interface NotificationsState {
@@ -47,7 +49,7 @@ export function useNotifications(): NotificationsState {
     // The WS payload only carries display fields (see LiveNotification); the
     // rest are never read by the UI, so a cast here is honest rather than
     // threading a parallel "displayable notification" type through the app.
-    const full = { ...n, personId: "", entityType: null, entityId: null, read: false } as Notification;
+    const full = { ...n, personId: "", read: false } as Notification;
     setNotifications((prev) => [full, ...prev]);
     setUnreadCount((c) => c + 1);
   };

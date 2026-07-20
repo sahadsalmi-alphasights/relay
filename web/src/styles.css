@@ -130,6 +130,11 @@ button { font-family:inherit; cursor:pointer; border:none; background:none; colo
 .card-top { display:flex; justify-content:space-between; align-items:flex-start; gap:10px;
   background:var(--bg); margin:-14px -14px 0; padding:12px 14px; border-radius:16px 16px 0 0; }
 .client { font-family:'Space Grotesk'; font-weight:700; font-size:16px; letter-spacing:-.3px; color:var(--ink); }
+/* Client-entity logo chip — real logo on a white tile (logos need neutral
+   ground on tinted headers); branded monogram when the logo can't load. */
+.entity-logo { border-radius:7px; background:#fff; border:1px solid rgba(10,20,35,.10); object-fit:contain; padding:2.5px; flex-shrink:0; }
+.entity-mono { border-radius:7px; color:#fff; font-family:'Space Grotesk'; font-weight:700; display:inline-flex; align-items:center; justify-content:center; letter-spacing:-.2px; flex-shrink:0; }
+[data-theme="dark"] .entity-logo { background:#fff; border-color:rgba(255,255,255,.14); }
 /* (bug fix) the client/project name is a hyperlink to project_link everywhere it appears -- same look as plain text, underline only on hover as the affordance. */
 a.client, a.client:visited { text-decoration:none; }
 a.client:hover { text-decoration:underline; }
@@ -301,16 +306,38 @@ a.client:hover { text-decoration:underline; }
 [data-theme="dark"] .bell-wrap .eve-btn.has-unread { color:#FF3B30; }
 .bell-badge { position:absolute; top:-5px; right:-5px; }
 .notif-scrim { position:fixed; inset:0; z-index:39; background:transparent; }
-.notif-panel { position:absolute; top:calc(100% + 8px); right:0; z-index:40; width:320px; max-width:88vw; max-height:70vh; overflow-y:auto; background:var(--surface); border:1px solid var(--line); border-radius:14px; box-shadow:0 10px 30px rgba(0,0,0,.18); }
-.notif-panel-header { display:flex; align-items:center; justify-content:space-between; padding:12px 14px; border-bottom:1px solid var(--line); font-size:13px; }
-.notif-list { display:flex; flex-direction:column; }
-.notif-item { display:block; width:100%; text-align:left; padding:11px 14px; border:none; border-bottom:1px solid var(--line); background:none; cursor:pointer; }
-.notif-item:last-child { border-bottom:none; }
-.notif-item.unread { background:var(--pl-soft); }
-.notif-title { font-size:13px; font-weight:700; color:var(--ink); margin-bottom:2px; }
-.notif-body { font-size:12px; color:var(--soft); line-height:1.4; }
-.notif-time { font-size:10px; color:var(--soft); margin-top:4px; }
-.notif-panel-footer { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:10px 14px; border-top:1px solid var(--line); font-size:11px; color:var(--soft); }
+/* Modern tray: roomy radius, soft depth, icon-indexed rows, quiet settings. */
+.notif-panel { position:absolute; top:calc(100% + 10px); right:0; z-index:40; width:344px; max-width:92vw; max-height:72vh; overflow-y:auto; background:var(--surface); border:1px solid var(--line); border-radius:16px; box-shadow:0 18px 50px rgba(10,20,35,.22), 0 2px 8px rgba(10,20,35,.10); }
+.notif-panel-header { display:flex; align-items:center; gap:8px; padding:13px 16px; border-bottom:1px solid var(--line); font-size:13.5px; position:sticky; top:0; background:var(--surface); z-index:1; }
+.notif-count { font-size:10px; font-weight:800; background:#E01717; color:#fff; border-radius:999px; padding:1.5px 7px; }
+.notif-markall { margin-left:auto; font-size:11.5px; font-weight:700; color:var(--pl); }
+.notif-markall:hover { text-decoration:underline; }
+.notif-list { display:flex; flex-direction:column; padding:5px 6px; }
+.notif-item { display:flex; align-items:flex-start; gap:10px; width:100%; text-align:left; padding:10px; border:none; border-radius:11px; background:none; cursor:pointer; position:relative; }
+.notif-item:hover { background:var(--bg); }
+.notif-item + .notif-item { margin-top:1px; }
+.notif-ico { width:34px; height:34px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:15px; flex-shrink:0; }
+.notif-ico.teal { background:var(--dl-soft); } .notif-ico.orange { background:var(--pl-soft); }
+.notif-ico.amber { background:var(--amber-bg); } .notif-ico.green { background:var(--green-bg); }
+.notif-ico.red { background:var(--red-bg); } .notif-ico.blue { background:#E7F0FB; }
+[data-theme="dark"] .notif-ico.blue { background:#14273D; }
+.notif-main { flex:1; min-width:0; display:flex; flex-direction:column; gap:1px; }
+.notif-title { font-size:12.5px; font-weight:600; color:var(--ink); line-height:1.35; }
+.notif-item.unread .notif-title { font-weight:800; }
+.notif-body { font-size:11.5px; color:var(--soft); line-height:1.4; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.notif-meta { display:flex; flex-direction:column; align-items:flex-end; gap:5px; flex-shrink:0; padding-top:1px; }
+.notif-time { font-size:10.5px; font-weight:600; color:var(--soft); }
+.notif-dot { width:8px; height:8px; border-radius:50%; background:#E01717; }
+.notif-empty { display:flex; flex-direction:column; align-items:center; gap:8px; padding:34px 16px; color:var(--soft); font-size:12.5px; font-weight:600; }
+.notif-settings { border-top:1px solid var(--line); padding:6px 10px 8px; }
+.notif-setting-row { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:7px 6px; font-size:12px; font-weight:600; color:var(--ink); }
+.notif-switch { padding:0; display:flex; }
+.toggle-switch.sw-flat { background:var(--line); }
+.toggle-switch.sw-flat.on { background:var(--green); }
+
+/* Notification deep-link — the targeted card pulses so the eye lands on it. */
+@keyframes cardflash { 0% { box-shadow:0 0 0 3px var(--pl), 0 8px 24px rgba(252,131,0,.35); } 70% { box-shadow:0 0 0 3px var(--pl), 0 4px 14px rgba(252,131,0,.18); } 100% { box-shadow:0 0 0 0 rgba(252,131,0,0); } }
+.card-flash { animation:cardflash 2.6s ease-out; }
 .cov-tagline { font-size:10px; font-weight:600; color:var(--soft); background:var(--bg); padding:2px 6px; border-radius:5px; margin-left:4px; }
 .link-btn { font-size:11px; font-weight:700; color:#1F4E85; text-decoration:underline; margin-left:6px; }
 .rota-dates { display:flex; gap:7px; overflow-x:auto; padding-bottom:6px; margin-bottom:6px; }

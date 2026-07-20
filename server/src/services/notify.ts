@@ -20,7 +20,15 @@ export async function notify(input: CreateNotificationInput): Promise<void> {
   publish(
     {
       type: "notification",
-      notification: { id: row.id, type: row.type, title: row.title, body: row.body, createdAt: row.createdAt },
+      notification: {
+        id: row.id,
+        type: row.type,
+        title: row.title,
+        body: row.body,
+        createdAt: row.createdAt,
+        entityType: row.entityType,
+        entityId: row.entityId,
+      },
     },
     new Set([input.personId])
   );

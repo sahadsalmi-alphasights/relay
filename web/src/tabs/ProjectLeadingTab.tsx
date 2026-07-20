@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { Angle, Assignment, CapacityRankRow, GoalChangeRequest, Note, Project, Stage } from "../api/types";
-import { barColor, entityTint, initials, overDelivered, paceInfo, stageClass, stageLabel, typeClass } from "../lib/format";
+import { barColor, entityBrand, entityTint, initials, overDelivered, paceInfo, stageClass, stageLabel, typeClass } from "../lib/format";
+import EntityLogo from "../components/EntityLogo";
 import { fmtElapsed, poolState, timerClass } from "../lib/time";
 import { useApp } from "../state/AppContext";
 import type { NotesTarget } from "../Shell";
@@ -243,6 +244,7 @@ export default function ProjectLeadingTab({
   onEditTeam,
   onEditProject,
   onNotes,
+  focusProject,
 }: {
   scope: Scope;
   reloadTick: number;
@@ -250,12 +252,26 @@ export default function ProjectLeadingTab({
   onPendingCount: (n: number) => void;
   onEditTeam: (projectId: string) => void;
   onEditProject: (projectId: string) => void;
+  focusProject?: { id: string; tick: number } | null;
   onNotes: (t: NotesTarget) => void;
 }) {
   const { actor, people, nameOf, practiceOf, nowMs, effectiveHour, demoHour } = useApp();
   const [items, setItems] = useState<ProjectItem[] | null>(null);
   const [archived, setArchived] = useState<Project[]>([]);
   const [archivedOpen, setArchivedOpen] = useState(false);
+
+  // Notification deep-link: once the board has data, scroll the target card
+  // into view and pulse it so the eye lands exactly where the event happened.
+  useEffect(() => {
+    if (!focusProject || !items) return;
+    const el = document.querySelector(`[data-project-id="${focusProject.id}"]`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.classList.add("card-flash");
+    const t = setTimeout(() => el.classList.remove("card-flash"), 2600);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusProject?.tick, items]);
   // Phase D, item 5 — team-overview running list. Reuses the existing,
   // already-tested GET /capacity-ranking computation (personLoad + the
   // rawRemaining<=median "free" rule, rules/load.ts) rather than inventing a
@@ -392,7 +408,7 @@ export default function ProjectLeadingTab({
         const latestNote = notes.length > 0 ? notes[notes.length - 1] : null;
 
         return (
-          <div key={p.id} className="card">
+          <div key={p.id} className="card" data-project-id={p.id} style={{ borderTop: `3px solid ${entityBrand(p.clientEntity)}` }}>
             {/* Phase D (v2), item 7 — header block tinted by client_entity
                 (display map only, §format.ts CLIENT_ENTITY_MAP -- the stored
                 clientEntity smallint is untouched). A soft wash, not a full
@@ -401,12 +417,15 @@ export default function ProjectLeadingTab({
                 colours; "Behind"/chase-client render lower in the card, on
                 the plain white body, never inside this tinted block. */}
             <div className="card-top" style={{ background: entityTint(p.clientEntity) }}>
-              <div>
-                <a className="client" href={p.projectLink} target="_blank" rel="noopener noreferrer">
-                  {p.client}
-                </a>
-                <div className="topic">
-                  {p.topic} {p.account ? `· ${p.account}` : ""}
+              <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
+                <EntityLogo entity={p.clientEntity} />
+                <div style={{ minWidth: 0 }}>
+                  <a className="client" href={p.projectLink} target="_blank" rel="noopener noreferrer">
+                    {p.client}
+                  </a>
+                  <div className="topic">
+                    {p.topic} {p.account ? `· ${p.account}` : ""}
+                  </div>
                 </div>
               </div>
               <div className={"tag " + typeClass(p.projectType)}>{p.projectType}</div>

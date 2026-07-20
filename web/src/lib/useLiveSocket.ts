@@ -9,7 +9,15 @@ export type LiveEvent =
   | { type: "sunday-rota" }
   | {
       type: "notification";
-      notification: { id: string; type: string; title: string; body: string; createdAt: string };
+      notification: {
+        id: string;
+        type: string;
+        title: string;
+        body: string;
+        createdAt: string;
+        entityType: string | null;
+        entityId: string | null;
+      };
     };
 
 export type LiveStatus = "connecting" | "connected" | "reconnecting";

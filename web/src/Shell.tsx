@@ -18,6 +18,8 @@ import NotesSheet from "./sheets/NotesSheet";
 import RotaSheet from "./sheets/RotaSheet";
 import TeamEditSheet from "./sheets/TeamEditSheet";
 import TeamSheet from "./sheets/TeamSheet";
+import { api } from "./api/client";
+import type { Assignment } from "./api/types";
 import { useApp } from "./state/AppContext";
 import { useViewport } from "./lib/useViewport";
 import { dubaiDateKey, prettyDateKey } from "./lib/time";
@@ -43,6 +45,9 @@ export default function Shell() {
   const [teamOpen, setTeamOpen] = useState(false);
   const [rotaOpen, setRotaOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  // Deep-link target when a notification is clicked: the tab switches AND the
+  // project card scrolls into view with a highlight pulse.
+  const [focusProject, setFocusProject] = useState<{ id: string; tick: number } | null>(null);
   const [teamEditFor, setTeamEditFor] = useState<string | null>(null);
   const [editProjectFor, setEditProjectFor] = useState<string | null>(null);
   const [notesFor, setNotesFor] = useState<NotesTarget | null>(null);
@@ -91,7 +96,7 @@ export default function Shell() {
   // Clicking a notification in the bell navigates to the screen it's about.
   // The type is the primary routing signal; two title prefixes disambiguate
   // the shared types whose PL-facing copy differs from the deliverer's.
-  const openNotification = (n: AppNotification) => {
+  const openNotification = async (n: AppNotification) => {
     if (
       n.type === "delivery_logged" ||
       n.type === "goal_change_requested" ||
@@ -103,6 +108,19 @@ export default function Shell() {
       setTab("Delivery");
     }
     bumpReload();
+    // Resolve the concrete project so the board can scroll to and flash its
+    // card — entityType tells us how many hops away the project id is.
+    try {
+      let projectId: string | null = null;
+      if (n.entityType === "project") projectId = n.entityId;
+      else if (n.entityType === "assignment" && n.entityId) {
+        const a = await api.get<Assignment>(`/assignments/${n.entityId}`);
+        projectId = a.projectId;
+      }
+      if (projectId) setFocusProject({ id: projectId, tick: Date.now() });
+    } catch {
+      // fine — we still landed on the right board
+    }
   };
 
   const openNewProject = () => {
@@ -171,10 +189,11 @@ export default function Shell() {
           onEditTeam={setTeamEditFor}
           onEditProject={setEditProjectFor}
           onNotes={setNotesFor}
+          focusProject={focusProject}
         />
       )}
       {tab === "Delivery" && (
-        <DeliveryTab scope={scope} reloadTick={reloadTick} onReload={bumpReload} onNotes={setNotesFor} />
+        <DeliveryTab scope={scope} reloadTick={reloadTick} onReload={bumpReload} onNotes={setNotesFor} focusProject={focusProject} />
       )}
       {tab === "Ranking" && <CapacityRankingTab reloadTick={reloadTick} />}
       {tab === "GhostRanking" && <CapacityRankingTab reloadTick={reloadTick} ghostOnly />}

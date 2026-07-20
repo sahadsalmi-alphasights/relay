@@ -125,11 +125,13 @@ export default function DeliveryTab({
   reloadTick,
   onReload,
   onNotes,
+  focusProject,
 }: {
   scope: Scope;
   reloadTick: number;
   onReload: () => void;
   onNotes: (t: NotesTarget) => void;
+  focusProject?: { id: string; tick: number } | null;
 }) {
   const { actor, people, nameOf, nowMs, demoHour, effectiveHour, effectiveAfterHours } = useApp();
   const [items, setItems] = useState<DeliveryItem[] | null>(null);
@@ -141,6 +143,18 @@ export default function DeliveryTab({
   // "free", rules/load.ts) -- same computation ProjectLeadingTab's team
   // panel and CapacityRankingTab itself already read, not a new definition.
   const [myCapacity, setMyCapacity] = useState<CapacityRankRow | null>(null);
+
+  // Notification deep-link: scroll + pulse the target card (see Shell).
+  useEffect(() => {
+    if (!focusProject || !items) return;
+    const el = document.querySelector(`[data-project-id="${focusProject.id}"]`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.classList.add("card-flash");
+    const t = setTimeout(() => el.classList.remove("card-flash"), 2600);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusProject?.tick, items]);
 
   const load = async () => {
     const list = await api.get<Project[]>(`/projects?role=delivering&scope=${scope}&status=active`);
@@ -220,7 +234,7 @@ export default function DeliveryTab({
     // width; only the fill colour changes when over.
     const over = overDelivered(doneAll, a.goal);
     return (
-      <div key={a.id} className="card">
+      <div key={a.id} className="card" data-project-id={p.id}>
         {/* Manager feedback batch, item 2 — same header tint as the project
             board (§format.ts CLIENT_ENTITY_MAP, one shared config, not
             duplicated) -- managers reported the delivery board had no

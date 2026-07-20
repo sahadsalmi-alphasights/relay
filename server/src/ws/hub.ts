@@ -19,7 +19,18 @@ export type LiveEvent =
    * team), so embedding it saves the client a round trip without leaking
    * anything wider than "your own notification."
    */
-  | { type: "notification"; notification: { id: string; type: string; title: string; body: string; createdAt: string } };
+  | {
+      type: "notification";
+      notification: {
+        id: string;
+        type: string;
+        title: string;
+        body: string;
+        createdAt: string;
+        entityType: string | null;
+        entityId: string | null;
+      };
+    };
 
 interface Connection {
   socket: WebSocket;

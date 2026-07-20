@@ -8,6 +8,9 @@ const NAV_ITEMS: { tab: Tab; icon: string; label: string }[] = [
   { tab: "PL", icon: "pl.png", label: "Project Leading" },
   { tab: "Delivery", icon: "delivery.png", label: "Delivery" },
   { tab: "Ranking", icon: "ranking.png", label: "Capacity Ranking" },
+  // "Invisible competition" — same design/component as Capacity Ranking,
+  // filtered to ghost-flagged people; same visibility (no manager gate).
+  { tab: "GhostRanking", icon: "ghost.png", label: "Ghost Ranking" },
   { tab: "FirstDel", icon: "first-deliverables.png", label: "First Deliverables" },
 ];
 

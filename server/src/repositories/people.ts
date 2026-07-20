@@ -13,6 +13,8 @@ export interface PersonRow {
   practiceArea: string | null;
   status: PersonStatus;
   eveningCoverage: boolean;
+  /** "Invisible competition" — manager-set, team-scoped, reversible. Never defaulted true. */
+  isGhost: boolean;
   lastLoginAt: string | null;
   deactivatedAt: string | null;
 }
@@ -25,8 +27,8 @@ export function roleOf(p: { isOwner: boolean; isManager: boolean }): Role {
 const SELECT = `
   SELECT id, email, name, team_id AS "teamId", is_manager AS "isManager",
          is_owner AS "isOwner", practice_area AS "practiceArea", status,
-         evening_coverage AS "eveningCoverage", last_login_at AS "lastLoginAt",
-         deactivated_at AS "deactivatedAt"
+         evening_coverage AS "eveningCoverage", is_ghost AS "isGhost",
+         last_login_at AS "lastLoginAt", deactivated_at AS "deactivatedAt"
   FROM person`;
 
 export async function findPersonById(id: string): Promise<PersonRow | null> {
@@ -72,6 +74,12 @@ export async function updatePersonStatus(id: string, status: PersonStatus): Prom
 
 export async function updateEveningCoverage(id: string, eveningCoverage: boolean): Promise<PersonRow> {
   await pool.query(`UPDATE person SET evening_coverage = $2 WHERE id = $1`, [id, eveningCoverage]);
+  return (await findPersonById(id))!;
+}
+
+/** Manager-only (enforced at the route), team-scoped, reversible. */
+export async function setGhostFlag(id: string, isGhost: boolean): Promise<PersonRow> {
+  await pool.query(`UPDATE person SET is_ghost = $2 WHERE id = $1`, [id, isGhost]);
   return (await findPersonById(id))!;
 }
 
@@ -161,8 +169,8 @@ export async function listPeopleAdmin(): Promise<AdminUserRow[]> {
     `SELECT p.id, p.email, p.name, p.team_id AS "teamId", t.name AS "teamName",
             p.is_manager AS "isManager", p.is_owner AS "isOwner",
             p.practice_area AS "practiceArea", p.status,
-            p.evening_coverage AS "eveningCoverage", p.last_login_at AS "lastLoginAt",
-            p.deactivated_at AS "deactivatedAt"
+            p.evening_coverage AS "eveningCoverage", p.is_ghost AS "isGhost",
+            p.last_login_at AS "lastLoginAt", p.deactivated_at AS "deactivatedAt"
      FROM person p LEFT JOIN team t ON t.id = p.team_id
      ORDER BY p.is_owner DESC, p.is_manager DESC, p.name`
   );

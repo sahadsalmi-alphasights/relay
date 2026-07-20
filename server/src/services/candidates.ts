@@ -22,11 +22,28 @@ export interface CandidateWithAssignments {
  * Every Available person plus their non-archived assignments, shaped for
  * rankCandidates()/personLoad(). Only Available people are fetched at all —
  * Rule 1 (status) excludes the rest before ranking ever sees them.
+ *
+ * Managers are excluded unconditionally (`is_manager = false`) — the single
+ * shared source for both ranking dashboards (Capacity Ranking, and the ghost
+ * one below) and the real staffing/matching candidate pool
+ * (routes/projects.ts's intake/match + creation-time ghost suggestion), so
+ * one filter here means a manager is never suggested, never ranked, and
+ * never counts toward the org-wide median — while still being addable to a
+ * project manually (the manual "Edit team"/override routes accept any
+ * delivererId directly, never consulting this function).
+ *
+ * "Invisible competition" — `ghost` selects one of two mutually exclusive
+ * pools by `is_ghost`. Omitted (or false) is the standard pool (today's
+ * default behavior, unchanged); `true` is the ghost-only pool used for both
+ * ghost allocation and the separate Ghost Ranking dashboard.
  */
-export async function listAvailableCandidatesWithAssignments(): Promise<CandidateWithAssignments[]> {
+export async function listAvailableCandidatesWithAssignments(opts?: {
+  ghost?: boolean;
+}): Promise<CandidateWithAssignments[]> {
   const { rows: people } = await pool.query(
     `SELECT id, status, evening_coverage AS "eveningCoverage", practice_area AS "practiceArea"
-     FROM person WHERE status = 'Available'`
+     FROM person WHERE status = 'Available' AND is_manager = false AND is_owner = false AND is_ghost = $1`,
+    [opts?.ghost ?? false]
   );
 
   // Big structural change — a Pitch's flat-load pin (and the free/busy

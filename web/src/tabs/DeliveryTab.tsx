@@ -234,6 +234,8 @@ export default function DeliveryTab({
               {p.topic} · PL {nameOf(p.plId)}
               {/* Big structural change — which angle this assignment is on, only when the project has more than one. */}
               {multiAngle ? ` · ${a.angleName}` : ""}
+              {/* "Invisible competition" — visible to everyone, no access gating. */}
+              {a.isGhost && <span className="picktag" style={{ marginLeft: 6 }}>👻 Ghost</span>}
             </div>
           </div>
           <span className={"stage-pill " + stageClass(a.stage)}>{stageLabel(a.stage)}</span>

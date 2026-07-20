@@ -16,11 +16,14 @@ export interface AngleRow {
   goalTotal: number;
   callsSold: number;
   callsSoldUpdatedAt: string;
+  /** "Invisible competition" — per-angle opt-out, defaults true. Only meaningful for Due Diligence/Strategy angles; carried uniformly for schema simplicity. */
+  invisibleCompetitionEnabled: boolean;
 }
 
 const SELECT = `
   SELECT id, project_id AS "projectId", name, calls_n AS "callsN", goal_total AS "goalTotal",
-         calls_sold AS "callsSold", calls_sold_updated_at AS "callsSoldUpdatedAt"
+         calls_sold AS "callsSold", calls_sold_updated_at AS "callsSoldUpdatedAt",
+         invisible_competition_enabled AS "invisibleCompetitionEnabled"
   FROM angle`;
 
 export async function findAngleById(id: string, db: Queryable = pool): Promise<AngleRow | null> {
@@ -33,16 +36,27 @@ export async function listAnglesByProject(projectId: string): Promise<AngleRow[]
   return rows;
 }
 
+/**
+ * `invisibleCompetitionEnabled` defaults to the column's own DB default
+ * (true) when omitted -- the common case, since the toggle only matters as
+ * an explicit opt-OUT at intake (see routes/projects.ts's ghost-suggestion
+ * pass, the one moment this flag is actually read at creation time).
+ */
 export async function createAngle(
   projectId: string,
   name: string,
   callsN: number,
   goalTotal: number,
+  invisibleCompetitionEnabled?: boolean,
   db: Queryable = pool
 ): Promise<AngleRow> {
   const { rows } = await db.query<{ id: string }>(
-    `INSERT INTO angle (project_id, name, calls_n, goal_total) VALUES ($1, $2, $3, $4) RETURNING id`,
-    [projectId, name, callsN, goalTotal]
+    invisibleCompetitionEnabled === undefined
+      ? `INSERT INTO angle (project_id, name, calls_n, goal_total) VALUES ($1, $2, $3, $4) RETURNING id`
+      : `INSERT INTO angle (project_id, name, calls_n, goal_total, invisible_competition_enabled) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+    invisibleCompetitionEnabled === undefined
+      ? [projectId, name, callsN, goalTotal]
+      : [projectId, name, callsN, goalTotal, invisibleCompetitionEnabled]
   );
   return (await findAngleById(rows[0].id, db))!;
 }
@@ -52,6 +66,7 @@ const PATCHABLE_COLUMNS: Record<string, string> = {
   callsN: "calls_n",
   goalTotal: "goal_total",
   callsSold: "calls_sold",
+  invisibleCompetitionEnabled: "invisible_competition_enabled",
 };
 
 /** Same free-form patch pattern as updateProjectFields -- stamps calls_sold_updated_at whenever callsSold is touched, same as project used to. */

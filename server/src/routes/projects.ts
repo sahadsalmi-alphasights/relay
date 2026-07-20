@@ -70,7 +70,12 @@ async function withProjectFlags(project: ProjectRow, now: Date) {
   for (const angle of angles) {
     if (needsCallsSoldUpdateToday(angle.callsSoldUpdatedAt, now)) needsCallsSoldUpdate = true;
     const angleAssignments = await listAssignmentsByAngle(angle.id);
-    const totalDelivered = angleAssignments.reduce((sum, a) => sum + a.delivered + a.customDelivered, 0);
+    // "Invisible competition" — the ghost is the competition, not extra
+    // capacity: its delivered never counts toward this flag, same as it
+    // never counts toward the goal/delivered roll-ups on the client.
+    const totalDelivered = angleAssignments
+      .filter((a) => !a.isGhost)
+      .reduce((sum, a) => sum + a.delivered + a.customDelivered, 0);
     if (needsChaseClient(totalDelivered, angle.callsSold, angle.callsN)) chaseClient = true;
   }
   return { ...project, needsCallsSoldUpdate, chaseClient };
@@ -244,6 +249,8 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
         callsN?: number;
         goalTotal?: number;
         assignments?: { delivererId: string; goal: number; override?: { justification: string } }[];
+        /** "Invisible competition" — per-angle opt-out for ghost suggestion below; omitted means the column's own default (true). */
+        invisibleCompetitionEnabled?: boolean;
       }[];
     };
   }>("/", { preHandler: [app.requireAuth] }, async (request) => {
@@ -299,16 +306,36 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
     // a failure partway (e.g. a duplicate/invalid deliverer) must not leave an
     // orphaned or half-staffed project committed. Notifications/WS publish only
     // after the transaction commits (below), never on rollback.
+    //
+    // "Invisible competition" — the ghost-allocation pass runs INSIDE the same
+    // transaction (a ghost assignment is part of the same atomic create), but
+    // its notifications are collected and sent only after commit.
+    const ghostDelivererIds: string[] = [];
+    const ghostNotifications: { personId: string; goal: number }[] = [];
+    const isDDOrStrategy = body.projectType === "Due Diligence" || body.projectType === "Strategy";
+
     const project = await withTransaction(async (tx) => {
       const created = await createProject(
         projectInput,
         tx
       );
 
+      // Angles that got a real associate AND are eligible for a ghost
+      // suggestion (Due Diligence/Strategy only, never Pitch; toggle not
+      // explicitly off). Populated in the loop, consumed by the ghost pass.
+      const ghostEligibleAngles: { id: string; realGoal: number }[] = [];
+
       for (const ang of angleInputs) {
-        const createdAngle = await createAngle(created.id, ang.name!.trim(), ang.callsN!, ang.goalTotal!, tx);
+        const createdAngle = await createAngle(
+          created.id,
+          ang.name!.trim(),
+          ang.callsN!,
+          ang.goalTotal!,
+          ang.invisibleCompetitionEnabled,
+          tx
+        );
         for (const a of ang.assignments ?? []) {
-          await createAssignment(createdAngle.id, a.delivererId, a.goal, tx);
+          await createAssignment(createdAngle.id, a.delivererId, a.goal, false, tx);
           // §6 (built) — an override (the PL picked someone other than who the
           // ranking/auto-match suggested) always carries a justification; log it
           // to the audit trail. Never notify anyone about the override itself —
@@ -341,6 +368,50 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
             tx
           );
         }
+        // "Invisible competition" — a ghost only ever mirrors an ALREADY-staffed
+        // real associate on this same angle ("complementary, never a
+        // replacement"); an angle with zero real assignments has no one for it
+        // to compete against, so it's never a candidate here.
+        const firstRealAssignment = (ang.assignments ?? [])[0];
+        if (isDDOrStrategy && firstRealAssignment && createdAngle.invisibleCompetitionEnabled) {
+          ghostEligibleAngles.push({ id: createdAngle.id, realGoal: firstRealAssignment.goal });
+        }
+      }
+
+      // ONE ranking pass across every eligible angle, reusing
+      // rankCandidates()/applyFirstDeliverableBlock()/allocateAcrossAngles()
+      // verbatim (not forked): only the candidate POOL differs (ghost-flagged
+      // people). SILENT FAILURE per angle — no eligible ghost means that angle
+      // simply gets none: no warning, no notification, no broadcast.
+      if (ghostEligibleAngles.length > 0) {
+        const now = resolveNow(request);
+        const hour = dubaiHour(now);
+        const rotaSet = await sundayRotaPersonIdsForDate(dubaiDateKey(now));
+        const ghostContext = { now, sundayRotaPersonIds: rotaSet, plPracticeArea: actor.practiceArea ?? "" };
+        const ghostCandidates = await listAvailableCandidatesWithAssignments({ ghost: true });
+        const ghostRanked = applyFirstDeliverableBlock(rankCandidates(ghostCandidates, ghostContext), ghostCandidates, hour);
+        const { perAngle } = allocateAcrossAngles(
+          ghostRanked,
+          ghostEligibleAngles.map((a) => ({ key: a.id, staffCount: 1 }))
+        );
+        for (const alloc of perAngle) {
+          const pick = alloc.picked[0];
+          if (!pick) continue; // silent failure — no ghost available for this angle
+          const angleInfo = ghostEligibleAngles.find((a) => a.id === alloc.key)!;
+          const ghostAssignment = await createAssignment(angleInfo.id, pick.personId, angleInfo.realGoal, true, tx);
+          ghostDelivererIds.push(pick.personId);
+          ghostNotifications.push({ personId: pick.personId, goal: angleInfo.realGoal });
+          await insertAuditLog(
+            {
+              entityType: "assignment",
+              entityId: ghostAssignment.id,
+              actorId: actor.id,
+              action: "ghost_assign",
+              newValue: { personId: pick.personId, angleId: angleInfo.id, goal: angleInfo.realGoal },
+            },
+            tx
+          );
+        }
       }
 
       await insertAuditLog(
@@ -350,7 +421,20 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
       return created;
     });
 
-    await publishProjectChanged(project.id, [actor.id, ...allAssignments.map((a) => a.delivererId)]);
+    // Ghost "assigned" notifications — deliberately identical wording to a
+    // real assignment's (the ghost never knows they're the competition).
+    for (const g of ghostNotifications) {
+      await notify({
+        personId: g.personId,
+        type: "assigned",
+        title: "New project assigned to you",
+        body: `${project.client} — you've been staffed with a goal of ${g.goal}.`,
+        entityType: "project",
+        entityId: project.id,
+      });
+    }
+
+    await publishProjectChanged(project.id, [actor.id, ...allAssignments.map((a) => a.delivererId), ...ghostDelivererIds]);
     if (allAssignments.length > 0) {
       publish({ type: "capacity-ranking" });
       // §9 (built) — "project assigned to you," one per newly staffed deliverer.

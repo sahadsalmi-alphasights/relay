@@ -60,6 +60,16 @@ describe("bug 3 — POST /projects/intake/match respects staffCount authoritativ
   });
 
   it("respects a lower staffCount than the previous suggestion (the reported symptom)", async () => {
+    // Fixture's non-manager pool is only 2 (delivererAlpha,
+    // otherDelivererAlpha) -- managers are excluded from candidates
+    // entirely (see services/candidates.ts), so a third real deliverer is
+    // added here to exercise staffCount=3 the way this test intends.
+    await pool.query(
+      `INSERT INTO person (email, name, team_id, is_manager, practice_area, status, evening_coverage)
+       VALUES ('third.alpha@test.example', 'Third_Alpha', $1, false, 'Tech', 'Available', true)`,
+      [fx.teamAlpha]
+    );
+
     const cookie = await loginAs(app, fx.plAlpha);
     const res1 = await app.inject({
       method: "POST",

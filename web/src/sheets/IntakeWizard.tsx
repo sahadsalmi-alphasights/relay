@@ -45,10 +45,21 @@ interface AngleForm {
   ranked: RankedCandidate[] | null;
   picked: RankedCandidate[];
   overrides: Record<string, string>;
+  /** "Invisible competition" — defaults on; only read for Due Diligence/Strategy angles (never Pitch). */
+  invisibleCompetitionEnabled: boolean;
 }
 
 function newAngle(callsN: string): AngleForm {
-  return { name: "", callsN, goalTotal: 0, staffCount: 1, ranked: null, picked: [], overrides: {} };
+  return {
+    name: "",
+    callsN,
+    goalTotal: 0,
+    staffCount: 1,
+    ranked: null,
+    picked: [],
+    overrides: {},
+    invisibleCompetitionEnabled: true,
+  };
 }
 
 /** §5a (eight changes, domain change 4) — the formula actually used, shown so a deliverer can always see why their goal is what it is. */
@@ -67,7 +78,7 @@ function goalCalcText(projectType: FormState["projectType"], callsN: number, goa
 }
 
 export default function IntakeWizard({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
-  const { nameOf, practiceOf, effectiveAfterHours, sunday } = useApp();
+  const { nameOf, practiceOf, effectiveAfterHours, sunday, people } = useApp();
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [f, setF] = useState<FormState>({
     client: "",
@@ -194,15 +205,32 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
     setReplaceTarget(angles[angleIndex].picked[0]?.personId ?? "");
     setJustificationText("");
   };
+  // Managers are excluded from the ranked candidate pool entirely (never
+  // suggested, never auto-picked — see services/candidates.ts). They're
+  // still manually staffable: a synthetic RankedCandidate lets a manager
+  // pick flow through the exact same override machinery as any other pick.
+  const managerAsCandidate = (id: string): RankedCandidate => ({
+    personId: id,
+    eligible: true,
+    load: 0,
+    rawRemaining: 0,
+    practiceAreaMatch: false,
+    free: false,
+  });
   const confirmOverride = () => {
-    if (overridingAngle === null || !overridingId || !replaceTarget || !justificationText.trim()) return;
+    if (overridingAngle === null || !overridingId || !justificationText.trim()) return;
     const angleIndex = overridingAngle;
     const angle = angles[angleIndex];
-    const candidate = angle.ranked?.find((r) => r.personId === overridingId);
-    if (!candidate) return;
-    const nextPicked = angle.picked.map((p) => (p.personId === replaceTarget ? candidate : p));
+    // An angle with zero auto-picked candidates ("No one available now") has
+    // nothing for `replaceTarget` to name — a manager pick there is an
+    // ADD, not a replace. Every other case (including a manager replacing a
+    // real pick) still needs a target.
+    if (angle.picked.length > 0 && !replaceTarget) return;
+    const candidate = angle.ranked?.find((r) => r.personId === overridingId) ?? managerAsCandidate(overridingId);
+    const nextPicked =
+      angle.picked.length > 0 ? angle.picked.map((p) => (p.personId === replaceTarget ? candidate : p)) : [candidate];
     const nextOverrides = { ...angle.overrides };
-    delete nextOverrides[replaceTarget];
+    if (replaceTarget) delete nextOverrides[replaceTarget];
     nextOverrides[overridingId] = justificationText.trim();
     updateAngle(angleIndex, { picked: nextPicked, overrides: nextOverrides });
     setOverridingAngle(null);
@@ -257,6 +285,8 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
               goal: perPerson,
               ...(a.overrides[r.personId] ? { override: { justification: a.overrides[r.personId] } } : {}),
             })),
+            // "Invisible competition" — only meaningful for Due Diligence/Strategy; omitted for Pitch (server default applies, harmlessly unread there).
+            ...(f.projectType !== "Pitch" ? { invisibleCompetitionEnabled: a.invisibleCompetitionEnabled } : {}),
           };
         }),
       });
@@ -462,6 +492,19 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
                       </div>
                     </div>
                   </div>
+                  {/* "Invisible competition" — Due Diligence/Strategy only,
+                      never Pitch. Defaults on; this is the one moment the PL
+                      can switch it off before the system suggests a ghost. */}
+                  {f.projectType !== "Pitch" && (
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, margin: "8px 2px 0", cursor: "pointer" }}>
+                      <input
+                        type="checkbox"
+                        checked={a.invisibleCompetitionEnabled}
+                        onChange={(e) => updateAngle(i, { invisibleCompetitionEnabled: e.target.checked })}
+                      />
+                      Invisible competition — suggest a ghost deliverer for this angle if one's available
+                    </label>
+                  )}
                 </div>
               );
             })}
@@ -571,6 +614,27 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
                       </div>
                     );
                   })}
+
+                  {/* Managers never appear in `a.ranked` (excluded at the
+                      source — never suggested, never auto-picked), so
+                      they're a separate, always-visible add-a-manager
+                      section instead of a row in the ranked list above. */}
+                  {people
+                    .filter((p) => (p.isManager || p.isOwner) && p.status === "Available" && !a.picked.some((pk) => pk.personId === p.id))
+                    .map((m) => (
+                      <div key={m.id} className="match-line">
+                        <div className="avatar">{initials(m.name)}</div>
+                        <div>
+                          <div className="assignee-name">
+                            {m.name} <span style={{ color: "var(--soft)", fontWeight: 500 }}>· {m.practiceArea}</span>
+                          </div>
+                          <div className="assignee-sub">Manager — never suggested, always a manual pick</div>
+                        </div>
+                        <button className="btn-sm btn-ghost" style={{ marginLeft: 8 }} onClick={() => startOverride(angleIndex, m.id)}>
+                          Pick instead
+                        </button>
+                      </div>
+                    ))}
 
                   {overridingAngle === angleIndex && overridingId && (
                     <div className="suggest" style={{ marginTop: 10 }}>

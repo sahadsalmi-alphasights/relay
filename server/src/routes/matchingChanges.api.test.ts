@@ -30,8 +30,17 @@ function cookieHeader(cookie: string) {
 
 describe("CHANGE 1 — POST /projects/intake/match: single snapshot, allocated across angles without replacement", () => {
   it("suggests distinct people per angle when the eligible pool is large enough — no repeats across angles", async () => {
-    // Fixture's four people (plAlpha, delivererAlpha, otherDelivererAlpha,
-    // managerBeta) are all Available -- a pool of 4 for a 2+2 request.
+    // Fixture's non-manager pool is only 2 (delivererAlpha,
+    // otherDelivererAlpha) -- managers (plAlpha, managerBeta) are excluded
+    // from candidates entirely (see services/candidates.ts), so two more
+    // real deliverers are added here to restore a pool of 4 for the 2+2
+    // request this test is actually about.
+    await pool.query(
+      `INSERT INTO person (email, name, team_id, is_manager, practice_area, status, evening_coverage)
+       VALUES ('third.alpha@test.example', 'Third_Alpha', $1, false, 'Tech', 'Available', true),
+              ('fourth.alpha@test.example', 'Fourth_Alpha', $1, false, 'Tech', 'Available', true)`,
+      [fx.teamAlpha]
+    );
     const cookie = await loginAs(app, fx.plAlpha);
     const res = await app.inject({
       method: "POST",

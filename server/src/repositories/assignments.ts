@@ -20,6 +20,8 @@ export interface AssignmentRow {
   progressUpdatedAt: string;
   /** §9 (built) — highest 30-min multiple already notified for, so the scheduler never repeats itself. */
   staleNotifiedThresholdMinutes: number;
+  /** "Invisible competition" — distinguishes a ghost's assignment from a real one. Own goal/delivered tracked identically; excluded from roll-ups by every consumer that sums them (never at the fetch layer). */
+  isGhost: boolean;
 }
 
 const SELECT = `
@@ -28,7 +30,8 @@ const SELECT = `
          a.custom_goal AS "customGoal", a.custom_delivered AS "customDelivered",
          a.stage, a.stage_entered_at AS "stageEnteredAt",
          a.progress_updated_at AS "progressUpdatedAt",
-         a.stale_notified_threshold_minutes AS "staleNotifiedThresholdMinutes"
+         a.stale_notified_threshold_minutes AS "staleNotifiedThresholdMinutes",
+         a.is_ghost AS "isGhost"
   FROM assignment a JOIN angle ang ON ang.id = a.angle_id`;
 
 export async function findAssignmentById(id: string, db: Queryable = pool): Promise<AssignmentRow | null> {
@@ -72,12 +75,13 @@ export async function createAssignment(
   angleId: string,
   delivererId: string,
   goal: number,
+  isGhost = false,
   db: Queryable = pool
 ): Promise<AssignmentRow> {
   const { rows } = await db.query(
-    `INSERT INTO assignment (angle_id, deliverer_id, goal, custom_goal, first_deliverable_last_at)
-     VALUES ($1, $2, $3, $4, now()) RETURNING id`,
-    [angleId, delivererId, goal, computeCustomGoal(goal)]
+    `INSERT INTO assignment (angle_id, deliverer_id, goal, custom_goal, first_deliverable_last_at, is_ghost)
+     VALUES ($1, $2, $3, $4, now(), $5) RETURNING id`,
+    [angleId, delivererId, goal, computeCustomGoal(goal), isGhost]
   );
   return (await findAssignmentById(rows[0].id, db))!;
 }

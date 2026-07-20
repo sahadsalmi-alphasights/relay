@@ -32,9 +32,16 @@ interface ProjectItem {
   notes: Note[];
 }
 
+/**
+ * "Invisible competition" — a ghost gets its own goal/delivered (rendered on
+ * its own row, same as any deliverer), but is deliberately excluded here:
+ * the ghost is the competition, not extra capacity, so it never inflates
+ * the project-level goal/progress roll-up.
+ */
 function projStats(assignments: Assignment[]) {
-  const goal = assignments.reduce((s, a) => s + a.goal, 0);
-  const done = assignments.reduce((s, a) => s + a.delivered + a.customDelivered, 0);
+  const real = assignments.filter((a) => !a.isGhost);
+  const goal = real.reduce((s, a) => s + a.goal, 0);
+  const done = real.reduce((s, a) => s + a.delivered + a.customDelivered, 0);
   const pct = goal ? Math.min(100, Math.round((done / goal) * 100)) : 0;
   return { goal, done, pct };
 }
@@ -353,6 +360,8 @@ export default function ProjectLeadingTab({
           <div>
             <div className="assignee-name">
               {nameOf(a.delivererId)} <span style={{ color: "var(--soft)", fontWeight: 500 }}>· {practiceOf(a.delivererId)}</span>
+              {/* "Invisible competition" — visible to everyone, no access gating; this is the one visual marker that distinguishes a ghost's row. */}
+              {a.isGhost && <span className="picktag" style={{ marginLeft: 6 }}>👻 Ghost</span>}
             </div>
             <div className="assignee-sub">{a.customDelivered > 0 ? `Incl. ${a.customDelivered} custom` : "No custom"}</div>
           </div>
@@ -435,7 +444,10 @@ export default function ProjectLeadingTab({
             <div className="angle-progress-list">
               {angles.map((ang) => {
                 const angleAssignments = assignments.filter((a) => a.angleId === ang.id);
-                const angleDelivered = angleAssignments.reduce((s, a) => s + a.delivered + a.customDelivered, 0);
+                // "Invisible competition" — same exclusion as projStats(): a ghost's delivered never counts toward the goal remaining.
+                const angleDelivered = angleAssignments
+                  .filter((a) => !a.isGhost)
+                  .reduce((s, a) => s + a.delivered + a.customDelivered, 0);
                 const remainingGoal = Math.max(ang.goalTotal - angleDelivered, 0);
                 const attainment = ang.callsN > 0 ? ang.callsSold / ang.callsN : null;
                 return (

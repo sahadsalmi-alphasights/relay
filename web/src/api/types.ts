@@ -17,6 +17,8 @@ export interface Person {
   practiceArea: string | null;
   status: PersonStatus;
   eveningCoverage: boolean;
+  /** "Invisible competition" — manager-set, team-scoped, reversible. */
+  isGhost: boolean;
   lastLoginAt: string | null;
   deactivatedAt: string | null;
 }
@@ -69,6 +71,8 @@ export interface Angle {
   goalTotal: number;
   callsSold: number;
   callsSoldUpdatedAt: string;
+  /** "Invisible competition" — per-angle opt-out, defaults true. Only actionable at intake time for Due Diligence/Strategy angles. */
+  invisibleCompetitionEnabled: boolean;
 }
 
 export interface Assignment {
@@ -84,6 +88,8 @@ export interface Assignment {
   /** §3/§8 (domain change 8) — stage is per-deliverer, not per-project. */
   stage: Stage;
   stageEnteredAt: string;
+  /** "Invisible competition" — the same own-goal/delivered fields render for a ghost as any deliverer; only excluded from angle/project roll-ups (see projStats() and the per-angle remaining-goal reduce). */
+  isGhost: boolean;
 }
 
 export interface Note {

@@ -148,6 +148,7 @@ export default function Shell() {
         <DeliveryTab scope={scope} reloadTick={reloadTick} onReload={bumpReload} onNotes={setNotesFor} />
       )}
       {tab === "Ranking" && <CapacityRankingTab reloadTick={reloadTick} />}
+      {tab === "GhostRanking" && <CapacityRankingTab reloadTick={reloadTick} ghostOnly />}
       {tab === "FirstDel" && <FirstDeliverablesTab scope={scope} reloadTick={reloadTick} onCount={setFdCount} />}
       {tab === "AuditLog" && <AuditLogTab reloadTick={reloadTick} />}
       {tab === "Users" && <UserManagementTab reloadTick={reloadTick} />}
@@ -181,7 +182,15 @@ export default function Shell() {
   }
 
   const modeClass =
-    tab === "PL" ? "pl" : tab === "Delivery" ? "dl" : tab === "Ranking" ? "rk" : tab === "FirstDel" ? "fd" : "al";
+    tab === "PL"
+      ? "pl"
+      : tab === "Delivery"
+      ? "dl"
+      : tab === "Ranking" || tab === "GhostRanking"
+      ? "rk"
+      : tab === "FirstDel"
+      ? "fd"
+      : "al";
 
   return (
     <div className="relay">

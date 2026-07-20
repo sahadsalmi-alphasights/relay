@@ -224,21 +224,21 @@ export default function TeamEditSheet({
               <div>
                 <div className="assignee-name">
                   {nameOf(r.personId)} <span style={{ color: "var(--soft)", fontWeight: 500 }}>· {practiceOf(r.personId)}</span>
-                  {r.personId === suggestedId && <span className="picktag" style={{ marginLeft: 6 }}>suggested</span>}
+                  {r.personId === suggestedId && <span className="picktag" style={{ marginLeft: 6 }}>Suggested</span>}
                 </div>
                 <div className="assignee-sub">
                   {!r.eligible
                     ? r.ineligibleReason === "not_on_sunday_rota"
-                      ? "not on today's rota"
-                      : "evening coverage off"
+                      ? "Not on today's rota"
+                      : "Evening coverage off"
                     : r.free
-                    ? "free"
-                    : "available"}
+                    ? "Free"
+                    : "Available"}
                 </div>
               </div>
               <div className="load-score" style={{ marginLeft: "auto" }}>
                 <b>{r.load.toFixed(1)}</b>
-                <small>load</small>
+                <small>Load</small>
               </div>
             </div>
           ))}

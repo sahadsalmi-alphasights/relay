@@ -9,8 +9,8 @@ import { useApp } from "../state/AppContext";
 type SortKey = "name" | "practice" | "team" | "load";
 
 function StatusChip({ row }: { row: CapacityRankRow }) {
-  if (!row.eligible) return <span className="mini off">off</span>;
-  return row.free ? <span className="mini free">free</span> : <span className="mini busy">busy</span>;
+  if (!row.eligible) return <span className="mini off">Off</span>;
+  return row.free ? <span className="mini free">Free</span> : <span className="mini busy">Busy</span>;
 }
 
 function SortHeader({
@@ -136,7 +136,7 @@ export default function CapacityRankingTab({ reloadTick }: { reloadTick: number 
             </div>
             <div className="rank-load">
               <b>{r.load.toFixed(1)}</b>
-              <small>load</small>
+              <small>Load</small>
             </div>
           </div>
         );

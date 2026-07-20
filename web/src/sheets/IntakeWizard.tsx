@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, ApiError } from "../api/client";
 import type { ExpertPool, RankedCandidate } from "../api/types";
 import Sheet from "../components/Sheet";
@@ -91,6 +91,18 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
   const [justificationText, setJustificationText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Manager feedback batch, item 5 — the override panel (and its
+  // justification field) renders below whichever candidate row was clicked,
+  // which can be well off-screen in a long ranked list. Scroll it into view
+  // the moment it mounts, instead of leaving the user to find it themselves.
+  const justificationRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (overridingAngle !== null && overridingId) {
+      justificationRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      justificationRef.current?.focus();
+    }
+  }, [overridingAngle, overridingId]);
 
   const minCallsN = f.projectType === "Pitch" ? 0 : 1;
   const multiAngle = angles.length > 1;
@@ -205,6 +217,16 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
   // below lets the PL assign them anyway, with the usual justification.
   const sharedRanked = angles[0]?.ranked ?? null;
   const blockedByFirstDeliverable = sharedRanked?.filter((r) => r.ineligibleReason === "first_deliverable_conflict") ?? [];
+  // Copy-only patch — the soft-rule explanation and the first-deliverable
+  // block used to be two separate paragraphs, both ending in the same
+  // "Pick instead" instruction. One line now; the blocked clause drops
+  // entirely at zero rather than rendering "0 blocked".
+  const matchHintText =
+    `Prefers your practice area when free.` +
+    (blockedByFirstDeliverable.length > 0
+      ? ` ${blockedByFirstDeliverable.length} blocked (already on a First Deliverable).`
+      : "") +
+    ` Use "Pick instead" for anyone else — needs a reason.`;
   // CHANGE 4 — partial fill: some (not zero, not all) of an angle's wanted
   // seats got filled. Zero eligible anywhere (totalEligible === 0) is
   // Change 3's broadcast case instead, handled by the existing "No one
@@ -466,29 +488,12 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
                 ? "After hours — evening-coverage volunteers only."
                 : "Working hours — all available staff."}
             </div>
-            {!matching && (
-              <div className="match-hint">
-                Soft rule: prefers your practice area when they're free — remaining profiles at or below the org-wide median.
-                Not who you want? Click "Pick instead" on anyone else free below (needs a reason).
-              </div>
-            )}
-            {/* CHANGE 2 — moved up and made prominent: this used to be
-                impossible to act on at all (a blocked candidate had no
-                affordance, just grey text). Now shown right at the top of
-                the match step, and every blocked row below gets a real
-                "Pick instead" override button. */}
-            {!matching && blockedByFirstDeliverable.length > 0 && (
-              <div className="suggest" style={{ background: "var(--red-bg)", borderColor: "#F3C6C6", marginBottom: 14 }}>
-                <div className="suggest-lbl" style={{ color: "#A82F2F" }}>
-                  {blockedByFirstDeliverable.length} blocked by the first-deliverable rule
-                </div>
-                <p style={{ fontSize: 12, margin: "6px 0 0", color: "var(--ink)" }}>
-                  Already on a First Deliverable for a Strategy/Due Diligence project while that pool is currently
-                  online — auto-assign skips them, but you can still assign them yourself: click "Pick instead" on
-                  their row below (needs a reason).
-                </p>
-              </div>
-            )}
+            {/* Copy-only patch — was two separate blocks (soft-rule text +
+                a large red "blocked by first-deliverable" box), both ending
+                in the same "Pick instead" instruction. Combined into one
+                quiet, informational line; blocked candidates are still
+                overridable exactly as before (unchanged below). */}
+            {!matching && <div className="match-hint">{matchHintText}</div>}
             {matching && (
               <div style={{ textAlign: "center", padding: 30, fontFamily: "'Space Grotesk'", color: "var(--soft)" }}>ranking…</div>
             )}
@@ -541,22 +546,22 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
                           <div className="assignee-sub">
                             {!r.eligible
                               ? r.ineligibleReason === "not_on_sunday_rota"
-                                ? "not on today's Sunday rota"
+                                ? "Not on today's Sunday rota"
                                 : r.ineligibleReason === "first_deliverable_conflict"
-                                ? "busy — first deliverable elsewhere"
-                                : "evening coverage off"
+                                ? "Busy — first deliverable elsewhere"
+                                : "Evening coverage off"
                               : isPicked
-                              ? <span className="picktag">picked ✓{isOverridden ? " · override" : r.practiceAreaMatch ? " · your practice" : ""}</span>
+                              ? <span className="picktag">Picked ✓{isOverridden ? " · override" : r.practiceAreaMatch ? " · your practice" : ""}</span>
                               : placedElsewhere
-                              ? `picked on ${placedElsewhere}`
+                              ? `Picked on ${placedElsewhere}`
                               : r.free
-                              ? "free"
-                              : "available"}
+                              ? "Free"
+                              : "Available"}
                           </div>
                         </div>
                         <div className="load-score">
                           <b>{r.load.toFixed(1)}</b>
-                          <small>load</small>
+                          <small>Load</small>
                         </div>
                         {!isPicked && (r.eligible || isBlockedByFDConflict) && a.picked.length > 0 && (
                           <button className="btn-sm btn-ghost" style={{ marginLeft: 8 }} onClick={() => startOverride(angleIndex, r.personId)}>
@@ -588,6 +593,7 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
                       <div className="field">
                         <label>Justification — required to pick someone other than suggested</label>
                         <input
+                          ref={justificationRef}
                           value={justificationText}
                           onChange={(e) => setJustificationText(e.target.value)}
                           placeholder="e.g. client specifically asked for this person"

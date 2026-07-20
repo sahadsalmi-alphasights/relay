@@ -126,11 +126,11 @@ export default function FirstDeliverablesTab({
           </div>
         )}
         <div className="section-lbl">
-          Deliverers still on first deliverable <span className="count">{rows.length}</span>
+          Deliverers still on First Deliverable <span className="count">{rows.length}</span>
         </div>
         {rows.length === 0 && (
           <div className="empty">
-            <b>Nobody in first deliverable</b>Deliverers appear here the moment they're staffed.
+            <b>Nobody in First Deliverable</b>Deliverers appear here the moment they're staffed.
           </div>
         )}
         {rows.length > 0 && (
@@ -166,7 +166,7 @@ export default function FirstDeliverablesTab({
                     <td>
                       <span className={"chip timer " + timerClass(elapsed)}>⏱ {fmtElapsed(elapsed)}</span>
                       {elapsed / 60000 >= 30 && (
-                        <div style={{ fontSize: 10, color: "#A82F2F", fontWeight: 700, marginTop: 4 }}>ping due</div>
+                        <div style={{ fontSize: 10, color: "#A82F2F", fontWeight: 700, marginTop: 4 }}>Ping due</div>
                       )}
                     </td>
                     <td className="num">
@@ -227,7 +227,7 @@ export default function FirstDeliverablesTab({
               <div className="chip">{p.expertPool}</div>
               {elapsed / 60000 >= 30 && (
                 <div className="chip" style={{ background: "var(--red-bg)", color: "#A82F2F" }}>
-                  30m+ · ping due
+                  30m+ · Ping due
                 </div>
               )}
             </div>

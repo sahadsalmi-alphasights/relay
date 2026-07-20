@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { Angle, Assignment, CapacityRankRow, GoalChangeRequest, Project, Stage } from "../api/types";
-import { barColor, entityName, entityTint, initials, paceInfo, stageClass, stageLabel, typeClass } from "../lib/format";
+import { barColor, entityTint, initials, overDelivered, paceInfo, stageClass, stageLabel, typeClass } from "../lib/format";
 import { fmtElapsed, poolState, timerClass } from "../lib/time";
 import { useApp } from "../state/AppContext";
 import type { NotesTarget } from "../Shell";
@@ -57,10 +57,21 @@ function AssigneeGoalEditor({ assignment, onSave }: { assignment: Assignment; on
     }
   };
 
+  // Manager feedback batch, item 8 — visual only, derived from the same
+  // delivered/customDelivered vs goal fields the stepper already reads.
+  const over = overDelivered(assignment.delivered + assignment.customDelivered, assignment.goal);
+
   if (!open) {
     return (
       <div className="assignee-num">
-        {assignment.delivered + assignment.customDelivered}/{assignment.goal}
+        <span style={over > 0 ? { color: "var(--overdelivered)" } : undefined}>
+          {assignment.delivered + assignment.customDelivered}/{assignment.goal}
+        </span>
+        {over > 0 && (
+          <div className="chip overdelivered" style={{ display: "inline-block", marginTop: 2 }}>
+            +{over}
+          </div>
+        )}
         <button
           className="btn-sm"
           style={{ display: "block", marginTop: 4, color: "var(--pl)", background: "var(--pl-soft)" }}
@@ -339,7 +350,7 @@ export default function ProjectLeadingTab({
             <div className="assignee-name">
               {nameOf(a.delivererId)} <span style={{ color: "var(--soft)", fontWeight: 500 }}>· {practiceOf(a.delivererId)}</span>
             </div>
-            <div className="assignee-sub">{a.customDelivered > 0 ? `incl. ${a.customDelivered} custom` : "no custom"}</div>
+            <div className="assignee-sub">{a.customDelivered > 0 ? `Incl. ${a.customDelivered} custom` : "No custom"}</div>
           </div>
           <AssigneeGoalEditor assignment={a} onSave={onReload} />
         </div>
@@ -394,10 +405,10 @@ export default function ProjectLeadingTab({
               </div>
               <div className={"chip pool " + (ps === "dormant" ? "dormant" : ps === "live" ? "live" : "")}>
                 {p.expertPool}
-                {ps === "live" ? " · live 2×" : ps === "dormant" ? " · asleep" : ""}
+                {ps === "live" ? " · Live 2×" : ps === "dormant" ? " · Asleep" : ""}
               </div>
               <div className="chip">
-                sold <b>{p.callsSold}</b>
+                Sold <b>{p.callsSold}</b>
               </div>
             </div>
             <div className="progress">
@@ -407,7 +418,7 @@ export default function ProjectLeadingTab({
                   <small> / {goal} profiles</small>
                 </span>
                 <span className="mono" style={{ fontSize: 12, color: "var(--soft)" }}>
-                  goal {p.goalTotal}
+                  Goal {p.goalTotal}
                 </span>
               </div>
               <div className="bar">
@@ -460,7 +471,7 @@ export default function ProjectLeadingTab({
                   {!p.earliestStage && <span className="stage-pill stage-selling">Not yet staffed</span>}
                   {chase && (
                     <span className="chip" style={{ color: "#A82F2F", background: "var(--red-bg)" }}>
-                      delivered, not sold — chase client
+                      Delivered, not sold — chase client
                     </span>
                   )}
                   {p.earliestStage && (
@@ -485,7 +496,7 @@ export default function ProjectLeadingTab({
                         <div className="angle-group-header">
                           {ang.name}
                           <span className="mono" style={{ fontSize: 11, fontWeight: 600, color: "var(--soft)" }}>
-                            N {ang.callsN} · goal {ang.goalTotal}
+                            N {ang.callsN} · Goal {ang.goalTotal}
                           </span>
                         </div>
                         {angleAssignments.length === 0 ? (
@@ -536,33 +547,13 @@ export default function ProjectLeadingTab({
         );
   };
 
-  // New set-up field — group a list of project cards into rows by Client
-  // Entity, each with a small heading. Always grouped (unlike the angle
-  // chrome, which only appears past one angle) — a stable landmark the PL
-  // can rely on being in the same place every time, not something that
-  // pops in and out as data changes.
-  const renderEntityGroups = (list: ProjectItem[]) => {
-    const byEntity = new Map<number, ProjectItem[]>();
-    for (const it of list) {
-      const bucket = byEntity.get(it.project.clientEntity) ?? [];
-      bucket.push(it);
-      byEntity.set(it.project.clientEntity, bucket);
-    }
-    const entities = [...byEntity.keys()].sort((a, b) => a - b);
-    return (
-      <>
-        {entities.map((entity) => (
-          <div key={entity} className="entity-row">
-            <div className="entity-row-heading">
-              <span className="swatch" style={{ background: entityTint(entity) }} />
-              {entityName(entity)}
-            </div>
-            <div className="card-grid">{byEntity.get(entity)!.map(renderCard)}</div>
-          </div>
-        ))}
-      </>
-    );
-  };
+  // Manager feedback batch, item 1 — no more grouping cards into rows by
+  // Client Entity; one continuous ordered list instead. The header tint
+  // (entityTint(), unchanged) is now the ONLY entity signal. Ordering itself
+  // is out of scope for this batch (a separate one) — this just stops
+  // re-bucketing the list, preserving whatever order `list` already arrives
+  // in.
+  const renderCards = (list: ProjectItem[]) => <div className="card-grid">{list.map(renderCard)}</div>;
 
   return (
     <div className="pl-board-layout">
@@ -609,7 +600,7 @@ export default function ProjectLeadingTab({
                   {personItems.length === 0 ? (
                     <div className="empty team-group-empty">Leading nothing right now.</div>
                   ) : (
-                    renderEntityGroups(personItems)
+                    renderCards(personItems)
                   )}
                 </div>
               );
@@ -625,7 +616,7 @@ export default function ProjectLeadingTab({
                 <b>No projects yet</b>Tap "New project" to add one and auto-staff it.
               </div>
             )}
-            {renderEntityGroups(items)}
+            {renderCards(items)}
           </>
         )}
 
@@ -671,11 +662,11 @@ export default function ProjectLeadingTab({
               <span className="team-capacity-name">{nameOf(r.personId)}</span>
               <span className="team-capacity-load">{r.load.toFixed(1)}</span>
               {!r.eligible ? (
-                <span className="mini off">off</span>
+                <span className="mini off">Off</span>
               ) : r.free ? (
-                <span className="mini free">free</span>
+                <span className="mini free">Free</span>
               ) : (
-                <span className="mini busy">busy</span>
+                <span className="mini busy">Busy</span>
               )}
             </div>
           ))}

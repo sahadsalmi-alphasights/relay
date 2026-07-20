@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, ApiError } from "../api/client";
-import type { Assignment, Project } from "../api/types";
-import { barColor, initials, stageClass, stageLabel, typeClass } from "../lib/format";
+import type { Assignment, CapacityRankRow, Project } from "../api/types";
+import { barColor, entityTint, initials, overDelivered, stageClass, stageLabel, typeClass } from "../lib/format";
 import { fmtElapsed, poolState, timerClass } from "../lib/time";
 import { useApp } from "../state/AppContext";
 import type { NotesTarget } from "../Shell";
@@ -92,11 +92,16 @@ export default function DeliveryTab({
   onReload: () => void;
   onNotes: (t: NotesTarget) => void;
 }) {
-  const { actor, people, nameOf, nowMs, effectiveHour, effectiveAfterHours } = useApp();
+  const { actor, people, nameOf, nowMs, demoHour, effectiveHour, effectiveAfterHours } = useApp();
   const [items, setItems] = useState<DeliveryItem[] | null>(null);
   const [broadcasts, setBroadcasts] = useState<BroadcastRow[]>([]);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [acceptError, setAcceptError] = useState<string | null>(null);
+  // Manager feedback batch, item 7 — the actor's own row from the existing,
+  // already-tested GET /capacity-ranking (personLoad + rawRemaining<=median
+  // "free", rules/load.ts) -- same computation ProjectLeadingTab's team
+  // panel and CapacityRankingTab itself already read, not a new definition.
+  const [myCapacity, setMyCapacity] = useState<CapacityRankRow | null>(null);
 
   const load = async () => {
     const list = await api.get<Project[]>(`/projects?role=delivering&scope=${scope}&status=active`);
@@ -126,6 +131,11 @@ export default function DeliveryTab({
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scope, reloadTick]);
+
+  useEffect(() => {
+    api.get<CapacityRankRow[]>("/capacity-ranking").then((rows) => setMyCapacity(rows.find((r) => r.personId === actor.id) ?? null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reloadTick, demoHour]);
 
   const patchProgress = async (assignmentId: string, body: { delivered?: number; customDelivered?: number }) => {
     await api.patch(`/assignments/${assignmentId}/progress`, body);
@@ -165,9 +175,18 @@ export default function DeliveryTab({
     const pct = a.goal ? Math.min(100, Math.round((doneAll / a.goal) * 100)) : 0;
     const elapsed = nowMs - new Date(a.stageEnteredAt).getTime();
     const ps = poolState(p.expertPool, effectiveHour);
+    // Manager feedback batch, item 8 — visual only: derived from the same
+    // delivered/customDelivered vs goal every progress bar already reads,
+    // nothing new tracked. `pct` above stays capped at 100 for the bar's
+    // width; only the fill colour changes when over.
+    const over = overDelivered(doneAll, a.goal);
     return (
       <div key={a.id} className="card">
-        <div className="card-top">
+        {/* Manager feedback batch, item 2 — same header tint as the project
+            board (§format.ts CLIENT_ENTITY_MAP, one shared config, not
+            duplicated) -- managers reported the delivery board had no
+            colour at all. */}
+        <div className="card-top" style={{ background: entityTint(p.clientEntity) }}>
           <div>
             <a className="client" href={p.projectLink} target="_blank" rel="noopener noreferrer">
               {p.client}
@@ -186,6 +205,7 @@ export default function DeliveryTab({
           </div>
           {ps === "dormant" && <div className="chip dormant">💤 {p.expertPool} asleep — goal inactive now</div>}
           {ps === "live" && <div className="chip live">⚡ {p.expertPool} live — double weight, convert now</div>}
+          {over > 0 && <div className="chip overdelivered">Overdelivered +{over}</div>}
         </div>
         <div className="progress">
           <div className="progress-top">
@@ -194,11 +214,11 @@ export default function DeliveryTab({
               <small> / {a.goal} your goal</small>
             </span>
             <span className="mono" style={{ fontSize: 12, color: remaining ? "#9A5F0C" : "#1F7D4C" }}>
-              {remaining ? `${remaining} to go` : "done ✓"}
+              {remaining ? `${remaining} to go` : "Done ✓"}
             </span>
           </div>
           <div className="bar">
-            <span style={{ width: pct + "%", background: barColor(pct) }} />
+            <span style={{ width: pct + "%", background: over > 0 ? "var(--overdelivered)" : barColor(pct) }} />
           </div>
         </div>
         {
@@ -216,7 +236,7 @@ export default function DeliveryTab({
             <div className="avatar dl">✓</div>
             <div>
               <div className="assignee-name">From our system</div>
-              <div className="assignee-sub">counts toward your goal</div>
+              <div className="assignee-sub">Counts toward your goal</div>
             </div>
             <div className="step" style={{ marginLeft: "auto" }}>
               <button disabled={a.delivererId !== actor.id} onClick={() => patchProgress(a.id, { delivered: Math.max(0, a.delivered - 1) })}>
@@ -234,7 +254,7 @@ export default function DeliveryTab({
             </div>
             <div>
               <div className="assignee-name">Custom sourced</div>
-              <div className="assignee-sub">outside the system · also counts</div>
+              <div className="assignee-sub">Outside the system · also counts</div>
             </div>
             <div className="step" style={{ marginLeft: "auto" }}>
               <button
@@ -321,6 +341,35 @@ export default function DeliveryTab({
           ))}
           </div>
         </>
+      )}
+
+      {/* Manager feedback batch, item 7 — the deliverer's own capacity/cap,
+          not previously surfaced here at all. Same card pattern as the
+          evening-coverage card below it. */}
+      {myCapacity && (
+        <div className="cov-card">
+          <div className="cov-item">
+            <div>
+              <div className="cov-title">📊 Your capacity</div>
+              <div className="cov-state">
+                Load <b className="mono">{myCapacity.load.toFixed(1)}</b>
+                {!myCapacity.eligible ? (
+                  <span className="mini off" style={{ marginLeft: 8 }}>
+                    Off
+                  </span>
+                ) : myCapacity.free ? (
+                  <span className="mini free" style={{ marginLeft: 8 }}>
+                    Free
+                  </span>
+                ) : (
+                  <span className="mini busy" style={{ marginLeft: 8 }}>
+                    Busy
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       <div className="cov-card">

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { Notification as AppNotification } from "../api/types";
 import type { NotificationsState } from "../lib/useNotifications";
 import { requestNotificationPermission, showBrowserNotification } from "../lib/pushNotifications";
+import { isSoundEnabled, playNotificationSound, setSoundEnabled } from "../lib/notificationSound";
 import { disablePush, enablePush, getPushSubscription, isPushSupported } from "../lib/webPush";
 
 const notifSupported = typeof Notification !== "undefined";
@@ -31,6 +32,15 @@ export default function NotificationBell({
   // Web Push. Track it so we can offer a one-click "enable" instead of the
   // pop-ups silently never appearing when permission is still "default".
   const [perm, setPerm] = useState<NotificationPermission>(notifSupported ? Notification.permission : "denied");
+  const [soundOn, setSoundOn] = useState(isSoundEnabled());
+
+  const toggleSound = () => {
+    const next = !soundOn;
+    setSoundEnabled(next);
+    setSoundOn(next);
+    // Audible confirmation when switching on (also serves as a preview).
+    if (next) playNotificationSound();
+  };
 
   const enablePopups = async () => {
     const p = await requestNotificationPermission();
@@ -75,8 +85,29 @@ export default function NotificationBell({
 
   return (
     <div className="bell-wrap">
-      <button className="eve-btn" onClick={() => setOpen((o) => !o)} title="Notifications">
-        🔔
+      <button
+        className={"eve-btn bell-btn" + (notif.unreadCount > 0 ? " has-unread" : "")}
+        onClick={() => setOpen((o) => !o)}
+        title="Notifications"
+      >
+        {/* Bell drawn in the AlphaSights icon-pack line style (2.2 stroke,
+            rounded caps, corner dot accent) — the pack itself has no bell.
+            Bright red via .bell-btn's currentColor. */}
+        <svg
+          width="21"
+          height="21"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+          <path d="M13.7 21a2 2 0 0 1-3.4 0" />
+          <circle cx="20.4" cy="4.2" r="1.5" fill="currentColor" stroke="none" />
+        </svg>
         {notif.unreadCount > 0 && <span className="badge bell-badge">{notif.unreadCount}</span>}
       </button>
       {open && (
@@ -122,6 +153,12 @@ export default function NotificationBell({
                 <span style={{ color: "var(--soft)" }}>Pop-ups are blocked in your browser settings</span>
               </div>
             )}
+            <div className="notif-panel-footer">
+              <span>Notification sound (gong)</span>
+              <button className="btn-sm btn-ghost" onClick={toggleSound}>
+                {soundOn ? "Turn off" : "Turn on"}
+              </button>
+            </div>
             {isPushSupported() && (
               <div className="notif-panel-footer">
                 <span>Push notifications (tab closed too)</span>

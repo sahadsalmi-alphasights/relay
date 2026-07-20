@@ -26,6 +26,9 @@ function storedTheme(): Theme | null {
 
 function apply(theme: Theme): void {
   document.documentElement.setAttribute("data-theme", theme);
+  // Keep the browser/PWA chrome in step with the surface behind it.
+  const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+  if (meta) meta.content = theme === "dark" ? "#0B1220" : "#001D3A";
 }
 
 /** Called once at boot (main.tsx) so the first paint is already themed. */

@@ -24,6 +24,7 @@ import { dubaiDateKey, prettyDateKey } from "./lib/time";
 import { useLiveSocket, type LiveEvent } from "./lib/useLiveSocket";
 import { useNotifications } from "./lib/useNotifications";
 import { showBrowserNotification } from "./lib/pushNotifications";
+import { initSoundUnlock, playNotificationSound } from "./lib/notificationSound";
 
 export interface NotesTarget {
   projectId: string;
@@ -49,6 +50,12 @@ export default function Shell() {
   const bumpReload = () => setReloadTick((t) => t + 1);
   const notif = useNotifications();
 
+  // Sound: pre-unlock the AudioContext on the first user gesture so the
+  // notification gong is allowed to play later (browser autoplay policy).
+  useEffect(() => {
+    initSoundUnlock();
+  }, []);
+
   // §11 step 5 / §9 (built) — one shared socket handles both concerns: a
   // "notification" event carries real content (already scoped server-side
   // to this person only) and feeds the bell + a browser popup; every other
@@ -57,6 +64,7 @@ export default function Shell() {
   const handleLiveEvent = (event: LiveEvent) => {
     if (event.type === "notification") {
       notif.addLive(event.notification);
+      playNotificationSound();
       void showBrowserNotification(event.notification.title, event.notification.body);
     } else {
       // Roster changes must refresh the directory caches (names/teams/membership

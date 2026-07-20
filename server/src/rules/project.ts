@@ -2,18 +2,17 @@ import { dubaiDateKey } from "./time";
 import type { PersonStatus, ProjectStatus } from "./types";
 
 /**
- * Project lifecycle — idle ("parked, nothing to do now") and archived both
- * go quiet: no load, no calls-sold nudge, no chase-client flag, no
- * stale-first-deliverable ping. The single source of truth for "which
- * statuses go quiet," referenced by candidates.ts (load query),
- * assignments.ts (stale scheduler query), and routes/projects.ts
- * (withProjectFlags) — those three can't literally call this function (two
- * are SQL WHERE clauses evaluated before any JS sees a row), so they inline
- * the equivalent `status NOT IN ('idle', 'archived')`, but this is the
- * definition they're each keeping in sync with.
+ * Project lifecycle — archived goes quiet: no load, no calls-sold nudge, no
+ * chase-client flag, no stale-first-deliverable ping. (Batch S removed
+ * 'idle', the other formerly-quiet status.) The single source of truth,
+ * referenced by candidates.ts (load query), assignments.ts (stale scheduler
+ * query), and routes/projects.ts (withProjectFlags) — those three can't
+ * literally call this function (two are SQL WHERE clauses evaluated before
+ * any JS sees a row), so they inline the equivalent `status <> 'archived'`,
+ * but this is the definition they're each keeping in sync with.
  */
 export function isProjectLifecycleQuiet(status: ProjectStatus): boolean {
-  return status === "idle" || status === "archived";
+  return status === "archived";
 }
 
 /**

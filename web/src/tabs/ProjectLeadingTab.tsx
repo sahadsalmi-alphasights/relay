@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
-import type { Angle, Assignment, CapacityRankRow, GoalChangeRequest, Project, Stage } from "../api/types";
+import type { Angle, Assignment, CapacityRankRow, GoalChangeRequest, Note, Project, Stage } from "../api/types";
 import { barColor, entityTint, initials, overDelivered, paceInfo, stageClass, stageLabel, typeClass } from "../lib/format";
 import { fmtElapsed, poolState, timerClass } from "../lib/time";
 import { useApp } from "../state/AppContext";
@@ -28,6 +28,8 @@ interface ProjectItem {
   assignments: Assignment[];
   angles: Angle[];
   pending: GoalChangeRequest[];
+  /** Batch S, item 4 — surfaced on the card face now, not just behind the Notes sheet. */
+  notes: Note[];
 }
 
 function projStats(assignments: Assignment[]) {
@@ -256,7 +258,9 @@ export default function ProjectLeadingTab({
     const active = await api.get<Project[]>(`/projects?role=leading&scope=${scope}&archived=false`);
     const archivedList = await api.get<Project[]>(`/projects?role=leading&scope=${scope}&archived=true`);
     const details = await Promise.all(
-      active.map((p) => api.get<{ project: Project; assignments: Assignment[]; angles: Angle[] }>(`/projects/${p.id}`))
+      active.map((p) =>
+        api.get<{ project: Project; assignments: Assignment[]; angles: Angle[]; notes: Note[] }>(`/projects/${p.id}`)
+      )
     );
     // §5e — only a project's own PL may view its pending goal-change requests
     // (GET .../goal-change-requests 403s for anyone else). Under Team view,
@@ -277,6 +281,7 @@ export default function ProjectLeadingTab({
         assignments: details[i].assignments,
         angles: details[i].angles,
         pending: pending[i],
+        notes: details[i].notes,
       }))
     );
     setArchived(archivedList);
@@ -293,8 +298,10 @@ export default function ProjectLeadingTab({
     if (scope === "team") api.get<CapacityRankRow[]>("/capacity-ranking").then(setRankRows);
   }, [scope, reloadTick, demoHour]);
 
-  const resolveRequest = async (id: string) => {
-    await api.patch(`/goal-change-requests/${id}/resolve`);
+  // Batch S, item 4 — accept applies the requested goal/status; decline
+  // resolves without touching either. Same route, outcome in the body.
+  const resolveRequest = async (id: string, outcome: "accepted" | "declined") => {
+    await api.patch(`/goal-change-requests/${id}/resolve`, { outcome });
     onReload();
   };
   const archiveProject = async (id: string) => {
@@ -305,14 +312,11 @@ export default function ProjectLeadingTab({
     await api.post(`/projects/${id}/resurface`);
     onReload();
   };
-  // New project status — Idle: "parked, waiting on something external,
-  // nothing to do now." One-tap either direction, right from the card.
-  const idleProject = async (id: string) => {
-    await api.post(`/projects/${id}/idle`);
-    onReload();
-  };
-  const reactivateProject = async (id: string) => {
-    await api.post(`/projects/${id}/reactivate`);
+  // Batch S, item 3 — soft delete, PL-only, destructive: confirm before
+  // sending. Server never hard-deletes; this just flags deleted_at.
+  const deleteProject = async (id: string, client: string) => {
+    if (!window.confirm(`Delete ${client}? This removes it from every view. It cannot be undone from the app.`)) return;
+    await api.post(`/projects/${id}/delete`);
     onReload();
   };
 
@@ -367,7 +371,7 @@ export default function ProjectLeadingTab({
     );
   };
 
-  const renderCard = ({ project: p, assignments, angles }: ProjectItem) => {
+  const renderCard = ({ project: p, assignments, angles, notes }: ProjectItem) => {
         const { goal, done, pct } = projStats(assignments);
         const pace = paceInfo(pct, p.earliestStage ?? "First Deliverable");
         const ps = poolState(p.expertPool, effectiveHour);
@@ -375,12 +379,10 @@ export default function ProjectLeadingTab({
         // re-derived here from summed totals (see rules/project.ts for why).
         const chase = p.chaseClient;
         const multiAngle = angles.length > 1;
-        // New project status — idle: visually distinct, excluded from active
-        // pacing (server already zeroes chase/needsCallsSoldUpdate for it).
-        const isIdle = p.status === "idle";
+        const latestNote = notes.length > 0 ? notes[notes.length - 1] : null;
 
         return (
-          <div key={p.id} className={"card" + (isIdle ? " idle" : "")}>
+          <div key={p.id} className="card">
             {/* Phase D (v2), item 7 — header block tinted by client_entity
                 (display map only, §format.ts CLIENT_ENTITY_MAP -- the stored
                 clientEntity smallint is untouched). A soft wash, not a full
@@ -457,32 +459,33 @@ export default function ProjectLeadingTab({
               })}
             </div>
             <div className="stage-row">
-              {/* New project status — idle is excluded from active pacing
-                  entirely: no pace dot, no chase flag, just the parked badge. */}
-              {isIdle ? (
-                <span className="idle-badge">⏸ Idle</span>
-              ) : (
-                <>
-                  {/* BUG 2 (fixed) — stage is per-deliverer now (§3/§8); the
-                      rolled-up "Earliest: X" project-level label doesn't need
-                      surfacing here — each assignee below shows their own. Only
-                      the unstaffed case is still worth a pill (that's staffing
-                      status, not a stage). */}
-                  {!p.earliestStage && <span className="stage-pill stage-selling">Not yet staffed</span>}
-                  {chase && (
-                    <span className="chip" style={{ color: "#A82F2F", background: "var(--red-bg)" }}>
-                      Delivered, not sold — chase client
-                    </span>
-                  )}
-                  {p.earliestStage && (
-                    <span className="pace" style={{ color: pace.color }}>
-                      <span className="dot" style={{ background: pace.color }} />
-                      {pace.label}
-                    </span>
-                  )}
-                </>
+              {/* BUG 2 (fixed) — stage is per-deliverer now (§3/§8); the
+                  rolled-up "Earliest: X" project-level label doesn't need
+                  surfacing here — each assignee below shows their own. Only
+                  the unstaffed case is still worth a pill (that's staffing
+                  status, not a stage). */}
+              {!p.earliestStage && <span className="stage-pill stage-selling">Not yet staffed</span>}
+              {chase && (
+                <span className="chip" style={{ color: "#A82F2F", background: "var(--red-bg)" }}>
+                  Delivered, not sold — chase client
+                </span>
+              )}
+              {p.earliestStage && (
+                <span className="pace" style={{ color: pace.color }}>
+                  <span className="dot" style={{ background: pace.color }} />
+                  {pace.label}
+                </span>
               )}
             </div>
+            {/* Batch S, item 4 — notes were already persisted and readable
+                via the Notes sheet; this puts the latest one directly on the
+                card face instead of leaving it a click away. Full history/add
+                is still the "📝 Notes" button below. */}
+            {latestNote && (
+              <div className="note-preview">
+                📝 <b>{nameOf(latestNote.authorId)}</b>: {latestNote.body.length > 80 ? `${latestNote.body.slice(0, 80)}…` : latestNote.body}
+              </div>
+            )}
             <div className="assignees">
               {/* Big structural change — group assignees under their angle
                   only when there's more than one; a single-angle ("simple")
@@ -528,19 +531,12 @@ export default function ProjectLeadingTab({
               <button className="btn btn-ghost" onClick={() => onNotes({ projectId: p.id })}>
                 📝 Notes
               </button>
-              {/* New project status — Idle: park from the card (one tap),
-                  reactivate with one tap once parked. */}
-              {isIdle ? (
-                <button className="btn btn-pl" onClick={() => reactivateProject(p.id)}>
-                  ▶ Reactivate
-                </button>
-              ) : (
-                <button className="btn btn-ghost" onClick={() => idleProject(p.id)}>
-                  ⏸ Idle
-                </button>
-              )}
               <button className="btn btn-ghost" onClick={() => archiveProject(p.id)}>
                 Archive
+              </button>
+              {/* Batch S, item 3 — destructive, confirmed in deleteProject() before the request ever goes out. */}
+              <button className="btn btn-ghost" style={{ color: "#A82F2F" }} onClick={() => deleteProject(p.id, p.client)}>
+                🗑 Delete
               </button>
             </div>
           </div>
@@ -574,10 +570,27 @@ export default function ProjectLeadingTab({
               <div key={r.id} className="review-strip">
                 <span>↩</span>
                 <div style={{ flex: 1 }}>
-                  <b>{nameOf(r.requestedBy)}</b> requests: {r.body}
+                  <b>{nameOf(r.requestedBy)}</b> requests goal <b>{r.requestedGoal}</b>, status{" "}
+                  <b>{r.requestedStatus}</b>
+                  {r.body ? ` — "${r.body}"` : ""}
                 </div>
-                <button className="btn-sm btn-pl" onClick={() => resolveRequest(r.id)}>
-                  Resolve
+                {/* Batch S, item 4 — explicit accept/decline (tick/X), not one
+                    undifferentiated "Resolve": accepting is what actually
+                    applies the requested goal + status now (see
+                    routes/goalChangeRequests.ts), declining just closes it out. */}
+                <button
+                  className="btn-sm btn-pl"
+                  title="Accept — applies the requested goal and status"
+                  onClick={() => resolveRequest(r.id, "accepted")}
+                >
+                  ✓
+                </button>
+                <button
+                  className="btn-sm btn-ghost"
+                  title="Decline — resolves without changing anything"
+                  onClick={() => resolveRequest(r.id, "declined")}
+                >
+                  ✕
                 </button>
               </div>
             ))

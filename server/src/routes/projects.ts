@@ -14,9 +14,8 @@ import {
   createProject,
   findProjectById,
   listProjects,
-  reactivateProject,
   resurfaceProject,
-  setIdle,
+  softDeleteProject,
   updateProjectFields,
   type ProjectFilter,
   type ProjectRow,
@@ -58,10 +57,10 @@ async function publishProjectChanged(projectId: string, involvedPersonIds: strin
  * case collapses back to exactly the old per-project behavior.
  */
 async function withProjectFlags(project: ProjectRow, now: Date) {
-  // Project lifecycle change — idle and archived projects go quiet: never
-  // asked about in the morning calls-sold dialog, never flagged to chase the
-  // client. Skip the per-angle work entirely rather than compute-then-hide,
-  // since neither flag means anything for a project nobody's working.
+  // Project lifecycle — archived projects go quiet: never asked about in the
+  // morning calls-sold dialog, never flagged to chase the client. Skip the
+  // per-angle work entirely rather than compute-then-hide, since neither
+  // flag means anything for a project nobody's working.
   if (isProjectLifecycleQuiet(project.status)) {
     return { ...project, needsCallsSoldUpdate: false, chaseClient: false };
   }
@@ -107,13 +106,13 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
   });
 
   /**
-   * Morning calls-sold dialog — the actor's own led projects that need
-   * today's update, plus (separately) their currently-idle projects for the
-   * dialog's skippable "Parked" section. Always scoped to "mine": this is a
-   * personal daily task, not something Team view surfaces on someone else's
-   * behalf. Open (never-staffed) and idle/archived projects are never
-   * "due" — idle/archived by definition (see isProjectLifecycleQuiet), open
-   * because there's no one to chase calls sold for yet.
+   * Morning calls-sold dialog — the actor's own led active projects that
+   * need today's update. Always scoped to "mine": this is a personal daily
+   * task, not something Team view surfaces on someone else's behalf. Open
+   * (never-staffed) and archived projects are never "due" — archived by
+   * definition (see isProjectLifecycleQuiet), open because there's no one to
+   * chase calls sold for yet. (Batch S removed 'idle' and, with it, this
+   * route's old "parked" bucket — there's no third status left to bucket.)
    */
   app.get("/calls-sold-due", { preHandler: [app.requireAuth] }, async (request) => {
     const actor = request.actor!;
@@ -126,13 +125,8 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
       topic: string | null;
       angles: { id: string; name: string; callsN: number; callsSold: number }[];
     }[] = [];
-    const parked: { id: string; client: string; topic: string | null }[] = [];
 
     for (const project of projects) {
-      if (project.status === "idle") {
-        parked.push({ id: project.id, client: project.client, topic: project.topic });
-        continue;
-      }
       if (project.status !== "active") continue;
 
       const angles = await listAnglesByProject(project.id);
@@ -147,15 +141,22 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
       }
     }
 
-    return { due, parked };
+    return { due };
   });
 
   app.get<{ Params: { id: string } }>("/:id", { preHandler: [app.requireAuth] }, async (request) => {
+    const actor = request.actor!;
     const project = await findProjectById(request.params.id);
     if (!project) throw notFound("project not found");
     const assignments = await listAssignmentsByProject(project.id);
     const angles = await listAnglesByProject(project.id);
-    return { project: await withProjectFlags(project, resolveNow(request)), assignments, angles };
+    // Batch S, item 4 — notes were already persisted and readable (via the
+    // dedicated Notes sheet), just not on the card itself. Folding them into
+    // the one detail fetch both boards already make per card is what
+    // actually surfaces them there; reuses listNotesForProject() (same
+    // privacy filter the sheet already relies on) rather than a new query.
+    const notes = await listNotesForProject(project.id, actor.id);
+    return { project: await withProjectFlags(project, resolveNow(request)), assignments, angles, notes };
   });
 
   // §5a/§5b (domain change 4) — pure computation, no DB write. Intake wizard
@@ -536,37 +537,25 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
     return updated;
   });
 
-  // Project lifecycle change — "idle": parked, waiting on something external,
-  // nothing to do now. PL-only, same permission check as archive. Only valid
-  // from 'active' (repository enforces the guard); a project that's still
-  // unstaffed or already quiet has nothing to park.
-  app.post<{ Params: { id: string } }>("/:id/idle", { preHandler: [app.requireAuth] }, async (request) => {
+  /**
+   * Batch S — soft delete. PL-only (same rule as archive — canArchiveProject
+   * reused, not duplicated, since it's exactly "actor is the PL" either
+   * way). The confirmation step lives client-side (this is the destructive
+   * action itself, not a place to add a second one server-side); this route
+   * commits once called. Never a hard delete — see softDeleteProject().
+   */
+  app.post<{ Params: { id: string } }>("/:id/delete", { preHandler: [app.requireAuth] }, async (request) => {
     const actor = request.actor!;
     const project = await findProjectById(request.params.id);
     if (!project) throw notFound("project not found");
-    if (!canArchiveProject(actor.id, project)) throw forbidden("only the PL may park this project");
-    const updated = await setIdle(project.id);
-    if (!updated) throw badRequest("only an active project can be parked");
-    await insertAuditLog({ entityType: "project", entityId: project.id, actorId: actor.id, action: "idle" });
+    if (!canArchiveProject(actor.id, project)) throw forbidden("only the PL may delete this project");
+    const deleted = await softDeleteProject(project.id);
+    if (!deleted) throw notFound("project not found");
+    await insertAuditLog({ entityType: "project", entityId: project.id, actorId: actor.id, action: "delete" });
     const assignments = await listAssignmentsByProject(project.id);
     await publishProjectChanged(project.id, [project.plId, ...assignments.map((a) => a.delivererId)]);
     publish({ type: "capacity-ranking" });
-    return updated;
-  });
-
-  // One-tap reactivate — only valid from 'idle'.
-  app.post<{ Params: { id: string } }>("/:id/reactivate", { preHandler: [app.requireAuth] }, async (request) => {
-    const actor = request.actor!;
-    const project = await findProjectById(request.params.id);
-    if (!project) throw notFound("project not found");
-    if (!canArchiveProject(actor.id, project)) throw forbidden("only the PL may reactivate this project");
-    const updated = await reactivateProject(project.id);
-    if (!updated) throw badRequest("only an idle project can be reactivated");
-    await insertAuditLog({ entityType: "project", entityId: project.id, actorId: actor.id, action: "reactivate" });
-    const assignments = await listAssignmentsByProject(project.id);
-    await publishProjectChanged(project.id, [project.plId, ...assignments.map((a) => a.delivererId)]);
-    publish({ type: "capacity-ranking" });
-    return updated;
+    return { id: project.id };
   });
 
   // §4 — open pool, first-commit-wins claim. No PL/manager gate: any currently-eligible person may accept.

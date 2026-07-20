@@ -154,9 +154,16 @@ export async function claimAngleSeat(
     const angle = angleRows[0];
 
     const { rows: projectRows } = await client.query<{ projectType: ProjectType }>(
-      `SELECT project_type AS "projectType" FROM project WHERE id = $1`,
+      `SELECT project_type AS "projectType" FROM project WHERE id = $1 AND deleted_at IS NULL`,
       [angle.projectId]
     );
+    // Batch S — a soft-deleted project's angle can still be FOR UPDATE-locked
+    // above (the angle row itself isn't deleted), but there's no live project
+    // to claim a seat on; treat it the same as "angle not found."
+    if (projectRows.length === 0) {
+      await client.query("ROLLBACK");
+      return null;
+    }
     const projectType = projectRows[0].projectType;
     const target = seatTargetForAngle(angle.callsN, projectType);
 
@@ -178,8 +185,12 @@ export async function claimAngleSeat(
       return null;
     }
 
+    // Batch S — same as createAssignment(): every assignment starts in
+    // 'First Deliverable' by column default, so this claim is a transition
+    // into it.
     const { rows: inserted } = await client.query<{ id: string }>(
-      `INSERT INTO assignment (angle_id, deliverer_id, goal, custom_goal) VALUES ($1, $2, $3, $4) RETURNING id`,
+      `INSERT INTO assignment (angle_id, deliverer_id, goal, custom_goal, first_deliverable_last_at)
+       VALUES ($1, $2, $3, $4, now()) RETURNING id`,
       [angleId, delivererId, goal, computeCustomGoal(goal)]
     );
     await client.query("COMMIT");

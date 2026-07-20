@@ -24,98 +24,11 @@ function cookieHeader(cookie: string) {
   return { relay_session: cookie.split("=")[1] };
 }
 
-describe("project lifecycle — idle/reactivate transitions", () => {
-  it("PL can park an active project idle", async () => {
-    const cookie = await loginAs(app, fx.plAlpha);
-    const res = await app.inject({
-      method: "POST",
-      url: `/projects/${fx.project}/idle`,
-      cookies: cookieHeader(cookie),
-    });
-    expect(res.statusCode).toBe(200);
-    expect(res.json().status).toBe("idle");
-  });
-
-  it("rejects idling a project that's already idle (not active)", async () => {
-    const cookie = await loginAs(app, fx.plAlpha);
-    await app.inject({ method: "POST", url: `/projects/${fx.project}/idle`, cookies: cookieHeader(cookie) });
-    const res = await app.inject({ method: "POST", url: `/projects/${fx.project}/idle`, cookies: cookieHeader(cookie) });
-    expect(res.statusCode).toBe(400);
-  });
-
-  it("only the PL may idle their project", async () => {
-    const cookie = await loginAs(app, fx.delivererAlpha);
-    const res = await app.inject({ method: "POST", url: `/projects/${fx.project}/idle`, cookies: cookieHeader(cookie) });
-    expect(res.statusCode).toBe(403);
-  });
-
-  it("one-tap reactivate returns an idle project to active", async () => {
-    const cookie = await loginAs(app, fx.plAlpha);
-    await app.inject({ method: "POST", url: `/projects/${fx.project}/idle`, cookies: cookieHeader(cookie) });
-    const res = await app.inject({ method: "POST", url: `/projects/${fx.project}/reactivate`, cookies: cookieHeader(cookie) });
-    expect(res.statusCode).toBe(200);
-    expect(res.json().status).toBe("active");
-  });
-
-  it("rejects reactivating a project that isn't idle", async () => {
-    const cookie = await loginAs(app, fx.plAlpha);
-    const res = await app.inject({ method: "POST", url: `/projects/${fx.project}/reactivate`, cookies: cookieHeader(cookie) });
-    expect(res.statusCode).toBe(400);
-  });
-
-  it("only the PL may reactivate their project", async () => {
-    const cookie = await loginAs(app, fx.plAlpha);
-    await app.inject({ method: "POST", url: `/projects/${fx.project}/idle`, cookies: cookieHeader(cookie) });
-    const otherCookie = await loginAs(app, fx.delivererAlpha);
-    const res = await app.inject({
-      method: "POST",
-      url: `/projects/${fx.project}/reactivate`,
-      cookies: cookieHeader(otherCookie),
-    });
-    expect(res.statusCode).toBe(403);
-  });
-
-  it("idle and reactivate are both audit-logged", async () => {
-    const cookie = await loginAs(app, fx.plAlpha);
-    await app.inject({ method: "POST", url: `/projects/${fx.project}/idle`, cookies: cookieHeader(cookie) });
-    await app.inject({ method: "POST", url: `/projects/${fx.project}/reactivate`, cookies: cookieHeader(cookie) });
-    const { rows } = await pool.query(
-      `SELECT action FROM audit_log WHERE entity_id = $1 ORDER BY created_at`,
-      [fx.project]
-    );
-    const actions = rows.map((r) => r.action);
-    expect(actions).toContain("idle");
-    expect(actions).toContain("reactivate");
-  });
-});
-
-describe("project lifecycle — idle contributes zero load", () => {
-  it("an idle project's assignment stops counting toward its deliverer's load and remaining", async () => {
-    const cookie = await loginAs(app, fx.plAlpha);
-
-    const before = await app.inject({ method: "GET", url: "/capacity-ranking", cookies: cookieHeader(cookie) });
-    const beforeRow = before.json().find((r: { personId: string }) => r.personId === fx.delivererAlpha);
-    expect(beforeRow.load).toBeGreaterThan(0);
-    expect(beforeRow.rawRemaining).toBeGreaterThan(0);
-
-    await app.inject({ method: "POST", url: `/projects/${fx.project}/idle`, cookies: cookieHeader(cookie) });
-
-    const after = await app.inject({ method: "GET", url: "/capacity-ranking", cookies: cookieHeader(cookie) });
-    const afterRow = after.json().find((r: { personId: string }) => r.personId === fx.delivererAlpha);
-    expect(afterRow.load).toBe(0);
-    expect(afterRow.rawRemaining).toBe(0);
-  });
-
-  it("reactivating restores the load", async () => {
-    const cookie = await loginAs(app, fx.plAlpha);
-    await app.inject({ method: "POST", url: `/projects/${fx.project}/idle`, cookies: cookieHeader(cookie) });
-    await app.inject({ method: "POST", url: `/projects/${fx.project}/reactivate`, cookies: cookieHeader(cookie) });
-
-    const after = await app.inject({ method: "GET", url: "/capacity-ranking", cookies: cookieHeader(cookie) });
-    const afterRow = after.json().find((r: { personId: string }) => r.personId === fx.delivererAlpha);
-    expect(afterRow.load).toBeGreaterThan(0);
-  });
-
+// Batch S removed 'idle' and its /idle, /reactivate routes entirely — the
+// old "idle/reactivate transitions" and "idle contributes zero load" describe
+// blocks that used to live here are gone with it. Archived-project coverage
+// (the other formerly-quiet status) stays.
+describe("project lifecycle — archived contributes zero load", () => {
   it("an archived project also contributes zero load", async () => {
     const cookie = await loginAs(app, fx.plAlpha);
     await app.inject({ method: "POST", url: `/projects/${fx.project}/archive`, cookies: cookieHeader(cookie) });
@@ -140,26 +53,14 @@ describe("project lifecycle — morning calls-sold dialog exclusions (GET /proje
     expect(due.map((d: { id: string }) => d.id)).toContain(fx.project);
   });
 
-  it("an idle project is never due, and appears in the separate parked list instead", async () => {
-    await makeStaleToday();
-    const cookie = await loginAs(app, fx.plAlpha);
-    await app.inject({ method: "POST", url: `/projects/${fx.project}/idle`, cookies: cookieHeader(cookie) });
-
-    const res = await app.inject({ method: "GET", url: "/projects/calls-sold-due", cookies: cookieHeader(cookie) });
-    const { due, parked } = res.json();
-    expect(due.map((d: { id: string }) => d.id)).not.toContain(fx.project);
-    expect(parked.map((p: { id: string }) => p.id)).toContain(fx.project);
-  });
-
-  it("an archived project is never due, and does not appear in the parked list either", async () => {
+  it("an archived project is never due (Batch S removed the old separate parked list along with 'idle')", async () => {
     await makeStaleToday();
     const cookie = await loginAs(app, fx.plAlpha);
     await app.inject({ method: "POST", url: `/projects/${fx.project}/archive`, cookies: cookieHeader(cookie) });
 
     const res = await app.inject({ method: "GET", url: "/projects/calls-sold-due", cookies: cookieHeader(cookie) });
-    const { due, parked } = res.json();
+    const { due } = res.json();
     expect(due.map((d: { id: string }) => d.id)).not.toContain(fx.project);
-    expect(parked.map((p: { id: string }) => p.id)).not.toContain(fx.project);
   });
 
   it("a project whose calls_sold was already touched today is not due", async () => {
@@ -173,9 +74,8 @@ describe("project lifecycle — morning calls-sold dialog exclusions (GET /proje
     await makeStaleToday();
     const cookie = await loginAs(app, fx.managerBeta);
     const res = await app.inject({ method: "GET", url: "/projects/calls-sold-due", cookies: cookieHeader(cookie) });
-    const { due, parked } = res.json();
+    const { due } = res.json();
     expect(due.map((d: { id: string }) => d.id)).not.toContain(fx.project);
-    expect(parked.map((p: { id: string }) => p.id)).not.toContain(fx.project);
   });
 });
 

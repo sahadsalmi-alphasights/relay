@@ -41,8 +41,7 @@ describe("needsCallsSoldUpdateToday — §8.1 (manual for now, phase-two: auto-p
 });
 
 describe("isProjectLifecycleQuiet — project lifecycle change", () => {
-  it("is quiet for idle and archived", () => {
-    expect(isProjectLifecycleQuiet("idle")).toBe(true);
+  it("is quiet for archived (Batch S removed 'idle', the other formerly-quiet status)", () => {
     expect(isProjectLifecycleQuiet("archived")).toBe(true);
   });
 

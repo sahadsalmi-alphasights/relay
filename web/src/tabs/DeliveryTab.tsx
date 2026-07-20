@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, ApiError } from "../api/client";
-import type { Assignment, CapacityRankRow, Project } from "../api/types";
+import type { Assignment, CapacityRankRow, Project, ProjectStatus } from "../api/types";
 import { barColor, entityTint, initials, overDelivered, stageClass, stageLabel, typeClass } from "../lib/format";
 import { fmtElapsed, poolState, timerClass } from "../lib/time";
 import { useApp } from "../state/AppContext";
@@ -36,9 +36,25 @@ interface BroadcastRow {
   remaining: number;
 }
 
-function RequestChange({ onSend }: { onSend: (text: string) => Promise<void> }) {
+/**
+ * Batch S, item 4 — the requested goal is now a real number, not something
+ * buried in free text ("lower goal to 15 — pool is thin"), and the flow also
+ * asks for a target project status. `body` stays as optional rationale, no
+ * longer the only signal the PL has to work from.
+ */
+function RequestChange({
+  currentGoal,
+  currentStatus,
+  onSend,
+}: {
+  currentGoal: number;
+  currentStatus: ProjectStatus;
+  onSend: (body: string, requestedGoal: number, requestedStatus: ProjectStatus) => Promise<void>;
+}) {
   const [open, setOpen] = useState(false);
   const [txt, setTxt] = useState("");
+  const [goal, setGoal] = useState(currentGoal);
+  const [status, setStatus] = useState<ProjectStatus>(currentStatus);
   const [busy, setBusy] = useState(false);
   if (!open) {
     return (
@@ -49,10 +65,34 @@ function RequestChange({ onSend }: { onSend: (text: string) => Promise<void> }) 
   }
   return (
     <div style={{ flex: 1 }}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+        <label style={{ flex: 1, fontSize: 12, color: "var(--soft)" }}>
+          Requested goal
+          <input
+            type="number"
+            min={0}
+            value={goal}
+            onChange={(e) => setGoal(Math.max(0, Number(e.target.value)))}
+            style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid var(--line)", fontSize: 13, color: "var(--ink)" }}
+          />
+        </label>
+        <label style={{ flex: 1, fontSize: 12, color: "var(--soft)" }}>
+          Requested status
+          <select
+            value={status}
+            onChange={(e) => setStatus(e.target.value as ProjectStatus)}
+            style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid var(--line)", fontSize: 13, color: "var(--ink)" }}
+          >
+            <option value="open">Open</option>
+            <option value="active">Active</option>
+            <option value="archived">Archived</option>
+          </select>
+        </label>
+      </div>
       <input
         value={txt}
         onChange={(e) => setTxt(e.target.value)}
-        placeholder="e.g. lower goal to 15 — pool is thin"
+        placeholder="Optional — e.g. pool is thin"
         style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid var(--line)", fontSize: 13, marginBottom: 8, color: "var(--ink)" }}
       />
       <div style={{ display: "flex", gap: 8 }}>
@@ -63,9 +103,8 @@ function RequestChange({ onSend }: { onSend: (text: string) => Promise<void> }) 
           className="btn btn-dl"
           disabled={busy}
           onClick={async () => {
-            if (!txt.trim()) return;
             setBusy(true);
-            await onSend(txt.trim());
+            await onSend(txt.trim(), goal, status);
             setBusy(false);
             setTxt("");
             setOpen(false);
@@ -276,8 +315,10 @@ export default function DeliveryTab({
         {a.delivererId === actor.id && (
           <div className="actions">
             <RequestChange
-              onSend={async (text) => {
-                await api.post(`/assignments/${a.id}/goal-change-requests`, { body: text });
+              currentGoal={a.goal}
+              currentStatus={p.status}
+              onSend={async (body, requestedGoal, requestedStatus) => {
+                await api.post(`/assignments/${a.id}/goal-change-requests`, { body, requestedGoal, requestedStatus });
               }}
             />
           </div>

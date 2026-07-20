@@ -16,21 +16,17 @@ interface DueRow {
   angles: DueAngle[];
 }
 
-interface ParkedRow {
-  id: string;
-  client: string;
-  topic: string | null;
-}
-
-type RowMode = "callsSold" | "idle" | "archive";
+type RowMode = "callsSold" | "archive";
 
 /**
  * Morning calls-sold dialog — on first load, if the PL has active projects
  * whose calls_sold hasn't been touched today, this blocks until every one is
- * actioned: enter today's number, park it (Idle), or archive it. Every row
- * defaults to "callsSold" pre-filled with the current value, so a PL with
- * nothing to change can submit immediately — always fast, never empty (if
- * there's nothing due, this renders nothing at all).
+ * actioned: enter today's number, or archive it. (Batch S removed the third
+ * "park it (Idle)" option, and with it this dialog's old "Parked" section —
+ * there's no third status left to bucket rows into.) Every row defaults to
+ * "callsSold" pre-filled with the current value, so a PL with nothing to
+ * change can submit immediately — always fast, never empty (if there's
+ * nothing due, this renders nothing at all).
  *
  * Desktop-only: mobile shows a non-blocking reminder banner instead, so the
  * task isn't silently skipped, but isn't forced through a cramped table
@@ -44,17 +40,14 @@ type RowMode = "callsSold" | "idle" | "archive";
 export default function MorningCallsSoldDialog({ onActioned }: { onActioned: () => void }) {
   const { isDesktop } = useViewport();
   const [due, setDue] = useState<DueRow[] | null>(null);
-  const [parked, setParked] = useState<ParkedRow[]>([]);
   const [modes, setModes] = useState<Record<string, RowMode>>({});
   const [values, setValues] = useState<Record<string, number>>({});
-  const [parkedOpen, setParkedOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api.get<{ due: DueRow[]; parked: ParkedRow[] }>("/projects/calls-sold-due").then((res) => {
+    api.get<{ due: DueRow[] }>("/projects/calls-sold-due").then((res) => {
       setDue(res.due);
-      setParked(res.parked);
       const initialModes: Record<string, RowMode> = {};
       const initialValues: Record<string, number> = {};
       for (const row of res.due) {
@@ -87,9 +80,7 @@ export default function MorningCallsSoldDialog({ onActioned }: { onActioned: () 
     try {
       for (const row of due) {
         const mode = modes[row.id] ?? "callsSold";
-        if (mode === "idle") {
-          await api.post(`/projects/${row.id}/idle`);
-        } else if (mode === "archive") {
+        if (mode === "archive") {
           await api.post(`/projects/${row.id}/archive`);
         } else {
           for (const ang of row.angles) {
@@ -110,7 +101,7 @@ export default function MorningCallsSoldDialog({ onActioned }: { onActioned: () 
       <div className="sheet sheet-dialog morning-dialog">
         <h2>Update calls sold</h2>
         <div className="sub">
-          {due.length} project{due.length > 1 ? "s" : ""} need today's number — enter it, park it, or archive it.
+          {due.length} project{due.length > 1 ? "s" : ""} need today's number — enter it, or archive it.
         </div>
         {error && <div className="err-line">{error}</div>}
         <table className="data-table">
@@ -146,15 +137,8 @@ export default function MorningCallsSoldDialog({ onActioned }: { onActioned: () 
                           />
                         </div>
                       ))}
-                    {mode === "idle" && <span className="idle-badge">Will be parked</span>}
                     {mode === "archive" && <span className="idle-badge">Will be archived</span>}
                     <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-                      <button
-                        className={"btn-sm " + (mode === "idle" ? "btn-pl" : "btn-ghost")}
-                        onClick={() => setMode(row.id, mode === "idle" ? "callsSold" : "idle")}
-                      >
-                        {mode === "idle" ? "✓ Parking" : "Idle"}
-                      </button>
                       <button
                         className={"btn-sm " + (mode === "archive" ? "btn-pl" : "btn-ghost")}
                         onClick={() => setMode(row.id, mode === "archive" ? "callsSold" : "archive")}
@@ -168,26 +152,6 @@ export default function MorningCallsSoldDialog({ onActioned }: { onActioned: () 
             })}
           </tbody>
         </table>
-
-        {parked.length > 0 && (
-          <div style={{ marginTop: 16 }}>
-            <button className="link-btn" onClick={() => setParkedOpen((o) => !o)} style={{ marginLeft: 0 }}>
-              {parkedOpen ? "▾" : "▸"} Parked <span className="count">{parked.length}</span>
-            </button>
-            {parkedOpen && (
-              <div style={{ marginTop: 8 }}>
-                {parked.map((p) => (
-                  <div key={p.id} className="rank-row">
-                    <div className="rank-body">
-                      <div className="rank-name">{p.client}</div>
-                      <div className="rank-sub">{p.topic}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
 
         <div className="sheet-footer">
           <button className="btn btn-pl" style={{ width: "100%" }} disabled={busy} onClick={submit}>

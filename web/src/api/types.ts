@@ -4,8 +4,8 @@ export type ExpertPool = "Global" | "EU & MEA & India" | "AUS / NZ / Sing / JP" 
 
 export type Stage = "First Deliverable" | "Second Deliverable" | "Hail Mary" | "Selling";
 
-/** Project lifecycle — open (unclaimed) -> active (staffed) -> idle (parked) -> active again, archived from any of the three. */
-export type ProjectStatus = "open" | "active" | "idle" | "archived";
+/** Project lifecycle — open (unclaimed) -> active (staffed), archived from either. Batch S removed 'idle'. */
+export type ProjectStatus = "open" | "active" | "archived";
 
 export interface Person {
   id: string;
@@ -101,7 +101,11 @@ export interface GoalChangeRequest {
   assignmentId: string;
   requestedBy: string;
   body: string;
+  /** Batch S, item 4 — the structured ask; null only on pre-Batch-S rows. */
+  requestedGoal: number | null;
+  requestedStatus: ProjectStatus | null;
   resolved: boolean;
+  outcome: "accepted" | "declined" | null;
 }
 
 export interface SundayRotaEntry {

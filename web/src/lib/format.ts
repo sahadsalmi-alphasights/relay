@@ -101,12 +101,24 @@ export const CLIENT_ENTITY_IDS = [1, 2, 3, 4, 5] as const;
  * (orange). All five checked against --ink header text for contrast
  * (>=5.9:1, comfortably above the 4.5:1 AA minimum for normal text).
  */
-export const CLIENT_ENTITY_MAP: Record<number, { name: string; tint: string }> = {
-  1: { name: "BCG", tint: "#34D399" },
-  2: { name: "McKinsey", tint: "#60A5FA" },
-  3: { name: "Bain", tint: "#F87171" },
-  4: { name: "Oliver Wyman", tint: "#818CF8" },
-  5: { name: "Growth", tint: "#FB923C" },
+export interface ClientEntityMeta {
+  name: string;
+  /** Soft brand-derived header wash — pale enough that var(--ink) text keeps AA contrast. */
+  tint: string;
+  /** The firm's real brand colour — card top edge, monogram chip, accents. */
+  brand: string;
+  /** Company domain for the live logo (logo.clearbit.com/<domain>); null = no external logo, monogram only. */
+  domain: string | null;
+  /** Fallback monogram when the logo can't load (offline, blocked, unknown). */
+  mono: string;
+}
+
+export const CLIENT_ENTITY_MAP: Record<number, ClientEntityMeta> = {
+  1: { name: "BCG", tint: "#DCEFE5", brand: "#197A56", domain: "bcg.com", mono: "BCG" },
+  2: { name: "McKinsey", tint: "#E0E7FF", brand: "#2251FF", domain: "mckinsey.com", mono: "McK" },
+  3: { name: "Bain", tint: "#FBE3E0", brand: "#CC0700", domain: "bain.com", mono: "B&C" },
+  4: { name: "Oliver Wyman", tint: "#DEE7F4", brand: "#002C77", domain: "oliverwyman.com", mono: "OW" },
+  5: { name: "Growth", tint: "#FFEAD4", brand: "#FC8300", domain: null, mono: "G" },
 };
 
 export function entityName(clientEntity: number): string {
@@ -115,4 +127,8 @@ export function entityName(clientEntity: number): string {
 
 export function entityTint(clientEntity: number): string {
   return CLIENT_ENTITY_MAP[clientEntity]?.tint ?? "var(--bg)";
+}
+
+export function entityBrand(clientEntity: number): string {
+  return CLIENT_ENTITY_MAP[clientEntity]?.brand ?? "var(--line)";
 }

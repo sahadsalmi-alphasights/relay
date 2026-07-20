@@ -130,6 +130,11 @@ button { font-family:inherit; cursor:pointer; border:none; background:none; colo
 .card-top { display:flex; justify-content:space-between; align-items:flex-start; gap:10px;
   background:var(--bg); margin:-14px -14px 0; padding:12px 14px; border-radius:16px 16px 0 0; }
 .client { font-family:'Space Grotesk'; font-weight:700; font-size:16px; letter-spacing:-.3px; color:var(--ink); }
+/* Client-entity logo chip — real logo on a white tile (logos need neutral
+   ground on tinted headers); branded monogram when the logo can't load. */
+.entity-logo { border-radius:7px; background:#fff; border:1px solid rgba(10,20,35,.10); object-fit:contain; padding:2.5px; flex-shrink:0; }
+.entity-mono { border-radius:7px; color:#fff; font-family:'Space Grotesk'; font-weight:700; display:inline-flex; align-items:center; justify-content:center; letter-spacing:-.2px; flex-shrink:0; }
+[data-theme="dark"] .entity-logo { background:#fff; border-color:rgba(255,255,255,.14); }
 /* (bug fix) the client/project name is a hyperlink to project_link everywhere it appears -- same look as plain text, underline only on hover as the affordance. */
 a.client, a.client:visited { text-decoration:none; }
 a.client:hover { text-decoration:underline; }

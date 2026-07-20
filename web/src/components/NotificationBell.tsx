@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import type { NotificationsState } from "../lib/useNotifications";
+import { requestNotificationPermission } from "../lib/pushNotifications";
 import { disablePush, enablePush, getPushSubscription, isPushSupported } from "../lib/webPush";
+
+const notifSupported = typeof Notification !== "undefined";
 
 function timeAgo(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime();
@@ -16,6 +19,14 @@ export default function NotificationBell({ notif }: { notif: NotificationsState 
   const [open, setOpen] = useState(false);
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushBusy, setPushBusy] = useState(false);
+  // Foreground pop-ups need Notification permission granted — independent of
+  // Web Push. Track it so we can offer a one-click "enable" instead of the
+  // pop-ups silently never appearing when permission is still "default".
+  const [perm, setPerm] = useState<NotificationPermission>(notifSupported ? Notification.permission : "denied");
+
+  const enablePopups = async () => {
+    setPerm(await requestNotificationPermission());
+  };
 
   useEffect(() => {
     getPushSubscription().then((sub) => setPushEnabled(!!sub));
@@ -69,6 +80,19 @@ export default function NotificationBell({ notif }: { notif: NotificationsState 
                     <div className="notif-time">{timeAgo(n.createdAt)}</div>
                   </button>
                 ))}
+              </div>
+            )}
+            {notifSupported && perm === "default" && (
+              <div className="notif-panel-footer">
+                <span>Pop-up notifications</span>
+                <button className="btn-sm btn-ghost" onClick={enablePopups}>
+                  Enable
+                </button>
+              </div>
+            )}
+            {notifSupported && perm === "denied" && (
+              <div className="notif-panel-footer">
+                <span style={{ color: "var(--soft)" }}>Pop-ups are blocked in your browser settings</span>
               </div>
             )}
             {isPushSupported() && (

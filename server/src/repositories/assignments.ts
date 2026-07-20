@@ -1,4 +1,4 @@
-import { pool } from "../db";
+import { pool, type Queryable } from "../db";
 import { computeCustomGoal } from "../rules/suggestedGoal";
 import type { ExpertPool, Stage } from "../rules/types";
 
@@ -20,6 +20,8 @@ export interface AssignmentRow {
   progressUpdatedAt: string;
   /** §9 (built) — highest 30-min multiple already notified for, so the scheduler never repeats itself. */
   staleNotifiedThresholdMinutes: number;
+  /** "Invisible competition" — distinguishes a ghost's assignment from a real one. Own goal/delivered tracked identically; excluded from roll-ups by every consumer that sums them (never at the fetch layer). */
+  isGhost: boolean;
 }
 
 const SELECT = `
@@ -28,11 +30,12 @@ const SELECT = `
          a.custom_goal AS "customGoal", a.custom_delivered AS "customDelivered",
          a.stage, a.stage_entered_at AS "stageEnteredAt",
          a.progress_updated_at AS "progressUpdatedAt",
-         a.stale_notified_threshold_minutes AS "staleNotifiedThresholdMinutes"
+         a.stale_notified_threshold_minutes AS "staleNotifiedThresholdMinutes",
+         a.is_ghost AS "isGhost"
   FROM assignment a JOIN angle ang ON ang.id = a.angle_id`;
 
-export async function findAssignmentById(id: string): Promise<AssignmentRow | null> {
-  const { rows } = await pool.query(`${SELECT} WHERE a.id = $1`, [id]);
+export async function findAssignmentById(id: string, db: Queryable = pool): Promise<AssignmentRow | null> {
+  const { rows } = await db.query(`${SELECT} WHERE a.id = $1`, [id]);
   return rows[0] ?? null;
 }
 
@@ -57,19 +60,30 @@ export async function listAssignmentsWithProjectByDeliverer(delivererId: string)
             a.custom_goal AS "customGoal", a.custom_delivered AS "customDelivered",
             a.stage, a.stage_entered_at AS "stageEnteredAt", p.expert_pool AS "projectExpertPool"
      FROM assignment a JOIN angle ang ON ang.id = a.angle_id JOIN project p ON p.id = ang.project_id
-     WHERE a.deliverer_id = $1 AND p.status NOT IN ('idle', 'archived')`,
+     WHERE a.deliverer_id = $1 AND p.status <> 'archived' AND p.deleted_at IS NULL`,
     [delivererId]
   );
   return rows;
 }
 
 /** §5 (domain change 7) — custom_goal is always derived from goal, never accepted from a caller. Attaches to an angle, not a project directly. */
-export async function createAssignment(angleId: string, delivererId: string, goal: number): Promise<AssignmentRow> {
-  const { rows } = await pool.query(
-    `INSERT INTO assignment (angle_id, deliverer_id, goal, custom_goal) VALUES ($1, $2, $3, $4) RETURNING id`,
-    [angleId, delivererId, goal, computeCustomGoal(goal)]
+/**
+ * Batch S — stamps first_deliverable_last_at: every assignment starts in
+ * 'First Deliverable', so creation is itself a transition into that stage.
+ */
+export async function createAssignment(
+  angleId: string,
+  delivererId: string,
+  goal: number,
+  isGhost = false,
+  db: Queryable = pool
+): Promise<AssignmentRow> {
+  const { rows } = await db.query(
+    `INSERT INTO assignment (angle_id, deliverer_id, goal, custom_goal, first_deliverable_last_at, is_ghost)
+     VALUES ($1, $2, $3, $4, now(), $5) RETURNING id`,
+    [angleId, delivererId, goal, computeCustomGoal(goal), isGhost]
   );
-  return (await findAssignmentById(rows[0].id))!;
+  return (await findAssignmentById(rows[0].id, db))!;
 }
 
 export async function updateAssignmentProgress(
@@ -150,11 +164,17 @@ export async function updateAssignmentDeliverer(id: string, delivererId: string)
  * §9 (built) — also resets the stale-first-deliverable clock: a stage change
  * is itself activity, and re-entering First Deliverable later (via "back")
  * shouldn't inherit a stale notification history from a previous stint.
+ *
+ * Batch S — the single write path for stage, so it's the one place that
+ * needs to stamp first_deliverable_last_at (only when the NEW stage is
+ * 'First Deliverable' — advancing away from it, or into any other stage,
+ * leaves the existing stamp untouched).
  */
 export async function setAssignmentStage(id: string, stage: Stage): Promise<AssignmentRow> {
   await pool.query(
     `UPDATE assignment
-     SET stage = $2, stage_entered_at = now(), progress_updated_at = now(), stale_notified_threshold_minutes = 0
+     SET stage = $2, stage_entered_at = now(), progress_updated_at = now(), stale_notified_threshold_minutes = 0,
+         first_deliverable_last_at = CASE WHEN $2 = 'First Deliverable' THEN now() ELSE first_deliverable_last_at END
      WHERE id = $1`,
     [id, stage]
   );
@@ -176,9 +196,10 @@ export async function listFirstDeliverableAssignments(): Promise<StaleCandidate[
             a.stale_notified_threshold_minutes AS "staleNotifiedThresholdMinutes",
             p.pl_id AS "projectPlId"
      FROM assignment a JOIN angle ang ON ang.id = a.angle_id JOIN project p ON p.id = ang.project_id
-     -- Project lifecycle change — idle projects go quiet too, same as archived
-     -- (see rules/project.ts isProjectLifecycleQuiet, which this mirrors).
-     WHERE a.stage = 'First Deliverable' AND p.status NOT IN ('idle', 'archived')`
+     -- Project lifecycle — archived projects go quiet too (see rules/project.ts
+     -- isProjectLifecycleQuiet, which this mirrors), and soft-deleted ones are
+     -- excluded unconditionally, same as every other project query (Batch S).
+     WHERE a.stage = 'First Deliverable' AND p.status <> 'archived' AND p.deleted_at IS NULL`
   );
   return rows;
 }

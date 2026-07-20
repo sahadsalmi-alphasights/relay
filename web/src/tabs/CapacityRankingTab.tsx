@@ -9,8 +9,8 @@ import { useApp } from "../state/AppContext";
 type SortKey = "name" | "practice" | "team" | "load";
 
 function StatusChip({ row }: { row: CapacityRankRow }) {
-  if (!row.eligible) return <span className="mini off">off</span>;
-  return row.free ? <span className="mini free">free</span> : <span className="mini busy">busy</span>;
+  if (!row.eligible) return <span className="mini off">Off</span>;
+  return row.free ? <span className="mini free">Free</span> : <span className="mini busy">Busy</span>;
 }
 
 function SortHeader({
@@ -35,7 +35,13 @@ function SortHeader({
   );
 }
 
-export default function CapacityRankingTab({ reloadTick }: { reloadTick: number }) {
+/**
+ * "Invisible competition" — the Ghost Ranking dashboard is this SAME
+ * component with `ghostOnly` set, not a parallel implementation: same query
+ * (GET /capacity-ranking, just with ?ghost=true), same markup, only the
+ * fetch URL and a couple of copy strings differ.
+ */
+export default function CapacityRankingTab({ reloadTick, ghostOnly }: { reloadTick: number; ghostOnly?: boolean }) {
   const { nameOf, practiceOf, personById, teamNameOf, demoHour } = useApp();
   const { isDesktop } = useViewport();
   const [rows, setRows] = useState<CapacityRankRow[] | null>(null);
@@ -44,8 +50,8 @@ export default function CapacityRankingTab({ reloadTick }: { reloadTick: number 
   // clock while sitting on this tab must re-request it, not just relabel the
   // clock in the header (the other half of bugs 1+2).
   useEffect(() => {
-    api.get<CapacityRankRow[]>("/capacity-ranking").then(setRows);
-  }, [reloadTick, demoHour]);
+    api.get<CapacityRankRow[]>(`/capacity-ranking${ghostOnly ? "?ghost=true" : ""}`).then(setRows);
+  }, [reloadTick, demoHour, ghostOnly]);
 
   const { sorted, sortKey, sortDir, toggle } = useSort<CapacityRankRow, SortKey>(
     rows ?? [],
@@ -60,18 +66,21 @@ export default function CapacityRankingTab({ reloadTick }: { reloadTick: number 
 
   if (!rows) return <div className="empty">Loading…</div>;
 
-  const note = "Everyone across all teams — capacity ranking is always org-wide, regardless of the scope toggle.";
+  const note = ghostOnly
+    ? "Ghost deliverers only — everyone across all teams, org-wide, regardless of the scope toggle."
+    : "Everyone across all teams — capacity ranking is always org-wide, regardless of the scope toggle.";
   const footNote =
     "Load is the ranking signal: remaining profiles × stage weight × expert-pool weight for the current Dubai hour. Lowest load is staffed next. Sick / on vacation / offline people are not listed at all.";
+  const sectionLabel = ghostOnly ? "Ghost ranking" : "First up now — lowest load leads";
 
   if (isDesktop) {
     return (
       <>
         <div className="scope-note">{note}</div>
         <div className="section-lbl">
-          First up now — lowest load leads <span className="count">{rows.length}</span>
+          {sectionLabel} <span className="count">{rows.length}</span>
         </div>
-        {rows.length === 0 && <div className="empty">No one online.</div>}
+        {rows.length === 0 && <div className="empty">{ghostOnly ? "No ghosts online." : "No one online."}</div>}
         {rows.length > 0 && (
           <table className="data-table">
             <thead>
@@ -117,9 +126,9 @@ export default function CapacityRankingTab({ reloadTick }: { reloadTick: number 
     <>
       <div className="scope-note">{note}</div>
       <div className="section-lbl">
-        First up now — lowest load leads <span className="count">{rows.length}</span>
+        {sectionLabel} <span className="count">{rows.length}</span>
       </div>
-      {rows.length === 0 && <div className="empty">No one online.</div>}
+      {rows.length === 0 && <div className="empty">{ghostOnly ? "No ghosts online." : "No one online."}</div>}
       {rows.map((r, i) => {
         const person = personById(r.personId);
         return (
@@ -136,7 +145,7 @@ export default function CapacityRankingTab({ reloadTick }: { reloadTick: number 
             </div>
             <div className="rank-load">
               <b>{r.load.toFixed(1)}</b>
-              <small>load</small>
+              <small>Load</small>
             </div>
           </div>
         );

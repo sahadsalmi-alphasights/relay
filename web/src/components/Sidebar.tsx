@@ -8,6 +8,9 @@ const NAV_ITEMS: { tab: Tab; icon: string; label: string }[] = [
   { tab: "PL", icon: "pl.png", label: "Project Leading" },
   { tab: "Delivery", icon: "delivery.png", label: "Delivery" },
   { tab: "Ranking", icon: "ranking.png", label: "Capacity Ranking" },
+  // "Invisible competition" — same design/component as Capacity Ranking,
+  // filtered to ghost-flagged people; same visibility (no manager gate).
+  { tab: "GhostRanking", icon: "ghost.png", label: "Ghost Ranking" },
   { tab: "FirstDel", icon: "first-deliverables.png", label: "First Deliverables" },
 ];
 
@@ -70,14 +73,22 @@ export default function Sidebar({
         ))}
       </div>
 
-      {/* §4 Rule 3 — evening-coverage toggle, reachable in one tap. */}
+      {/* §4 Rule 3 — evening-coverage toggle, reachable in one tap.
+          Manager feedback batch, item 6 — redesigned as an actual
+          track-and-thumb switch (the universally-recognised on/off pattern)
+          with a plain row background, green only on the switch itself when
+          on, so it reads as a toggle control at a glance instead of another
+          nav button. Keeps the AlphaSights deck icon from our theme. */}
       <button
-        className={"eve-btn eve-btn-nav " + (actor.eveningCoverage ? "on" : "")}
+        className="eve-toggle-row"
         onClick={toggleEvening}
         title={actor.eveningCoverage ? "Evening coverage ON — tap to go off" : "Evening coverage OFF — tap to go on"}
       >
         <span className="nav-icon ico" style={ico("coverage.png")} aria-hidden="true" />
-        <span className="nav-label">{actor.eveningCoverage ? "Evening coverage: ON" : "Evening coverage: OFF"}</span>
+        <span className="nav-label">Evening coverage</span>
+        <span className={"toggle-switch " + (actor.eveningCoverage ? "on" : "")}>
+          <span className="thumb" />
+        </span>
       </button>
 
       <div className="sidebar-section-lbl">Scope</div>

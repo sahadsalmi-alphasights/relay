@@ -31,7 +31,7 @@ export default function TeamEditSheet({
   onClose: () => void;
   onChanged: () => void;
 }) {
-  const { nameOf, practiceOf } = useApp();
+  const { nameOf, practiceOf, people } = useApp();
   const [project, setProject] = useState<Project | null>(null);
   const [assignments, setAssignments] = useState<Assignment[] | null>(null);
   const [angles, setAngles] = useState<Angle[] | null>(null);
@@ -50,7 +50,16 @@ export default function TeamEditSheet({
     setProject(detail.project);
     setAssignments(detail.assignments);
     setAngles(detail.angles);
-    const match = await api.post<{ ranked: RankedCandidate[] }>("/projects/intake/match", { staffCount: 1 });
+    // Pre-existing bug fix (unrelated to this batch, discovered while
+    // verifying it live): the server has always required a non-empty
+    // `angles` array here (`at least one angle is required`) -- this call
+    // never sent one, so /intake/match 400'd on every load and the sheet
+    // hung on "Loading…" forever. Only `ranked` (the org-wide candidate
+    // list) is used below; `perAngle`/`totalEligible` from the response are
+    // ignored, so a single dummy angle entry is enough to satisfy validation.
+    const match = await api.post<{ ranked: RankedCandidate[] }>("/projects/intake/match", {
+      angles: [{ key: "0", staffCount: 1 }],
+    });
     setRanked(match.ranked);
   };
 
@@ -71,6 +80,13 @@ export default function TeamEditSheet({
   const alreadyOnProject = new Set(assignments.map((a) => a.delivererId));
   const candidates = ranked.filter((r) => !alreadyOnProject.has(r.personId));
   const suggestedId = candidates.find((r) => r.eligible)?.personId;
+  // Managers are excluded from the ranked candidate pool entirely (never
+  // suggested, never auto-picked — see services/candidates.ts), so they
+  // can't come from `ranked`. They're still manually staffable: rendered as
+  // a separate section below, sourced from the plain people list already
+  // loaded client-side, always resolving to an override (a manager can never
+  // equal `suggestedId`, since they were never in `ranked` to begin with).
+  const managers = people.filter((p) => (p.isManager || p.isOwner) && p.status === "Available" && !alreadyOnProject.has(p.id));
 
   const startSwap = (a: Assignment) => {
     setAction({ mode: "swap", assignmentId: a.id, currentDelivererId: a.delivererId });
@@ -224,25 +240,47 @@ export default function TeamEditSheet({
               <div>
                 <div className="assignee-name">
                   {nameOf(r.personId)} <span style={{ color: "var(--soft)", fontWeight: 500 }}>· {practiceOf(r.personId)}</span>
-                  {r.personId === suggestedId && <span className="picktag" style={{ marginLeft: 6 }}>suggested</span>}
+                  {r.personId === suggestedId && <span className="picktag" style={{ marginLeft: 6 }}>Suggested</span>}
                 </div>
                 <div className="assignee-sub">
                   {!r.eligible
                     ? r.ineligibleReason === "not_on_sunday_rota"
-                      ? "not on today's rota"
-                      : "evening coverage off"
+                      ? "Not on today's rota"
+                      : "Evening coverage off"
                     : r.free
-                    ? "free"
-                    : "available"}
+                    ? "Free"
+                    : "Available"}
                 </div>
               </div>
               <div className="load-score" style={{ marginLeft: "auto" }}>
                 <b>{r.load.toFixed(1)}</b>
-                <small>load</small>
+                <small>Load</small>
               </div>
             </div>
           ))}
           {candidates.length === 0 && <div className="empty">No other candidates.</div>}
+
+          {managers.length > 0 && (
+            <>
+              <div className="section-lbl spaced">Or add a manager (never suggested — always a manual pick)</div>
+              {managers.map((m) => (
+                <div
+                  key={m.id}
+                  className={"match-line " + (selectedId === m.id ? " picked" : "")}
+                  onClick={() => setSelectedId(m.id)}
+                  style={{ cursor: "pointer" }}
+                >
+                  <div className="avatar">{initials(m.name)}</div>
+                  <div>
+                    <div className="assignee-name">
+                      {m.name} <span style={{ color: "var(--soft)", fontWeight: 500 }}>· {m.practiceArea}</span>
+                    </div>
+                    <div className="assignee-sub">Manager</div>
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
 
           {isOverride && (
             <div className="field">

@@ -1,4 +1,4 @@
-import { pool } from "../db";
+import { pool, type Queryable } from "../db";
 import type { ExpertPool, ProjectStatus, Stage } from "../rules/types";
 
 export interface ProjectRow {
@@ -47,8 +47,9 @@ const SELECT = `
           LIMIT 1) AS "earliestStage"
   FROM project`;
 
-export async function findProjectById(id: string): Promise<ProjectRow | null> {
-  const { rows } = await pool.query(`${SELECT} WHERE id = $1`, [id]);
+/** Batch S — soft-deleted rows never surface via this, the single lookup-by-id function every route guards on with `if (!project) throw notFound(...)`, so excluding here locks down nearly the whole read surface for free. */
+export async function findProjectById(id: string, db: Queryable = pool): Promise<ProjectRow | null> {
+  const { rows } = await db.query(`${SELECT} WHERE id = $1 AND deleted_at IS NULL`, [id]);
   return rows[0] ?? null;
 }
 
@@ -61,17 +62,20 @@ export interface ProjectFilter {
   /**
    * Project lifecycle change — `archived` is no longer its own column, but
    * every existing caller still asks in these terms (the archived-vs-active
-   * split on the PL board predates idle/open even mattering to it), so this
-   * stays a boolean at the filter layer and translates to `status`:
+   * split on the PL board predates open even mattering to it), so this stays
+   * a boolean at the filter layer and translates to `status`:
    * archived=true -> status = 'archived'; archived=false -> status <> 'archived'
-   * (still includes open/active/idle — exactly the "not archived" set the
-   * callers actually mean).
+   * (still includes open/active — exactly the "not archived" set the callers
+   * actually mean; 'idle' was the third value here until Batch S removed it).
    */
   archived?: boolean;
 }
 
 export async function listProjects(filter: ProjectFilter): Promise<ProjectRow[]> {
-  const clauses: string[] = [];
+  // Batch S — soft delete is unconditional, not opt-in: no caller of this
+  // function should ever see a deleted project, so it's the first clause
+  // rather than something threaded through ProjectFilter.
+  const clauses: string[] = ["deleted_at IS NULL"];
   const params: unknown[] = [];
 
   if (filter.plId) {
@@ -102,8 +106,24 @@ export async function listProjects(filter: ProjectFilter): Promise<ProjectRow[]>
     );
   }
 
-  const where = clauses.length ? ` WHERE ${clauses.join(" AND ")}` : "";
-  const { rows } = await pool.query(`${SELECT}${where} ORDER BY project.created_at DESC`, params);
+  const where = ` WHERE ${clauses.join(" AND ")}`;
+  // Batch S — three-tier recency ordering, identical on every board that
+  // calls listProjects() (both boards do, so "identical" is structural, not
+  // just behavioral):
+  //   tier 1 (top): unstaffed (no assignments at all) — needs attention.
+  //   tier 2: staffed, ordered by the most recent first_deliverable_last_at
+  //     across the project's angles, newest first.
+  //   tier 3 (bottom): staffed but no first_deliverable_last_at on record
+  //     yet (NULLS LAST handles this — it's the same boolean-false bucket as
+  //     tier 2, just sorting after every real timestamp).
+  // project.created_at DESC is the final tiebreaker within a tier, same as
+  // the pre-Batch-S ordering this replaces.
+  const order = `
+    ORDER BY
+      ((SELECT COUNT(*) FROM assignment a JOIN angle ang ON ang.id = a.angle_id WHERE ang.project_id = project.id) = 0) DESC,
+      (SELECT MAX(a.first_deliverable_last_at) FROM assignment a JOIN angle ang ON ang.id = a.angle_id WHERE ang.project_id = project.id) DESC NULLS LAST,
+      project.created_at DESC`;
+  const { rows } = await pool.query(`${SELECT}${where}${order}`, params);
   return rows;
 }
 
@@ -120,8 +140,8 @@ export interface CreateProjectInput {
 }
 
 /** Creates the project row only -- angles (and their assignments) are created separately via repositories/angles.ts, since a project always needs >=1. */
-export async function createProject(input: CreateProjectInput): Promise<ProjectRow> {
-  const { rows } = await pool.query(
+export async function createProject(input: CreateProjectInput, db: Queryable = pool): Promise<ProjectRow> {
+  const { rows } = await db.query(
     `INSERT INTO project (pl_id, client, account, topic, project_link, project_type, expert_pool, status, client_entity)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
     [
@@ -136,7 +156,7 @@ export async function createProject(input: CreateProjectInput): Promise<ProjectR
       input.clientEntity,
     ]
   );
-  return (await findProjectById(rows[0].id))!;
+  return (await findProjectById(rows[0].id, db))!;
 }
 
 const PATCHABLE_COLUMNS: Record<string, string> = {
@@ -184,23 +204,32 @@ export async function claimOpenProject(id: string): Promise<ProjectRow | null> {
   return (await findProjectById(id))!;
 }
 
-/** PL parks a project — only valid from 'active' (nothing to pause on an unstaffed or already-quiet project). Returns null if the transition wasn't valid. */
-export async function setIdle(id: string): Promise<ProjectRow | null> {
+/**
+ * Batch S — soft delete. Flags deleted_at rather than removing the row;
+ * every read (findProjectById, listProjects) already excludes it
+ * unconditionally, so this alone is what makes it "disappear from all
+ * views." No route ever un-sets deleted_at — recovery is DB-access-only, by
+ * design (never surfaced as an app feature). Idempotent-safe: a second call
+ * on an already-deleted row matches zero rows and returns null rather than
+ * bumping deleted_at again.
+ */
+export async function softDeleteProject(id: string): Promise<{ id: string } | null> {
   const { rows } = await pool.query(
-    `UPDATE project SET status = 'idle' WHERE id = $1 AND status = 'active' RETURNING id`,
+    `UPDATE project SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL RETURNING id`,
     [id]
   );
-  if (rows.length === 0) return null;
-  return (await findProjectById(id))!;
+  return rows[0] ?? null;
 }
 
-/** One-tap reactivate — only valid from 'idle'. Returns null if the transition wasn't valid. */
-export async function reactivateProject(id: string): Promise<ProjectRow | null> {
-  const { rows } = await pool.query(
-    `UPDATE project SET status = 'active' WHERE id = $1 AND status = 'idle' RETURNING id`,
-    [id]
-  );
-  if (rows.length === 0) return null;
+/**
+ * Batch S — a direct, ungated status set, distinct from archive/resurface
+ * (which each guard a specific prior state). Used only by the goal-change
+ * accept flow: the PL is confirming a status the deliverer explicitly
+ * requested, for whichever status they're currently at, so there's no
+ * "only valid from X" transition to enforce here.
+ */
+export async function setProjectStatus(id: string, status: ProjectStatus): Promise<ProjectRow> {
+  await pool.query(`UPDATE project SET status = $2 WHERE id = $1`, [id, status]);
   return (await findProjectById(id))!;
 }
 

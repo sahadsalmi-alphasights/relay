@@ -49,6 +49,20 @@ export default function TeamSheet({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reloadTick]);
 
+  const setGhost = async (personId: string, isGhost: boolean) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.patch(`/people/${personId}/ghost`, { isGhost });
+      await reloadPeople();
+      onReload();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not set ghost status");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const setStatus = async (personId: string, status: PersonStatus) => {
     setBusy(true);
     setError(null);
@@ -146,6 +160,13 @@ export default function TeamSheet({
                   <div className="cov-readonly">
                     <span className={"mini " + (p.eveningCoverage ? "free" : "busy")}>🌙 Evening {p.eveningCoverage ? "on" : "off"}</span>
                     <span className="cov-hint">evening is their own choice</span>
+                  </div>
+                  {/* "Invisible competition" — manager-only, team-scoped, reversible. A ghost is excluded from ranking/suggestion but stays manually staffable. */}
+                  <div className="cov-readonly">
+                    <span className={"mini " + (p.isGhost ? "busy" : "free")}>👻 Ghost {p.isGhost ? "on" : "off"}</span>
+                    <button className="btn-sm btn-ghost" disabled={busy} onClick={() => setGhost(p.id, !p.isGhost)}>
+                      {p.isGhost ? "Unset ghost" : "Set as ghost"}
+                    </button>
                   </div>
                   {p.id !== actor.id && (
                     <button className="remove-btn" disabled={busy} onClick={() => remove(p.id)}>

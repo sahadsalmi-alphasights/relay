@@ -1,4 +1,4 @@
-import { pool } from "../db";
+import { pool, type Queryable } from "../db";
 import { computeCustomGoal, suggestStaffing } from "../rules/suggestedGoal";
 import type { ProjectType } from "../rules/types";
 
@@ -16,15 +16,18 @@ export interface AngleRow {
   goalTotal: number;
   callsSold: number;
   callsSoldUpdatedAt: string;
+  /** "Invisible competition" — per-angle opt-out, defaults true. Only meaningful for Due Diligence/Strategy angles; carried uniformly for schema simplicity. */
+  invisibleCompetitionEnabled: boolean;
 }
 
 const SELECT = `
   SELECT id, project_id AS "projectId", name, calls_n AS "callsN", goal_total AS "goalTotal",
-         calls_sold AS "callsSold", calls_sold_updated_at AS "callsSoldUpdatedAt"
+         calls_sold AS "callsSold", calls_sold_updated_at AS "callsSoldUpdatedAt",
+         invisible_competition_enabled AS "invisibleCompetitionEnabled"
   FROM angle`;
 
-export async function findAngleById(id: string): Promise<AngleRow | null> {
-  const { rows } = await pool.query(`${SELECT} WHERE id = $1`, [id]);
+export async function findAngleById(id: string, db: Queryable = pool): Promise<AngleRow | null> {
+  const { rows } = await db.query(`${SELECT} WHERE id = $1`, [id]);
   return rows[0] ?? null;
 }
 
@@ -33,17 +36,29 @@ export async function listAnglesByProject(projectId: string): Promise<AngleRow[]
   return rows;
 }
 
+/**
+ * `invisibleCompetitionEnabled` defaults to the column's own DB default
+ * (true) when omitted -- the common case, since the toggle only matters as
+ * an explicit opt-OUT at intake (see routes/projects.ts's ghost-suggestion
+ * pass, the one moment this flag is actually read at creation time).
+ */
 export async function createAngle(
   projectId: string,
   name: string,
   callsN: number,
-  goalTotal: number
+  goalTotal: number,
+  invisibleCompetitionEnabled?: boolean,
+  db: Queryable = pool
 ): Promise<AngleRow> {
-  const { rows } = await pool.query<{ id: string }>(
-    `INSERT INTO angle (project_id, name, calls_n, goal_total) VALUES ($1, $2, $3, $4) RETURNING id`,
-    [projectId, name, callsN, goalTotal]
+  const { rows } = await db.query<{ id: string }>(
+    invisibleCompetitionEnabled === undefined
+      ? `INSERT INTO angle (project_id, name, calls_n, goal_total) VALUES ($1, $2, $3, $4) RETURNING id`
+      : `INSERT INTO angle (project_id, name, calls_n, goal_total, invisible_competition_enabled) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+    invisibleCompetitionEnabled === undefined
+      ? [projectId, name, callsN, goalTotal]
+      : [projectId, name, callsN, goalTotal, invisibleCompetitionEnabled]
   );
-  return (await findAngleById(rows[0].id))!;
+  return (await findAngleById(rows[0].id, db))!;
 }
 
 const PATCHABLE_COLUMNS: Record<string, string> = {
@@ -51,6 +66,7 @@ const PATCHABLE_COLUMNS: Record<string, string> = {
   callsN: "calls_n",
   goalTotal: "goal_total",
   callsSold: "calls_sold",
+  invisibleCompetitionEnabled: "invisible_competition_enabled",
 };
 
 /** Same free-form patch pattern as updateProjectFields -- stamps calls_sold_updated_at whenever callsSold is touched, same as project used to. */
@@ -118,6 +134,22 @@ export function seatTargetForAngle(callsN: number, projectType: ProjectType): nu
  * already-claimed-by-this-same-person, or angle not found — so the route
  * layer can turn any of them into a plain 409 without distinguishing which.
  */
+/**
+ * A broadcast project stays `status = 'open'` until every angle has hit its
+ * seat target; once they all have, flip it to `active` so it drops off the
+ * broadcast list. Shared by the /accept and /angles/:id/claim routes so the two
+ * claim paths behave identically. Returns whether the project is now fully staffed.
+ */
+export async function activateProjectIfFullyStaffed(projectId: string, projectType: ProjectType): Promise<boolean> {
+  const angles = await listAnglesByProject(projectId);
+  for (const a of angles) {
+    const filled = await countAssignmentsForAngle(a.id);
+    if (filled < seatTargetForAngle(a.callsN, projectType)) return false;
+  }
+  await pool.query(`UPDATE project SET status = 'active' WHERE id = $1 AND status = 'open'`, [projectId]);
+  return true;
+}
+
 export async function claimAngleSeat(
   angleId: string,
   delivererId: string,
@@ -137,9 +169,16 @@ export async function claimAngleSeat(
     const angle = angleRows[0];
 
     const { rows: projectRows } = await client.query<{ projectType: ProjectType }>(
-      `SELECT project_type AS "projectType" FROM project WHERE id = $1`,
+      `SELECT project_type AS "projectType" FROM project WHERE id = $1 AND deleted_at IS NULL`,
       [angle.projectId]
     );
+    // Batch S — a soft-deleted project's angle can still be FOR UPDATE-locked
+    // above (the angle row itself isn't deleted), but there's no live project
+    // to claim a seat on; treat it the same as "angle not found."
+    if (projectRows.length === 0) {
+      await client.query("ROLLBACK");
+      return null;
+    }
     const projectType = projectRows[0].projectType;
     const target = seatTargetForAngle(angle.callsN, projectType);
 
@@ -161,8 +200,12 @@ export async function claimAngleSeat(
       return null;
     }
 
+    // Batch S — same as createAssignment(): every assignment starts in
+    // 'First Deliverable' by column default, so this claim is a transition
+    // into it.
     const { rows: inserted } = await client.query<{ id: string }>(
-      `INSERT INTO assignment (angle_id, deliverer_id, goal, custom_goal) VALUES ($1, $2, $3, $4) RETURNING id`,
+      `INSERT INTO assignment (angle_id, deliverer_id, goal, custom_goal, first_deliverable_last_at)
+       VALUES ($1, $2, $3, $4, now()) RETURNING id`,
       [angleId, delivererId, goal, computeCustomGoal(goal)]
     );
     await client.query("COMMIT");

@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
+import { withTransaction } from "../db";
 import { insertAuditLog } from "../repositories/auditLog";
-import { createAngle, listAnglesByProject } from "../repositories/angles";
+import { activateProjectIfFullyStaffed, claimAngleSeat, createAngle, listAnglesByProject } from "../repositories/angles";
 import {
   createAssignment,
   listAssignmentsByAngle,
@@ -10,13 +11,11 @@ import { listUnresolvedForProject } from "../repositories/goalChangeRequests";
 import { createNote, listNotesForProject } from "../repositories/notes";
 import {
   archiveProject,
-  claimOpenProject,
   createProject,
   findProjectById,
   listProjects,
-  reactivateProject,
   resurfaceProject,
-  setIdle,
+  softDeleteProject,
   updateProjectFields,
   type ProjectFilter,
   type ProjectRow,
@@ -58,10 +57,10 @@ async function publishProjectChanged(projectId: string, involvedPersonIds: strin
  * case collapses back to exactly the old per-project behavior.
  */
 async function withProjectFlags(project: ProjectRow, now: Date) {
-  // Project lifecycle change — idle and archived projects go quiet: never
-  // asked about in the morning calls-sold dialog, never flagged to chase the
-  // client. Skip the per-angle work entirely rather than compute-then-hide,
-  // since neither flag means anything for a project nobody's working.
+  // Project lifecycle — archived projects go quiet: never asked about in the
+  // morning calls-sold dialog, never flagged to chase the client. Skip the
+  // per-angle work entirely rather than compute-then-hide, since neither
+  // flag means anything for a project nobody's working.
   if (isProjectLifecycleQuiet(project.status)) {
     return { ...project, needsCallsSoldUpdate: false, chaseClient: false };
   }
@@ -71,7 +70,12 @@ async function withProjectFlags(project: ProjectRow, now: Date) {
   for (const angle of angles) {
     if (needsCallsSoldUpdateToday(angle.callsSoldUpdatedAt, now)) needsCallsSoldUpdate = true;
     const angleAssignments = await listAssignmentsByAngle(angle.id);
-    const totalDelivered = angleAssignments.reduce((sum, a) => sum + a.delivered + a.customDelivered, 0);
+    // "Invisible competition" — the ghost is the competition, not extra
+    // capacity: its delivered never counts toward this flag, same as it
+    // never counts toward the goal/delivered roll-ups on the client.
+    const totalDelivered = angleAssignments
+      .filter((a) => !a.isGhost)
+      .reduce((sum, a) => sum + a.delivered + a.customDelivered, 0);
     if (needsChaseClient(totalDelivered, angle.callsSold, angle.callsN)) chaseClient = true;
   }
   return { ...project, needsCallsSoldUpdate, chaseClient };
@@ -107,13 +111,13 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
   });
 
   /**
-   * Morning calls-sold dialog — the actor's own led projects that need
-   * today's update, plus (separately) their currently-idle projects for the
-   * dialog's skippable "Parked" section. Always scoped to "mine": this is a
-   * personal daily task, not something Team view surfaces on someone else's
-   * behalf. Open (never-staffed) and idle/archived projects are never
-   * "due" — idle/archived by definition (see isProjectLifecycleQuiet), open
-   * because there's no one to chase calls sold for yet.
+   * Morning calls-sold dialog — the actor's own led active projects that
+   * need today's update. Always scoped to "mine": this is a personal daily
+   * task, not something Team view surfaces on someone else's behalf. Open
+   * (never-staffed) and archived projects are never "due" — archived by
+   * definition (see isProjectLifecycleQuiet), open because there's no one to
+   * chase calls sold for yet. (Batch S removed 'idle' and, with it, this
+   * route's old "parked" bucket — there's no third status left to bucket.)
    */
   app.get("/calls-sold-due", { preHandler: [app.requireAuth] }, async (request) => {
     const actor = request.actor!;
@@ -126,13 +130,8 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
       topic: string | null;
       angles: { id: string; name: string; callsN: number; callsSold: number }[];
     }[] = [];
-    const parked: { id: string; client: string; topic: string | null }[] = [];
 
     for (const project of projects) {
-      if (project.status === "idle") {
-        parked.push({ id: project.id, client: project.client, topic: project.topic });
-        continue;
-      }
       if (project.status !== "active") continue;
 
       const angles = await listAnglesByProject(project.id);
@@ -147,15 +146,22 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
       }
     }
 
-    return { due, parked };
+    return { due };
   });
 
   app.get<{ Params: { id: string } }>("/:id", { preHandler: [app.requireAuth] }, async (request) => {
+    const actor = request.actor!;
     const project = await findProjectById(request.params.id);
     if (!project) throw notFound("project not found");
     const assignments = await listAssignmentsByProject(project.id);
     const angles = await listAnglesByProject(project.id);
-    return { project: await withProjectFlags(project, resolveNow(request)), assignments, angles };
+    // Batch S, item 4 — notes were already persisted and readable (via the
+    // dedicated Notes sheet), just not on the card itself. Folding them into
+    // the one detail fetch both boards already make per card is what
+    // actually surfaces them there; reuses listNotesForProject() (same
+    // privacy filter the sheet already relies on) rather than a new query.
+    const notes = await listNotesForProject(project.id, actor.id);
+    return { project: await withProjectFlags(project, resolveNow(request)), assignments, angles, notes };
   });
 
   // §5a/§5b (domain change 4) — pure computation, no DB write. Intake wizard
@@ -243,6 +249,8 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
         callsN?: number;
         goalTotal?: number;
         assignments?: { delivererId: string; goal: number; override?: { justification: string } }[];
+        /** "Invisible competition" — per-angle opt-out for ghost suggestion below; omitted means the column's own default (true). */
+        invisibleCompetitionEnabled?: boolean;
       }[];
     };
   }>("/", { preHandler: [app.requireAuth] }, async (request) => {
@@ -279,7 +287,10 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const allAssignments = angleInputs.flatMap((ang) => ang.assignments ?? []);
-    const project = await createProject({
+    // Built out here (not inside the closure below) so TypeScript keeps the
+    // narrowing from this handler's earlier body validation — narrowing is
+    // reset inside a nested function scope.
+    const projectInput = {
       plId: actor.id,
       client: body.client,
       account: body.account,
@@ -287,44 +298,143 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
       projectLink: body.projectLink,
       projectType: body.projectType,
       expertPool: body.expertPool,
-      status: allAssignments.length > 0 ? "active" : "open",
+      status: allAssignments.length > 0 ? ("active" as const) : ("open" as const),
       clientEntity: body.clientEntity ?? 1,
-    });
+    };
 
-    for (const ang of angleInputs) {
-      const createdAngle = await createAngle(project.id, ang.name!.trim(), ang.callsN!, ang.goalTotal!);
-      for (const a of ang.assignments ?? []) {
-        await createAssignment(createdAngle.id, a.delivererId, a.goal);
-        // §6 (built) — an override (the PL picked someone other than who the
-        // ranking/auto-match suggested) always carries a justification; log it
-        // to the audit trail. Never notify anyone about the override itself —
-        // the ordinary "assigned" notification below still reaches the person.
-        if (a.override?.justification) {
-          await insertAuditLog({
-            entityType: "assignment",
-            entityId: project.id,
-            actorId: actor.id,
-            action: "manual_override",
-            newValue: { pickedInstead: a.delivererId, justification: a.override.justification },
-          });
+    // Create the project + its angles + assignments + audit rows atomically:
+    // a failure partway (e.g. a duplicate/invalid deliverer) must not leave an
+    // orphaned or half-staffed project committed. Notifications/WS publish only
+    // after the transaction commits (below), never on rollback.
+    //
+    // "Invisible competition" — the ghost-allocation pass runs INSIDE the same
+    // transaction (a ghost assignment is part of the same atomic create), but
+    // its notifications are collected and sent only after commit.
+    const ghostDelivererIds: string[] = [];
+    const ghostNotifications: { personId: string; goal: number }[] = [];
+    const isDDOrStrategy = body.projectType === "Due Diligence" || body.projectType === "Strategy";
+
+    const project = await withTransaction(async (tx) => {
+      const created = await createProject(
+        projectInput,
+        tx
+      );
+
+      // Angles that got a real associate AND are eligible for a ghost
+      // suggestion (Due Diligence/Strategy only, never Pitch; toggle not
+      // explicitly off). Populated in the loop, consumed by the ghost pass.
+      const ghostEligibleAngles: { id: string; realGoal: number }[] = [];
+
+      for (const ang of angleInputs) {
+        const createdAngle = await createAngle(
+          created.id,
+          ang.name!.trim(),
+          ang.callsN!,
+          ang.goalTotal!,
+          ang.invisibleCompetitionEnabled,
+          tx
+        );
+        for (const a of ang.assignments ?? []) {
+          await createAssignment(createdAngle.id, a.delivererId, a.goal, false, tx);
+          // §6 (built) — an override (the PL picked someone other than who the
+          // ranking/auto-match suggested) always carries a justification; log it
+          // to the audit trail. Never notify anyone about the override itself —
+          // the ordinary "assigned" notification below still reaches the person.
+          if (a.override?.justification) {
+            await insertAuditLog(
+              {
+                entityType: "assignment",
+                entityId: created.id,
+                actorId: actor.id,
+                action: "manual_override",
+                newValue: { pickedInstead: a.delivererId, justification: a.override.justification },
+              },
+              tx
+            );
+          }
+        }
+        // §6 (built) — audit-log whenever the PL revises an angle's suggested goal downwards, before it's ever staffed.
+        const suggested = suggestGoal(ang.callsN!, body.projectType as ProjectType);
+        if (ang.goalTotal! < suggested) {
+          await insertAuditLog(
+            {
+              entityType: "angle",
+              entityId: createdAngle.id,
+              actorId: actor.id,
+              action: "downward_goal_revision",
+              oldValue: { suggestedGoal: suggested },
+              newValue: { goalTotal: ang.goalTotal },
+            },
+            tx
+          );
+        }
+        // "Invisible competition" — a ghost only ever mirrors an ALREADY-staffed
+        // real associate on this same angle ("complementary, never a
+        // replacement"); an angle with zero real assignments has no one for it
+        // to compete against, so it's never a candidate here.
+        const firstRealAssignment = (ang.assignments ?? [])[0];
+        if (isDDOrStrategy && firstRealAssignment && createdAngle.invisibleCompetitionEnabled) {
+          ghostEligibleAngles.push({ id: createdAngle.id, realGoal: firstRealAssignment.goal });
         }
       }
-      // §6 (built) — audit-log whenever the PL revises an angle's suggested goal downwards, before it's ever staffed.
-      const suggested = suggestGoal(ang.callsN!, body.projectType as ProjectType);
-      if (ang.goalTotal! < suggested) {
-        await insertAuditLog({
-          entityType: "angle",
-          entityId: createdAngle.id,
-          actorId: actor.id,
-          action: "downward_goal_revision",
-          oldValue: { suggestedGoal: suggested },
-          newValue: { goalTotal: ang.goalTotal },
-        });
+
+      // ONE ranking pass across every eligible angle, reusing
+      // rankCandidates()/applyFirstDeliverableBlock()/allocateAcrossAngles()
+      // verbatim (not forked): only the candidate POOL differs (ghost-flagged
+      // people). SILENT FAILURE per angle — no eligible ghost means that angle
+      // simply gets none: no warning, no notification, no broadcast.
+      if (ghostEligibleAngles.length > 0) {
+        const now = resolveNow(request);
+        const hour = dubaiHour(now);
+        const rotaSet = await sundayRotaPersonIdsForDate(dubaiDateKey(now));
+        const ghostContext = { now, sundayRotaPersonIds: rotaSet, plPracticeArea: actor.practiceArea ?? "" };
+        const ghostCandidates = await listAvailableCandidatesWithAssignments({ ghost: true });
+        const ghostRanked = applyFirstDeliverableBlock(rankCandidates(ghostCandidates, ghostContext), ghostCandidates, hour);
+        const { perAngle } = allocateAcrossAngles(
+          ghostRanked,
+          ghostEligibleAngles.map((a) => ({ key: a.id, staffCount: 1 }))
+        );
+        for (const alloc of perAngle) {
+          const pick = alloc.picked[0];
+          if (!pick) continue; // silent failure — no ghost available for this angle
+          const angleInfo = ghostEligibleAngles.find((a) => a.id === alloc.key)!;
+          const ghostAssignment = await createAssignment(angleInfo.id, pick.personId, angleInfo.realGoal, true, tx);
+          ghostDelivererIds.push(pick.personId);
+          ghostNotifications.push({ personId: pick.personId, goal: angleInfo.realGoal });
+          await insertAuditLog(
+            {
+              entityType: "assignment",
+              entityId: ghostAssignment.id,
+              actorId: actor.id,
+              action: "ghost_assign",
+              newValue: { personId: pick.personId, angleId: angleInfo.id, goal: angleInfo.realGoal },
+            },
+            tx
+          );
+        }
       }
+
+      await insertAuditLog(
+        { entityType: "project", entityId: created.id, actorId: actor.id, action: "create", newValue: body },
+        tx
+      );
+      return created;
+    });
+
+    // Ghost "assigned" notifications — deliberately identical wording to a
+    // real assignment's (the ghost never knows they're the competition).
+    for (const g of ghostNotifications) {
+      await notify({
+        personId: g.personId,
+        type: "assigned",
+        title: "New project assigned to you",
+        body: `${project.client} — you've been staffed with a goal of ${g.goal}.`,
+        entityType: "project",
+        entityId: project.id,
+      });
     }
 
-    await insertAuditLog({ entityType: "project", entityId: project.id, actorId: actor.id, action: "create", newValue: body });
-    await publishProjectChanged(project.id, [actor.id, ...allAssignments.map((a) => a.delivererId)]);
+    await publishProjectChanged(project.id, [actor.id, ...allAssignments.map((a) => a.delivererId), ...ghostDelivererIds]);
     if (allAssignments.length > 0) {
       publish({ type: "capacity-ranking" });
       // §9 (built) — "project assigned to you," one per newly staffed deliverer.
@@ -511,37 +621,25 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
     return updated;
   });
 
-  // Project lifecycle change — "idle": parked, waiting on something external,
-  // nothing to do now. PL-only, same permission check as archive. Only valid
-  // from 'active' (repository enforces the guard); a project that's still
-  // unstaffed or already quiet has nothing to park.
-  app.post<{ Params: { id: string } }>("/:id/idle", { preHandler: [app.requireAuth] }, async (request) => {
+  /**
+   * Batch S — soft delete. PL-only (same rule as archive — canArchiveProject
+   * reused, not duplicated, since it's exactly "actor is the PL" either
+   * way). The confirmation step lives client-side (this is the destructive
+   * action itself, not a place to add a second one server-side); this route
+   * commits once called. Never a hard delete — see softDeleteProject().
+   */
+  app.post<{ Params: { id: string } }>("/:id/delete", { preHandler: [app.requireAuth] }, async (request) => {
     const actor = request.actor!;
     const project = await findProjectById(request.params.id);
     if (!project) throw notFound("project not found");
-    if (!canArchiveProject(actor.id, project)) throw forbidden("only the PL may park this project");
-    const updated = await setIdle(project.id);
-    if (!updated) throw badRequest("only an active project can be parked");
-    await insertAuditLog({ entityType: "project", entityId: project.id, actorId: actor.id, action: "idle" });
+    if (!canArchiveProject(actor.id, project)) throw forbidden("only the PL may delete this project");
+    const deleted = await softDeleteProject(project.id);
+    if (!deleted) throw notFound("project not found");
+    await insertAuditLog({ entityType: "project", entityId: project.id, actorId: actor.id, action: "delete" });
     const assignments = await listAssignmentsByProject(project.id);
     await publishProjectChanged(project.id, [project.plId, ...assignments.map((a) => a.delivererId)]);
     publish({ type: "capacity-ranking" });
-    return updated;
-  });
-
-  // One-tap reactivate — only valid from 'idle'.
-  app.post<{ Params: { id: string } }>("/:id/reactivate", { preHandler: [app.requireAuth] }, async (request) => {
-    const actor = request.actor!;
-    const project = await findProjectById(request.params.id);
-    if (!project) throw notFound("project not found");
-    if (!canArchiveProject(actor.id, project)) throw forbidden("only the PL may reactivate this project");
-    const updated = await reactivateProject(project.id);
-    if (!updated) throw badRequest("only an idle project can be reactivated");
-    await insertAuditLog({ entityType: "project", entityId: project.id, actorId: actor.id, action: "reactivate" });
-    const assignments = await listAssignmentsByProject(project.id);
-    await publishProjectChanged(project.id, [project.plId, ...assignments.map((a) => a.delivererId)]);
-    publish({ type: "capacity-ranking" });
-    return updated;
+    return { id: project.id };
   });
 
   // §4 — open pool, first-commit-wins claim. No PL/manager gate: any currently-eligible person may accept.
@@ -562,22 +660,42 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
       );
       if (!elig.eligible) throw forbidden(`not eligible right now: ${elig.reason}`);
 
-      const claimed = await claimOpenProject(project.id);
-      if (!claimed) throw conflict("already claimed by someone else");
-
-      // Deliberate simplification: an open-pool project's claim always lands
-      // on its first (earliest-created) angle. Multi-angle open-pool
-      // projects aren't a described product flow yet -- if that becomes a
-      // real scenario, accepting needs its own angle picker.
-      const angles = await listAnglesByProject(claimed.id);
+      // Claim ONE seat on the project's first angle, atomically — identical
+      // semantics to /angles/:id/claim. Previously this flipped the WHOLE
+      // project to 'active' on the first acceptor and assigned them the entire
+      // angle goal, which silently abandoned any still-open seats (dropping the
+      // project off the broadcast) and over-assigned the goal. Now the project
+      // only goes 'active' once every angle has hit its seat target.
+      const angles = await listAnglesByProject(project.id);
       const angle = angles[0];
-      const assignment = await createAssignment(angle.id, actor.id, request.body?.goal ?? angle.goalTotal);
-      await insertAuditLog({ entityType: "project", entityId: claimed.id, actorId: actor.id, action: "accept_open" });
-      await publishProjectChanged(claimed.id, [claimed.plId, actor.id]);
+      const target = seatTargetForAngle(angle.callsN, project.projectType as ProjectType);
+      const goal = request.body?.goal ?? Math.max(1, Math.ceil(angle.goalTotal / target));
+      const claimed = await claimAngleSeat(angle.id, actor.id, goal);
+      if (!claimed) throw conflict("that seat is no longer available");
+
+      const fullyStaffed = await activateProjectIfFullyStaffed(project.id, project.projectType as ProjectType);
+
+      await insertAuditLog({
+        entityType: "assignment",
+        entityId: claimed.id,
+        actorId: actor.id,
+        action: "claim_broadcast_seat",
+        newValue: { angleId: angle.id, delivererId: actor.id, goal },
+      });
+      await publishProjectChanged(project.id, [project.plId, actor.id]);
       // §4 first-commit-wins — everyone else's open pool must drop this immediately.
       publish({ type: "open-pool" });
       publish({ type: "capacity-ranking" });
-      return { project: claimed, assignment };
+      // Mirror /claim: tell the PL a broadcast seat was taken.
+      await notify({
+        personId: project.plId,
+        type: "assigned",
+        title: "Seat claimed from the broadcast",
+        body: `${project.client} — ${angle.name} just got a new deliverer from the broadcast.`,
+        entityType: "project",
+        entityId: project.id,
+      });
+      return { angleId: angle.id, assignmentId: claimed.id, fullyStaffed };
     }
   );
 

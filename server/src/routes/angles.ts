@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
-import { pool } from "../db";
 import {
+  activateProjectIfFullyStaffed,
   claimAngleSeat,
   countAnglesForProject,
   countAssignmentsForAngle,
@@ -167,19 +167,7 @@ const anglesRoutes: FastifyPluginAsync = async (app) => {
       // project is fully staffed -- flip it active so it drops off the
       // broadcast list entirely. Until then it stays 'open' so its
       // still-short angle(s) (this one or a sibling) keep broadcasting.
-      const allAngles = await listAnglesByProject(project.id);
-      let fullyStaffed = true;
-      for (const a of allAngles) {
-        const aTarget = seatTargetForAngle(a.callsN, project.projectType as ProjectType);
-        const filled = await countAssignmentsForAngle(a.id);
-        if (filled < aTarget) {
-          fullyStaffed = false;
-          break;
-        }
-      }
-      if (fullyStaffed) {
-        await pool.query(`UPDATE project SET status = 'active' WHERE id = $1 AND status = 'open'`, [project.id]);
-      }
+      const fullyStaffed = await activateProjectIfFullyStaffed(project.id, project.projectType as ProjectType);
 
       await insertAuditLog({
         entityType: "assignment",

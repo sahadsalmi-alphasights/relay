@@ -8,6 +8,7 @@ import {
   listPeopleByTeam,
   listUnassignedPeople,
   removeFromTeam,
+  setGhostFlag,
   updateEveningCoverage,
   updatePersonStatus,
 } from "../repositories/people";
@@ -106,6 +107,38 @@ const peopleRoutes: FastifyPluginAsync = async (app) => {
       publish({ type: "people" });
       publish({ type: "capacity-ranking" });
       return { person: updated, warning: warn ? { outstandingProfiles: outstanding } : null };
+    }
+  );
+
+  /**
+   * "Invisible competition" — manager sets/unsets a person's ghost flag,
+   * same team-scoped rule as every other roster action (canManageTeamRoster).
+   * Server-enforced, not just hidden in the UI. Easily reversible: this is
+   * the only write path for is_ghost, in either direction.
+   */
+  app.patch<{ Params: { id: string }; Body: { isGhost?: boolean } }>(
+    "/:id/ghost",
+    { preHandler: [app.requireAuth] },
+    async (request) => {
+      const actor = request.actor!;
+      const target = await findPersonById(request.params.id);
+      if (!target) throw notFound("unknown person");
+      if (!target.teamId || !canManageTeamRoster(actor, { teamId: target.teamId })) {
+        throw forbidden("only a manager may set ghost status for their own team");
+      }
+      if (typeof request.body?.isGhost !== "boolean") throw badRequest("isGhost must be a boolean");
+      const updated = await setGhostFlag(target.id, request.body.isGhost);
+      await insertAuditLog({
+        entityType: "person",
+        entityId: target.id,
+        actorId: actor.id,
+        action: "set_ghost",
+        oldValue: { isGhost: target.isGhost },
+        newValue: { isGhost: request.body.isGhost },
+      });
+      publish({ type: "people" });
+      publish({ type: "capacity-ranking" });
+      return updated;
     }
   );
 

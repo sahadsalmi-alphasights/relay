@@ -58,6 +58,17 @@ export function barColor(pct: number): string {
   return "var(--red)";
 }
 
+/**
+ * Manager feedback batch, item 8 — visual-only: delivered exceeding goal
+ * isn't tracked anywhere new, it's derived at render time from the existing
+ * delivered/customDelivered vs goal fields every progress bar already reads.
+ * Returns the surplus (0 if not over), so a call site can both test it and
+ * label it ("Overdelivered +N") from one call.
+ */
+export function overDelivered(done: number, goal: number): number {
+  return Math.max(0, done - goal);
+}
+
 export function paceInfo(pct: number, stage: string): { color: string; label: string } {
   if (stage === "Hail Mary") return { color: "var(--red)", label: "Behind" };
   if (stage === "Selling") return { color: "var(--pl)", label: stageLabel(stage) };

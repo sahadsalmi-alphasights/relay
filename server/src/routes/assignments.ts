@@ -22,10 +22,12 @@ import {
 import { STAGE_ORDER } from "../rules/config";
 import { advanceStage, backStage } from "../rules/stage";
 import { swapDeliverer } from "../rules/swap";
-import type { Stage } from "../rules/types";
+import type { ProjectStatus, Stage } from "../rules/types";
 import { notify } from "../services/notify";
 import { publish } from "../ws/hub";
 import { projectRecipientIds } from "../ws/recipients";
+
+const PROJECT_STATUSES: ProjectStatus[] = ["open", "active", "archived"];
 
 async function publishProjectChanged(projectId: string, involvedPersonIds: string[]): Promise<void> {
   const recipients = await projectRecipientIds(involvedPersonIds);
@@ -276,8 +278,15 @@ const assignmentsRoutes: FastifyPluginAsync = async (app) => {
     }
   );
 
-  // §5e — a deliverer may only *request* a goal change, never write it directly.
-  app.post<{ Params: { id: string }; Body: { body?: string } }>(
+  /**
+   * §5e — a deliverer may only *request* a goal change, never write it
+   * directly. Batch S, item 4 — the request now carries a structured
+   * requestedGoal (numeric) and requestedStatus alongside the existing free-
+   * text body (kept as optional rationale/context, no longer the only
+   * signal). Both new fields are required: a request the PL can't act on
+   * without first going and asking "how much?" defeats the point.
+   */
+  app.post<{ Params: { id: string }; Body: { body?: string; requestedGoal?: number; requestedStatus?: string } }>(
     "/:id/goal-change-requests",
     { preHandler: [app.requireAuth] },
     async (request) => {
@@ -287,8 +296,21 @@ const assignmentsRoutes: FastifyPluginAsync = async (app) => {
       if (!canRequestGoalChange(actor.id, assignment)) {
         throw forbidden("only the assignment's own deliverer may request a goal change");
       }
-      if (!request.body?.body) throw badRequest("body is required");
-      const created = await createGoalChangeRequest(assignment.id, actor.id, request.body.body);
+      const { requestedGoal, requestedStatus } = request.body ?? {};
+      if (typeof requestedGoal !== "number" || !Number.isFinite(requestedGoal) || requestedGoal < 0) {
+        throw badRequest("requestedGoal must be a non-negative number");
+      }
+      if (!requestedStatus || !PROJECT_STATUSES.includes(requestedStatus as (typeof PROJECT_STATUSES)[number])) {
+        throw badRequest(`requestedStatus must be one of: ${PROJECT_STATUSES.join(", ")}`);
+      }
+      const body = request.body?.body ?? "";
+      const created = await createGoalChangeRequest(
+        assignment.id,
+        actor.id,
+        body,
+        requestedGoal,
+        requestedStatus as (typeof PROJECT_STATUSES)[number]
+      );
       const project = await findProjectById(assignment.projectId);
       if (project) {
         await publishProjectChanged(project.id, [project.plId, assignment.delivererId]);
@@ -297,7 +319,7 @@ const assignmentsRoutes: FastifyPluginAsync = async (app) => {
           personId: project.plId,
           type: "goal_change_requested",
           title: "Goal change requested",
-          body: `${actor.name} on ${project.client}: "${request.body.body}"`,
+          body: `${actor.name} on ${project.client}: goal ${requestedGoal}, status ${requestedStatus}${body ? ` — "${body}"` : ""}.`,
           entityType: "goal_change_request",
           entityId: created.id,
         });

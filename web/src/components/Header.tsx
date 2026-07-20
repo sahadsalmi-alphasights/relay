@@ -7,7 +7,7 @@ import type { LiveStatus } from "../lib/useLiveSocket";
 import type { NotificationsState } from "../lib/useNotifications";
 import NotificationBell from "./NotificationBell";
 
-export type Tab = "PL" | "Delivery" | "Ranking" | "FirstDel" | "AuditLog" | "Users";
+export type Tab = "PL" | "Delivery" | "Ranking" | "GhostRanking" | "FirstDel" | "AuditLog" | "Users";
 export type Scope = "mine" | "team";
 
 export default function Header({
@@ -86,6 +86,10 @@ export default function Header({
           </button>
           <button className={tab === "Ranking" ? "on-rk" : ""} onClick={() => setTab("Ranking")}>
             Capacity
+          </button>
+          {/* "Invisible competition" — same visibility as Capacity Ranking, no manager gate: "visible to everyone." */}
+          <button className={tab === "GhostRanking" ? "on-rk" : ""} onClick={() => setTab("GhostRanking")}>
+            👻 Ghost
           </button>
           <button className={tab === "FirstDel" ? "on-fd" : ""} onClick={() => setTab("FirstDel")}>
             1st Del{fdCount ? ` · ${fdCount}` : ""}

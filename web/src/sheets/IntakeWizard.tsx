@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, ApiError } from "../api/client";
 import type { ExpertPool, RankedCandidate } from "../api/types";
 import Sheet from "../components/Sheet";
@@ -45,10 +45,21 @@ interface AngleForm {
   ranked: RankedCandidate[] | null;
   picked: RankedCandidate[];
   overrides: Record<string, string>;
+  /** "Invisible competition" — defaults on; only read for Due Diligence/Strategy angles (never Pitch). */
+  invisibleCompetitionEnabled: boolean;
 }
 
 function newAngle(callsN: string): AngleForm {
-  return { name: "", callsN, goalTotal: 0, staffCount: 1, ranked: null, picked: [], overrides: {} };
+  return {
+    name: "",
+    callsN,
+    goalTotal: 0,
+    staffCount: 1,
+    ranked: null,
+    picked: [],
+    overrides: {},
+    invisibleCompetitionEnabled: true,
+  };
 }
 
 /** §5a (eight changes, domain change 4) — the formula actually used, shown so a deliverer can always see why their goal is what it is. */
@@ -67,7 +78,7 @@ function goalCalcText(projectType: FormState["projectType"], callsN: number, goa
 }
 
 export default function IntakeWizard({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
-  const { nameOf, practiceOf, effectiveAfterHours, sunday } = useApp();
+  const { nameOf, practiceOf, effectiveAfterHours, sunday, people } = useApp();
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [f, setF] = useState<FormState>({
     client: "",
@@ -91,6 +102,18 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
   const [justificationText, setJustificationText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Manager feedback batch, item 5 — the override panel (and its
+  // justification field) renders below whichever candidate row was clicked,
+  // which can be well off-screen in a long ranked list. Scroll it into view
+  // the moment it mounts, instead of leaving the user to find it themselves.
+  const justificationRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (overridingAngle !== null && overridingId) {
+      justificationRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      justificationRef.current?.focus();
+    }
+  }, [overridingAngle, overridingId]);
 
   const minCallsN = f.projectType === "Pitch" ? 0 : 1;
   const multiAngle = angles.length > 1;
@@ -182,15 +205,32 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
     setReplaceTarget(angles[angleIndex].picked[0]?.personId ?? "");
     setJustificationText("");
   };
+  // Managers are excluded from the ranked candidate pool entirely (never
+  // suggested, never auto-picked — see services/candidates.ts). They're
+  // still manually staffable: a synthetic RankedCandidate lets a manager
+  // pick flow through the exact same override machinery as any other pick.
+  const managerAsCandidate = (id: string): RankedCandidate => ({
+    personId: id,
+    eligible: true,
+    load: 0,
+    rawRemaining: 0,
+    practiceAreaMatch: false,
+    free: false,
+  });
   const confirmOverride = () => {
-    if (overridingAngle === null || !overridingId || !replaceTarget || !justificationText.trim()) return;
+    if (overridingAngle === null || !overridingId || !justificationText.trim()) return;
     const angleIndex = overridingAngle;
     const angle = angles[angleIndex];
-    const candidate = angle.ranked?.find((r) => r.personId === overridingId);
-    if (!candidate) return;
-    const nextPicked = angle.picked.map((p) => (p.personId === replaceTarget ? candidate : p));
+    // An angle with zero auto-picked candidates ("No one available now") has
+    // nothing for `replaceTarget` to name — a manager pick there is an
+    // ADD, not a replace. Every other case (including a manager replacing a
+    // real pick) still needs a target.
+    if (angle.picked.length > 0 && !replaceTarget) return;
+    const candidate = angle.ranked?.find((r) => r.personId === overridingId) ?? managerAsCandidate(overridingId);
+    const nextPicked =
+      angle.picked.length > 0 ? angle.picked.map((p) => (p.personId === replaceTarget ? candidate : p)) : [candidate];
     const nextOverrides = { ...angle.overrides };
-    delete nextOverrides[replaceTarget];
+    if (replaceTarget) delete nextOverrides[replaceTarget];
     nextOverrides[overridingId] = justificationText.trim();
     updateAngle(angleIndex, { picked: nextPicked, overrides: nextOverrides });
     setOverridingAngle(null);
@@ -205,6 +245,16 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
   // below lets the PL assign them anyway, with the usual justification.
   const sharedRanked = angles[0]?.ranked ?? null;
   const blockedByFirstDeliverable = sharedRanked?.filter((r) => r.ineligibleReason === "first_deliverable_conflict") ?? [];
+  // Copy-only patch — the soft-rule explanation and the first-deliverable
+  // block used to be two separate paragraphs, both ending in the same
+  // "Pick instead" instruction. One line now; the blocked clause drops
+  // entirely at zero rather than rendering "0 blocked".
+  const matchHintText =
+    `Prefers your practice area when free.` +
+    (blockedByFirstDeliverable.length > 0
+      ? ` ${blockedByFirstDeliverable.length} blocked (already on a First Deliverable).`
+      : "") +
+    ` Use "Pick instead" for anyone else — needs a reason.`;
   // CHANGE 4 — partial fill: some (not zero, not all) of an angle's wanted
   // seats got filled. Zero eligible anywhere (totalEligible === 0) is
   // Change 3's broadcast case instead, handled by the existing "No one
@@ -235,6 +285,8 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
               goal: perPerson,
               ...(a.overrides[r.personId] ? { override: { justification: a.overrides[r.personId] } } : {}),
             })),
+            // "Invisible competition" — only meaningful for Due Diligence/Strategy; omitted for Pitch (server default applies, harmlessly unread there).
+            ...(f.projectType !== "Pitch" ? { invisibleCompetitionEnabled: a.invisibleCompetitionEnabled } : {}),
           };
         }),
       });
@@ -440,6 +492,19 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
                       </div>
                     </div>
                   </div>
+                  {/* "Invisible competition" — Due Diligence/Strategy only,
+                      never Pitch. Defaults on; this is the one moment the PL
+                      can switch it off before the system suggests a ghost. */}
+                  {f.projectType !== "Pitch" && (
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, margin: "8px 2px 0", cursor: "pointer" }}>
+                      <input
+                        type="checkbox"
+                        checked={a.invisibleCompetitionEnabled}
+                        onChange={(e) => updateAngle(i, { invisibleCompetitionEnabled: e.target.checked })}
+                      />
+                      Invisible competition — suggest a ghost deliverer for this angle if one's available
+                    </label>
+                  )}
                 </div>
               );
             })}
@@ -466,29 +531,12 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
                 ? "After hours — evening-coverage volunteers only."
                 : "Working hours — all available staff."}
             </div>
-            {!matching && (
-              <div className="match-hint">
-                Soft rule: prefers your practice area when they're free — remaining profiles at or below the org-wide median.
-                Not who you want? Click "Pick instead" on anyone else free below (needs a reason).
-              </div>
-            )}
-            {/* CHANGE 2 — moved up and made prominent: this used to be
-                impossible to act on at all (a blocked candidate had no
-                affordance, just grey text). Now shown right at the top of
-                the match step, and every blocked row below gets a real
-                "Pick instead" override button. */}
-            {!matching && blockedByFirstDeliverable.length > 0 && (
-              <div className="suggest" style={{ background: "var(--red-bg)", borderColor: "#F3C6C6", marginBottom: 14 }}>
-                <div className="suggest-lbl" style={{ color: "#A82F2F" }}>
-                  {blockedByFirstDeliverable.length} blocked by the first-deliverable rule
-                </div>
-                <p style={{ fontSize: 12, margin: "6px 0 0", color: "var(--ink)" }}>
-                  Already on a First Deliverable for a Strategy/Due Diligence project while that pool is currently
-                  online — auto-assign skips them, but you can still assign them yourself: click "Pick instead" on
-                  their row below (needs a reason).
-                </p>
-              </div>
-            )}
+            {/* Copy-only patch — was two separate blocks (soft-rule text +
+                a large red "blocked by first-deliverable" box), both ending
+                in the same "Pick instead" instruction. Combined into one
+                quiet, informational line; blocked candidates are still
+                overridable exactly as before (unchanged below). */}
+            {!matching && <div className="match-hint">{matchHintText}</div>}
             {matching && (
               <div style={{ textAlign: "center", padding: 30, fontFamily: "'Space Grotesk'", color: "var(--soft)" }}>ranking…</div>
             )}
@@ -541,22 +589,22 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
                           <div className="assignee-sub">
                             {!r.eligible
                               ? r.ineligibleReason === "not_on_sunday_rota"
-                                ? "not on today's Sunday rota"
+                                ? "Not on today's Sunday rota"
                                 : r.ineligibleReason === "first_deliverable_conflict"
-                                ? "busy — first deliverable elsewhere"
-                                : "evening coverage off"
+                                ? "Busy — first deliverable elsewhere"
+                                : "Evening coverage off"
                               : isPicked
-                              ? <span className="picktag">picked ✓{isOverridden ? " · override" : r.practiceAreaMatch ? " · your practice" : ""}</span>
+                              ? <span className="picktag">Picked ✓{isOverridden ? " · override" : r.practiceAreaMatch ? " · your practice" : ""}</span>
                               : placedElsewhere
-                              ? `picked on ${placedElsewhere}`
+                              ? `Picked on ${placedElsewhere}`
                               : r.free
-                              ? "free"
-                              : "available"}
+                              ? "Free"
+                              : "Available"}
                           </div>
                         </div>
                         <div className="load-score">
                           <b>{r.load.toFixed(1)}</b>
-                          <small>load</small>
+                          <small>Load</small>
                         </div>
                         {!isPicked && (r.eligible || isBlockedByFDConflict) && a.picked.length > 0 && (
                           <button className="btn-sm btn-ghost" style={{ marginLeft: 8 }} onClick={() => startOverride(angleIndex, r.personId)}>
@@ -566,6 +614,27 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
                       </div>
                     );
                   })}
+
+                  {/* Managers never appear in `a.ranked` (excluded at the
+                      source — never suggested, never auto-picked), so
+                      they're a separate, always-visible add-a-manager
+                      section instead of a row in the ranked list above. */}
+                  {people
+                    .filter((p) => (p.isManager || p.isOwner) && p.status === "Available" && !a.picked.some((pk) => pk.personId === p.id))
+                    .map((m) => (
+                      <div key={m.id} className="match-line">
+                        <div className="avatar">{initials(m.name)}</div>
+                        <div>
+                          <div className="assignee-name">
+                            {m.name} <span style={{ color: "var(--soft)", fontWeight: 500 }}>· {m.practiceArea}</span>
+                          </div>
+                          <div className="assignee-sub">Manager — never suggested, always a manual pick</div>
+                        </div>
+                        <button className="btn-sm btn-ghost" style={{ marginLeft: 8 }} onClick={() => startOverride(angleIndex, m.id)}>
+                          Pick instead
+                        </button>
+                      </div>
+                    ))}
 
                   {overridingAngle === angleIndex && overridingId && (
                     <div className="suggest" style={{ marginTop: 10 }}>
@@ -588,6 +657,7 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
                       <div className="field">
                         <label>Justification — required to pick someone other than suggested</label>
                         <input
+                          ref={justificationRef}
                           value={justificationText}
                           onChange={(e) => setJustificationText(e.target.value)}
                           placeholder="e.g. client specifically asked for this person"

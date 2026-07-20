@@ -4,8 +4,8 @@ export type ExpertPool = "Global" | "EU & MEA & India" | "AUS / NZ / Sing / JP" 
 
 export type Stage = "First Deliverable" | "Second Deliverable" | "Hail Mary" | "Selling";
 
-/** Project lifecycle — open (unclaimed) -> active (staffed) -> idle (parked) -> active again, archived from any of the three. */
-export type ProjectStatus = "open" | "active" | "idle" | "archived";
+/** Project lifecycle — open (unclaimed) -> active (staffed), archived from either. Batch S removed 'idle'. */
+export type ProjectStatus = "open" | "active" | "archived";
 
 export interface Person {
   id: string;
@@ -17,6 +17,8 @@ export interface Person {
   practiceArea: string | null;
   status: PersonStatus;
   eveningCoverage: boolean;
+  /** "Invisible competition" — manager-set, team-scoped, reversible. */
+  isGhost: boolean;
   lastLoginAt: string | null;
   deactivatedAt: string | null;
 }
@@ -69,6 +71,8 @@ export interface Angle {
   goalTotal: number;
   callsSold: number;
   callsSoldUpdatedAt: string;
+  /** "Invisible competition" — per-angle opt-out, defaults true. Only actionable at intake time for Due Diligence/Strategy angles. */
+  invisibleCompetitionEnabled: boolean;
 }
 
 export interface Assignment {
@@ -84,6 +88,8 @@ export interface Assignment {
   /** §3/§8 (domain change 8) — stage is per-deliverer, not per-project. */
   stage: Stage;
   stageEnteredAt: string;
+  /** "Invisible competition" — the same own-goal/delivered fields render for a ghost as any deliverer; only excluded from angle/project roll-ups (see projStats() and the per-angle remaining-goal reduce). */
+  isGhost: boolean;
 }
 
 export interface Note {
@@ -101,7 +107,11 @@ export interface GoalChangeRequest {
   assignmentId: string;
   requestedBy: string;
   body: string;
+  /** Batch S, item 4 — the structured ask; null only on pre-Batch-S rows. */
+  requestedGoal: number | null;
+  requestedStatus: ProjectStatus | null;
   resolved: boolean;
+  outcome: "accepted" | "declined" | null;
 }
 
 export interface SundayRotaEntry {

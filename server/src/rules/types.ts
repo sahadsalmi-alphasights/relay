@@ -13,10 +13,11 @@ export type Stage =
   | "Selling";
 
 /**
- * Project lifecycle — open (unclaimed) -> active (staffed) -> idle (parked,
- * PL's own call) -> active again, and archived from any of the three. See
- * RELAY_BUILD_SPEC.md for the full state diagram.
+ * Project lifecycle — open (unclaimed) -> active (staffed), archived from
+ * either. Batch S removed 'idle' (see 1731000010000_lifecycle-v2-and-goal-requests.js).
+ * Soft-deleted projects (project.deleted_at) are a separate, orthogonal
+ * concept — not a status value, excluded from every query instead.
  */
-export type ProjectStatus = "open" | "active" | "idle" | "archived";
+export type ProjectStatus = "open" | "active" | "archived";
 
 export type ProjectType = "Pitch" | "Due Diligence" | "Strategy";

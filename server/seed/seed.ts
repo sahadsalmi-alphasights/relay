@@ -114,7 +114,7 @@ async function seed(client: PoolClient) {
     projectLink: string;
     projectType: "Pitch" | "Due Diligence" | "Strategy";
     expertPool: "Global" | "EU & MEA & India" | "AUS / NZ / Sing / JP" | "US only";
-    status: "active" | "open" | "idle";
+    status: "active" | "open" | "archived";
     /** New set-up field — groups the PL board into rows, 1-5. */
     clientEntity: 1 | 2 | 3 | 4 | 5;
     angles: AngleSeed[];
@@ -233,10 +233,10 @@ async function seed(client: PoolClient) {
       ],
     },
     {
-      // Idle demo — parked mid-work (its one assignee is left as-is, still
-      // staffed, just not being asked about): shows the idle card treatment,
-      // the "Reactivate" action, and the morning dialog's collapsed "Parked"
-      // section without needing any interaction to see it.
+      // Batch S removed 'idle' — this used to be the idle demo. Repurposed
+      // as the archived demo (its one assignee is left as-is, still staffed
+      // on paper): shows the Archived section + Resurface action on the PL
+      // board without needing any interaction to see it.
       pl: "Lead_User_Beta",
       client: "Client_F",
       account: "Account_6",
@@ -244,7 +244,7 @@ async function seed(client: PoolClient) {
       projectLink: "https://example.test/proj/1006",
       projectType: "Strategy",
       expertPool: "Global",
-      status: "idle",
+      status: "archived",
       clientEntity: 5,
       angles: [
         {

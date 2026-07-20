@@ -11,25 +11,48 @@ body { margin:0; }
      other at a glance despite both being warm hues. */
   --overdelivered:#7A5C12; --overdelivered-bg:#F5EFDD;
   --navy:#001D3A; --navy-hi:#0A2A4A; --navy-ink:#9FB0C2; }
-/* Dark mode — variable-driven, toggled via <html data-theme="dark"> (see
-   lib/theme.ts). Brand orange/navy and status hues stay; surfaces, ink and
-   the soft tints flip. A few hardcoded light chips get overrides below. */
+/* ==========================================================================
+   Dark mode — toggled via <html data-theme="dark"> (lib/theme.ts).
+   Navy-tinted elevation scale (ties to the brand navy sidebar) rather than
+   flat grey: page < card < raised. Brand orange/navy stay; every status hue
+   gets a brightened dark-legible counterpart below, since the light values
+   (#1F7D4C etc.) fall below readable contrast on dark tints.
+   ========================================================================== */
 [data-theme="dark"] {
-  --bg:#0F1720; --surface:#182430; --ink:#E8EDF2; --soft:#8FA1B0; --line:#243140;
-  --pl-soft:#3A2A14; --dl-soft:#123430;
-  --green-bg:#12301F; --amber-bg:#33260F; --red-bg:#361A1A;
-  --overdelivered-bg:#2E2712;
+  --bg:#0B1220; --surface:#131C2A; --ink:#E6EBF1; --soft:#93A4B5; --line:#223042;
+  --pl-soft:#33230E; --dl:#2FAE9C; --dl-soft:#0F2E29;
+  --green:#3FBF7F; --amber:#E0A24A; --red:#F0716A;
+  --green-bg:#11301F; --amber-bg:#33260F; --red-bg:#391A18;
+  --overdelivered:#D9B45A; --overdelivered-bg:#2E2712;
 }
-[data-theme="dark"] .tag.dd, [data-theme="dark"] .tag.strategy { background:#243140; color:#B9C6D2; }
-[data-theme="dark"] .idle-badge { background:#243140; color:#B9C6D2; }
-[data-theme="dark"] .sunday-strip { background:#16283C; border-color:#1F3A57; color:#9FC1EA; }
-[data-theme="dark"] .mini.vac { background:#16283C; color:#9FC1EA; }
-[data-theme="dark"] .mini.busy { background:#243140; color:#B9C6D2; }
+/* Status text on tints — brightened for dark surfaces. */
+[data-theme="dark"] .chip.t-green, [data-theme="dark"] .stage-first, [data-theme="dark"] .mini.free,
+[data-theme="dark"] .cov-state.on, [data-theme="dark"] .live-dot.on + .clock-time { color:#52C98D; }
+[data-theme="dark"] .chip.t-amber, [data-theme="dark"] .stage-second, [data-theme="dark"] .chip.live { color:#E5A54E; }
+[data-theme="dark"] .chip.t-red, [data-theme="dark"] .stage-hail, [data-theme="dark"] .mini.off,
+[data-theme="dark"] .warn-line, [data-theme="dark"] .err-line, [data-theme="dark"] .remove-btn { color:#F0716A; }
+[data-theme="dark"] .seg button.on-fd { color:#F0716A; }
+[data-theme="dark"] .seg button.on-al { color:#B98AE0; }
+[data-theme="dark"] .mini.team { color:#34B3A0; }
+[data-theme="dark"] .rank-row.top .rank-num { color:#34B3A0; }
+[data-theme="dark"] .picktag { color:#34B3A0; }
+/* Informational blues */
+[data-theme="dark"] .sunday-strip { background:#14273D; border-color:#1F3A57; color:#8FB8E8; }
+[data-theme="dark"] .link-btn { color:#8FB8E8; }
+[data-theme="dark"] .mini.vac { background:#14273D; color:#8FB8E8; }
+[data-theme="dark"] .tag.strategy { background:#14273D; color:#8FB8E8; }
+/* Neutral chips / structural */
+[data-theme="dark"] .tag.dd { background:#223042; color:#B9C6D2; }
+[data-theme="dark"] .idle-badge, [data-theme="dark"] .mini.busy { background:#223042; color:#B9C6D2; }
 [data-theme="dark"] .review-strip, [data-theme="dark"] .morning-banner { border-color:#4A3A14; color:#D9B96A; }
 [data-theme="dark"] .field input:focus, [data-theme="dark"] .field select:focus { background:var(--surface); }
 [data-theme="dark"] .field select option { background:var(--surface); }
+[data-theme="dark"] .field input::placeholder { color:#5E7080; }
 [data-theme="dark"] .suggest { border-color:#3A2A14; }
 [data-theme="dark"] .match-line.picked { border-color:#1E4B44; }
+[data-theme="dark"] .card { box-shadow:0 1px 2px rgba(0,0,0,.4); }
+[data-theme="dark"] .notif-panel { box-shadow:0 10px 30px rgba(0,0,0,.55); }
+[data-theme="dark"] .status-pick button.sel { background:#E6EBF1; color:#0B1220; border-color:#E6EBF1; }
 
 .mono { font-family:'Space Grotesk',monospace; font-feature-settings:"tnum"; }
 /* Mobile tree root (<768px) — single narrow column, bottom sheets. Rendered
@@ -265,8 +288,13 @@ a.client:hover { text-decoration:underline; }
 /* §9 (built) — notification bell + panel */
 .bell-wrap { position:relative; }
 /* The bell reuses .eve-btn's square-button chrome but is the primary
-   notification affordance — 25% larger than the standard 32px control. */
-.bell-wrap .eve-btn { width:40px; height:40px; font-size:19px; border-radius:12px; }
+   notification affordance — 25% larger than the standard 32px control.
+   Colour is state-driven: quiet grey when the tray is clear, bright red the
+   moment anything is unread (the numbered badge appears alongside), so red
+   keeps meaning "attention needed" instead of becoming wallpaper. */
+.bell-wrap .eve-btn { width:40px; height:40px; border-radius:12px; color:var(--soft); }
+.bell-wrap .eve-btn.has-unread { color:#E01717; }
+[data-theme="dark"] .bell-wrap .eve-btn.has-unread { color:#FF3B30; }
 .bell-badge { position:absolute; top:-5px; right:-5px; }
 .notif-scrim { position:fixed; inset:0; z-index:39; background:transparent; }
 .notif-panel { position:absolute; top:calc(100% + 8px); right:0; z-index:40; width:320px; max-width:88vw; max-height:70vh; overflow-y:auto; background:var(--surface); border:1px solid var(--line); border-radius:14px; box-shadow:0 10px 30px rgba(0,0,0,.18); }

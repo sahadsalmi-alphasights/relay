@@ -386,8 +386,8 @@ a.client:hover { text-decoration:underline; }
 /* Scoped under .sidebar so this outranks the global `.app-shell button`
    colour (0,2,1 vs 0,1,1) — an unscoped .eve-toggle-row silently loses that
    specificity fight and renders in dark ink on the navy sidebar. */
-.sidebar .eve-toggle-row { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:10px; font-size:13.5px; font-weight:600; color:#fff; text-align:left; width:100%; margin-top:8px; }
-.sidebar .eve-toggle-row:hover { background:var(--navy-hi); }
+.sidebar .eve-toggle-row { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:10px; font-size:13.5px; font-weight:600; color:var(--navy-ink); text-align:left; width:100%; margin-top:8px; }
+.sidebar .eve-toggle-row:hover { background:var(--navy-hi); color:#fff; }
 .eve-toggle-row .nav-icon { width:18px; text-align:center; flex-shrink:0; }
 .eve-toggle-row .nav-label { flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .toggle-switch { width:36px; height:20px; border-radius:999px; background:var(--navy-hi); position:relative; flex-shrink:0; transition:background .15s; }
@@ -400,7 +400,12 @@ a.client:hover { text-decoration:underline; }
 .sidebar-scope button:hover { background:var(--navy-hi); color:#fff; }
 .sidebar-scope button.on { background:var(--navy-hi); color:#fff; }
 .sidebar-footer { margin-top:12px; display:flex; flex-direction:column; gap:8px; }
-.sidebar-new-btn { width:100%; padding:11px; border-radius:11px; font-size:13px; font-weight:700; background:var(--pl); color:#fff; text-align:center; margin-bottom:14px; display:flex; align-items:center; justify-content:center; gap:8px; }
+/* Primary action — must read as a pressable button, not a header chip:
+   raised, with hover/active feedback. */
+.sidebar-new-btn { width:100%; padding:12px; border-radius:11px; font-size:13px; font-weight:700; background:var(--pl); color:#fff; text-align:center; margin-bottom:14px; display:flex; align-items:center; justify-content:center; gap:8px;
+  box-shadow:0 2px 8px rgba(0,0,0,.3); transition:background .12s, transform .06s; }
+.sidebar-new-btn:hover { background:#E27400; }
+.sidebar-new-btn:active { transform:scale(.98); }
 /* AlphaSights deck icons rendered as CSS masks so a single (white) icon set
    auto-colours to its context: navy-ink in the sidebar, #fff on hover/active,
    navy on the light mobile header — all via currentColor. */

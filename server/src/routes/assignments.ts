@@ -60,6 +60,15 @@ const assignmentsRoutes: FastifyPluginAsync = async (app) => {
       if (!canEditAssignmentProgress(actor.id, assignment)) {
         throw forbidden("only the assignment's own deliverer may edit progress");
       }
+      // Reject non-integers / negatives / absurd values: a raw pass-through
+      // would 500 on out-of-range ints, and a negative delivered would inflate
+      // the deliverer's remaining-load in the capacity ranking.
+      const { delivered, customDelivered } = request.body ?? {};
+      for (const [field, val] of Object.entries({ delivered, customDelivered })) {
+        if (val !== undefined && (!Number.isInteger(val) || val < 0 || val > 1_000_000)) {
+          throw badRequest(`${field} must be a non-negative integer`);
+        }
+      }
       const updated = await updateAssignmentProgress(assignment.id, request.body ?? {});
       await insertAuditLog({
         entityType: "assignment",
@@ -112,6 +121,9 @@ const assignmentsRoutes: FastifyPluginAsync = async (app) => {
       }
       if (typeof request.body?.goal !== "number") {
         throw badRequest("goal is required");
+      }
+      if (!Number.isInteger(request.body.goal) || request.body.goal < 0 || request.body.goal > 1_000_000) {
+        throw badRequest("goal must be a non-negative integer");
       }
       const updated = await updateAssignmentGoal(assignment.id, { goal: request.body.goal });
       await insertAuditLog({

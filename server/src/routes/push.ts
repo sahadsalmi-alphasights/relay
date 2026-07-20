@@ -29,7 +29,7 @@ const pushRoutes: FastifyPluginAsync = async (app) => {
 
   app.post<{ Body: { endpoint?: string } }>("/unsubscribe", { preHandler: [app.requireAuth] }, async (request) => {
     if (!request.body?.endpoint) throw badRequest("endpoint is required");
-    await deleteSubscription(request.body.endpoint);
+    await deleteSubscription(request.body.endpoint, request.actor!.id);
     return { ok: true };
   });
 };

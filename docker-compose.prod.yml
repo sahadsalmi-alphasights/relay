@@ -36,6 +36,9 @@ services:
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY}
       VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY}
       VAPID_SUBJECT: ${VAPID_SUBJECT}
+      # User management — owner allowlist. Read in config.ts but was never
+      # passed through, so the allowlist was always empty in production.
+      OWNER_EMAILS: ${OWNER_EMAILS:-}
     expose:
       - "4000"
 

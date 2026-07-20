@@ -19,8 +19,8 @@ function useAuthMode() {
   return mode;
 }
 
-function ssoErrorFromUrl(): boolean {
-  return new URLSearchParams(window.location.search).get("ssoError") === "1";
+function ssoErrorFromUrl(): string | null {
+  return new URLSearchParams(window.location.search).get("ssoError");
 }
 
 function SsoLogin() {
@@ -45,21 +45,31 @@ function SsoLogin() {
     );
   }
 
+  // A deactivated account is bounced back here (?ssoError=disabled) with no
+  // session — do NOT offer a one-click retry, since it would loop straight
+  // back through Okta (still a live session) to the same rejection.
+  const deactivated = error === "disabled";
   return (
     <div className="center-screen">
       <div className="login-card">
         <h1>CapTracker</h1>
         <div className="sub">Sign in with your company account.</div>
-        <div className="err-line">Sign-in didn't complete. Please try again, or contact IT if it keeps happening.</div>
-        <button
-          className="btn btn-pl"
-          style={{ width: "100%", marginTop: 4 }}
-          onClick={() => {
-            window.location.href = `${apiBaseUrl}/auth/oidc/login`;
-          }}
-        >
-          Try again
-        </button>
+        <div className="err-line">
+          {deactivated
+            ? "Your account has been deactivated. Contact an owner if you think this is a mistake."
+            : "Sign-in didn't complete. Please try again, or contact IT if it keeps happening."}
+        </div>
+        {!deactivated && (
+          <button
+            className="btn btn-pl"
+            style={{ width: "100%", marginTop: 4 }}
+            onClick={() => {
+              window.location.href = `${apiBaseUrl}/auth/oidc/login`;
+            }}
+          >
+            Try again
+          </button>
+        )}
       </div>
     </div>
   );

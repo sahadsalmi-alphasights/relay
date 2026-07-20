@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { api, ApiError } from "../api/client";
 import type { AuditLogEntry, AuditLogPage } from "../api/types";
 import { useViewport } from "../lib/useViewport";
@@ -73,8 +73,11 @@ function buildQuery(filters: Filters, offset: number): string {
   if (filters.entityType) params.set("entityType", filters.entityType);
   if (filters.actorId) params.set("actorId", filters.actorId);
   if (filters.action) params.set("action", filters.action);
-  if (filters.from) params.set("from", new Date(filters.from).toISOString());
-  if (filters.to) params.set("to", new Date(filters.to + "T23:59:59.999").toISOString());
+  // Both bounds as explicit UTC so they're consistent — otherwise `from`
+  // parses as UTC midnight while `to` (no Z) parses as local, offsetting the
+  // two by the local UTC offset and clipping boundary entries.
+  if (filters.from) params.set("from", new Date(filters.from + "T00:00:00.000Z").toISOString());
+  if (filters.to) params.set("to", new Date(filters.to + "T23:59:59.999Z").toISOString());
   params.set("limit", String(PAGE_SIZE));
   params.set("offset", String(offset));
   return params.toString();
@@ -199,8 +202,8 @@ export default function AuditLogTab({ reloadTick }: { reloadTick: number }) {
             </thead>
             <tbody>
               {page.items.map((entry) => (
-                <>
-                  <tr key={entry.id} className="audit-row" onClick={() => setExpanded(expanded === entry.id ? null : entry.id)}>
+                <Fragment key={entry.id}>
+                  <tr className="audit-row" onClick={() => setExpanded(expanded === entry.id ? null : entry.id)}>
                     <td title={fmtAbsolute(entry.createdAt)}>{relativeTime(entry.createdAt, nowMs)}</td>
                     <td>{entry.actor?.name ?? "—"}</td>
                     <td className="mono">{entry.action}</td>
@@ -216,7 +219,7 @@ export default function AuditLogTab({ reloadTick }: { reloadTick: number }) {
                       </td>
                     </tr>
                   )}
-                </>
+                </Fragment>
               ))}
             </tbody>
           </table>

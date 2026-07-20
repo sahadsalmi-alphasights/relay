@@ -30,8 +30,9 @@ export async function upsertSubscription(
   return (await pool.query(`${SELECT} WHERE id = $1`, [rows[0].id])).rows[0];
 }
 
-export async function deleteSubscription(endpoint: string): Promise<void> {
-  await pool.query(`DELETE FROM push_subscription WHERE endpoint = $1`, [endpoint]);
+/** Scoped to the owning person so one user can't remove another's subscription by guessing an endpoint. */
+export async function deleteSubscription(endpoint: string, personId: string): Promise<void> {
+  await pool.query(`DELETE FROM push_subscription WHERE endpoint = $1 AND person_id = $2`, [endpoint, personId]);
 }
 
 /** A push send can fail permanently (410 Gone / 404) when the browser has dropped the subscription; the caller prunes it here. */

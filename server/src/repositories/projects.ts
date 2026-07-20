@@ -1,4 +1,4 @@
-import { pool } from "../db";
+import { pool, type Queryable } from "../db";
 import type { ExpertPool, ProjectStatus, Stage } from "../rules/types";
 
 export interface ProjectRow {
@@ -47,8 +47,8 @@ const SELECT = `
           LIMIT 1) AS "earliestStage"
   FROM project`;
 
-export async function findProjectById(id: string): Promise<ProjectRow | null> {
-  const { rows } = await pool.query(`${SELECT} WHERE id = $1`, [id]);
+export async function findProjectById(id: string, db: Queryable = pool): Promise<ProjectRow | null> {
+  const { rows } = await db.query(`${SELECT} WHERE id = $1`, [id]);
   return rows[0] ?? null;
 }
 
@@ -120,8 +120,8 @@ export interface CreateProjectInput {
 }
 
 /** Creates the project row only -- angles (and their assignments) are created separately via repositories/angles.ts, since a project always needs >=1. */
-export async function createProject(input: CreateProjectInput): Promise<ProjectRow> {
-  const { rows } = await pool.query(
+export async function createProject(input: CreateProjectInput, db: Queryable = pool): Promise<ProjectRow> {
+  const { rows } = await db.query(
     `INSERT INTO project (pl_id, client, account, topic, project_link, project_type, expert_pool, status, client_entity)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
     [
@@ -136,7 +136,7 @@ export async function createProject(input: CreateProjectInput): Promise<ProjectR
       input.clientEntity,
     ]
   );
-  return (await findProjectById(rows[0].id))!;
+  return (await findProjectById(rows[0].id, db))!;
 }
 
 const PATCHABLE_COLUMNS: Record<string, string> = {

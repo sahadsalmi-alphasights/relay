@@ -1,4 +1,4 @@
-import { pool } from "../db";
+import { pool, type Queryable } from "../db";
 
 export interface AuditLogInput {
   entityType: string;
@@ -9,8 +9,8 @@ export interface AuditLogInput {
   newValue?: unknown;
 }
 
-export async function insertAuditLog(entry: AuditLogInput): Promise<void> {
-  await pool.query(
+export async function insertAuditLog(entry: AuditLogInput, db: Queryable = pool): Promise<void> {
+  await db.query(
     `INSERT INTO audit_log (entity_type, entity_id, actor_id, action, old_value, new_value)
      VALUES ($1, $2, $3, $4, $5, $6)`,
     [

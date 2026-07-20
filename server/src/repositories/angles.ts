@@ -1,4 +1,4 @@
-import { pool } from "../db";
+import { pool, type Queryable } from "../db";
 import { computeCustomGoal, suggestStaffing } from "../rules/suggestedGoal";
 import type { ProjectType } from "../rules/types";
 
@@ -23,8 +23,8 @@ const SELECT = `
          calls_sold AS "callsSold", calls_sold_updated_at AS "callsSoldUpdatedAt"
   FROM angle`;
 
-export async function findAngleById(id: string): Promise<AngleRow | null> {
-  const { rows } = await pool.query(`${SELECT} WHERE id = $1`, [id]);
+export async function findAngleById(id: string, db: Queryable = pool): Promise<AngleRow | null> {
+  const { rows } = await db.query(`${SELECT} WHERE id = $1`, [id]);
   return rows[0] ?? null;
 }
 
@@ -37,13 +37,14 @@ export async function createAngle(
   projectId: string,
   name: string,
   callsN: number,
-  goalTotal: number
+  goalTotal: number,
+  db: Queryable = pool
 ): Promise<AngleRow> {
-  const { rows } = await pool.query<{ id: string }>(
+  const { rows } = await db.query<{ id: string }>(
     `INSERT INTO angle (project_id, name, calls_n, goal_total) VALUES ($1, $2, $3, $4) RETURNING id`,
     [projectId, name, callsN, goalTotal]
   );
-  return (await findAngleById(rows[0].id))!;
+  return (await findAngleById(rows[0].id, db))!;
 }
 
 const PATCHABLE_COLUMNS: Record<string, string> = {
@@ -118,6 +119,22 @@ export function seatTargetForAngle(callsN: number, projectType: ProjectType): nu
  * already-claimed-by-this-same-person, or angle not found — so the route
  * layer can turn any of them into a plain 409 without distinguishing which.
  */
+/**
+ * A broadcast project stays `status = 'open'` until every angle has hit its
+ * seat target; once they all have, flip it to `active` so it drops off the
+ * broadcast list. Shared by the /accept and /angles/:id/claim routes so the two
+ * claim paths behave identically. Returns whether the project is now fully staffed.
+ */
+export async function activateProjectIfFullyStaffed(projectId: string, projectType: ProjectType): Promise<boolean> {
+  const angles = await listAnglesByProject(projectId);
+  for (const a of angles) {
+    const filled = await countAssignmentsForAngle(a.id);
+    if (filled < seatTargetForAngle(a.callsN, projectType)) return false;
+  }
+  await pool.query(`UPDATE project SET status = 'active' WHERE id = $1 AND status = 'open'`, [projectId]);
+  return true;
+}
+
 export async function claimAngleSeat(
   angleId: string,
   delivererId: string,

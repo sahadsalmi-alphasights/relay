@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
+import { withTransaction } from "../db";
 import { insertAuditLog } from "../repositories/auditLog";
-import { createAngle, listAnglesByProject } from "../repositories/angles";
+import { activateProjectIfFullyStaffed, claimAngleSeat, createAngle, listAnglesByProject } from "../repositories/angles";
 import {
   createAssignment,
   listAssignmentsByAngle,
@@ -10,7 +11,6 @@ import { listUnresolvedForProject } from "../repositories/goalChangeRequests";
 import { createNote, listNotesForProject } from "../repositories/notes";
 import {
   archiveProject,
-  claimOpenProject,
   createProject,
   findProjectById,
   listProjects,
@@ -279,7 +279,10 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const allAssignments = angleInputs.flatMap((ang) => ang.assignments ?? []);
-    const project = await createProject({
+    // Built out here (not inside the closure below) so TypeScript keeps the
+    // narrowing from this handler's earlier body validation — narrowing is
+    // reset inside a nested function scope.
+    const projectInput = {
       plId: actor.id,
       client: body.client,
       account: body.account,
@@ -287,43 +290,65 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
       projectLink: body.projectLink,
       projectType: body.projectType,
       expertPool: body.expertPool,
-      status: allAssignments.length > 0 ? "active" : "open",
+      status: allAssignments.length > 0 ? ("active" as const) : ("open" as const),
       clientEntity: body.clientEntity ?? 1,
-    });
+    };
 
-    for (const ang of angleInputs) {
-      const createdAngle = await createAngle(project.id, ang.name!.trim(), ang.callsN!, ang.goalTotal!);
-      for (const a of ang.assignments ?? []) {
-        await createAssignment(createdAngle.id, a.delivererId, a.goal);
-        // §6 (built) — an override (the PL picked someone other than who the
-        // ranking/auto-match suggested) always carries a justification; log it
-        // to the audit trail. Never notify anyone about the override itself —
-        // the ordinary "assigned" notification below still reaches the person.
-        if (a.override?.justification) {
-          await insertAuditLog({
-            entityType: "assignment",
-            entityId: project.id,
-            actorId: actor.id,
-            action: "manual_override",
-            newValue: { pickedInstead: a.delivererId, justification: a.override.justification },
-          });
+    // Create the project + its angles + assignments + audit rows atomically:
+    // a failure partway (e.g. a duplicate/invalid deliverer) must not leave an
+    // orphaned or half-staffed project committed. Notifications/WS publish only
+    // after the transaction commits (below), never on rollback.
+    const project = await withTransaction(async (tx) => {
+      const created = await createProject(
+        projectInput,
+        tx
+      );
+
+      for (const ang of angleInputs) {
+        const createdAngle = await createAngle(created.id, ang.name!.trim(), ang.callsN!, ang.goalTotal!, tx);
+        for (const a of ang.assignments ?? []) {
+          await createAssignment(createdAngle.id, a.delivererId, a.goal, tx);
+          // §6 (built) — an override (the PL picked someone other than who the
+          // ranking/auto-match suggested) always carries a justification; log it
+          // to the audit trail. Never notify anyone about the override itself —
+          // the ordinary "assigned" notification below still reaches the person.
+          if (a.override?.justification) {
+            await insertAuditLog(
+              {
+                entityType: "assignment",
+                entityId: created.id,
+                actorId: actor.id,
+                action: "manual_override",
+                newValue: { pickedInstead: a.delivererId, justification: a.override.justification },
+              },
+              tx
+            );
+          }
+        }
+        // §6 (built) — audit-log whenever the PL revises an angle's suggested goal downwards, before it's ever staffed.
+        const suggested = suggestGoal(ang.callsN!, body.projectType as ProjectType);
+        if (ang.goalTotal! < suggested) {
+          await insertAuditLog(
+            {
+              entityType: "angle",
+              entityId: createdAngle.id,
+              actorId: actor.id,
+              action: "downward_goal_revision",
+              oldValue: { suggestedGoal: suggested },
+              newValue: { goalTotal: ang.goalTotal },
+            },
+            tx
+          );
         }
       }
-      // §6 (built) — audit-log whenever the PL revises an angle's suggested goal downwards, before it's ever staffed.
-      const suggested = suggestGoal(ang.callsN!, body.projectType as ProjectType);
-      if (ang.goalTotal! < suggested) {
-        await insertAuditLog({
-          entityType: "angle",
-          entityId: createdAngle.id,
-          actorId: actor.id,
-          action: "downward_goal_revision",
-          oldValue: { suggestedGoal: suggested },
-          newValue: { goalTotal: ang.goalTotal },
-        });
-      }
-    }
 
-    await insertAuditLog({ entityType: "project", entityId: project.id, actorId: actor.id, action: "create", newValue: body });
+      await insertAuditLog(
+        { entityType: "project", entityId: created.id, actorId: actor.id, action: "create", newValue: body },
+        tx
+      );
+      return created;
+    });
+
     await publishProjectChanged(project.id, [actor.id, ...allAssignments.map((a) => a.delivererId)]);
     if (allAssignments.length > 0) {
       publish({ type: "capacity-ranking" });
@@ -562,22 +587,42 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
       );
       if (!elig.eligible) throw forbidden(`not eligible right now: ${elig.reason}`);
 
-      const claimed = await claimOpenProject(project.id);
-      if (!claimed) throw conflict("already claimed by someone else");
-
-      // Deliberate simplification: an open-pool project's claim always lands
-      // on its first (earliest-created) angle. Multi-angle open-pool
-      // projects aren't a described product flow yet -- if that becomes a
-      // real scenario, accepting needs its own angle picker.
-      const angles = await listAnglesByProject(claimed.id);
+      // Claim ONE seat on the project's first angle, atomically — identical
+      // semantics to /angles/:id/claim. Previously this flipped the WHOLE
+      // project to 'active' on the first acceptor and assigned them the entire
+      // angle goal, which silently abandoned any still-open seats (dropping the
+      // project off the broadcast) and over-assigned the goal. Now the project
+      // only goes 'active' once every angle has hit its seat target.
+      const angles = await listAnglesByProject(project.id);
       const angle = angles[0];
-      const assignment = await createAssignment(angle.id, actor.id, request.body?.goal ?? angle.goalTotal);
-      await insertAuditLog({ entityType: "project", entityId: claimed.id, actorId: actor.id, action: "accept_open" });
-      await publishProjectChanged(claimed.id, [claimed.plId, actor.id]);
+      const target = seatTargetForAngle(angle.callsN, project.projectType as ProjectType);
+      const goal = request.body?.goal ?? Math.max(1, Math.ceil(angle.goalTotal / target));
+      const claimed = await claimAngleSeat(angle.id, actor.id, goal);
+      if (!claimed) throw conflict("that seat is no longer available");
+
+      const fullyStaffed = await activateProjectIfFullyStaffed(project.id, project.projectType as ProjectType);
+
+      await insertAuditLog({
+        entityType: "assignment",
+        entityId: claimed.id,
+        actorId: actor.id,
+        action: "claim_broadcast_seat",
+        newValue: { angleId: angle.id, delivererId: actor.id, goal },
+      });
+      await publishProjectChanged(project.id, [project.plId, actor.id]);
       // §4 first-commit-wins — everyone else's open pool must drop this immediately.
       publish({ type: "open-pool" });
       publish({ type: "capacity-ranking" });
-      return { project: claimed, assignment };
+      // Mirror /claim: tell the PL a broadcast seat was taken.
+      await notify({
+        personId: project.plId,
+        type: "assigned",
+        title: "Seat claimed from the broadcast",
+        body: `${project.client} — ${angle.name} just got a new deliverer from the broadcast.`,
+        entityType: "project",
+        entityId: project.id,
+      });
+      return { angleId: angle.id, assignmentId: claimed.id, fullyStaffed };
     }
   );
 

@@ -1,4 +1,4 @@
-import { pool } from "../db";
+import { pool, type Queryable } from "../db";
 import { computeCustomGoal } from "../rules/suggestedGoal";
 import type { ExpertPool, Stage } from "../rules/types";
 
@@ -31,8 +31,8 @@ const SELECT = `
          a.stale_notified_threshold_minutes AS "staleNotifiedThresholdMinutes"
   FROM assignment a JOIN angle ang ON ang.id = a.angle_id`;
 
-export async function findAssignmentById(id: string): Promise<AssignmentRow | null> {
-  const { rows } = await pool.query(`${SELECT} WHERE a.id = $1`, [id]);
+export async function findAssignmentById(id: string, db: Queryable = pool): Promise<AssignmentRow | null> {
+  const { rows } = await db.query(`${SELECT} WHERE a.id = $1`, [id]);
   return rows[0] ?? null;
 }
 
@@ -64,12 +64,17 @@ export async function listAssignmentsWithProjectByDeliverer(delivererId: string)
 }
 
 /** §5 (domain change 7) — custom_goal is always derived from goal, never accepted from a caller. Attaches to an angle, not a project directly. */
-export async function createAssignment(angleId: string, delivererId: string, goal: number): Promise<AssignmentRow> {
-  const { rows } = await pool.query(
+export async function createAssignment(
+  angleId: string,
+  delivererId: string,
+  goal: number,
+  db: Queryable = pool
+): Promise<AssignmentRow> {
+  const { rows } = await db.query(
     `INSERT INTO assignment (angle_id, deliverer_id, goal, custom_goal) VALUES ($1, $2, $3, $4) RETURNING id`,
     [angleId, delivererId, goal, computeCustomGoal(goal)]
   );
-  return (await findAssignmentById(rows[0].id))!;
+  return (await findAssignmentById(rows[0].id, db))!;
 }
 
 export async function updateAssignmentProgress(

@@ -1,5 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import Header, { type Scope, type Tab } from "./components/Header";
+import MobileNav from "./components/MobileNav";
+import type { Notification as AppNotification } from "./api/types";
 import Sidebar from "./components/Sidebar";
 import TopBar from "./components/TopBar";
 import AuditLogTab from "./tabs/AuditLogTab";
@@ -11,6 +13,7 @@ import UserManagementTab from "./tabs/UserManagementTab";
 import EditProjectSheet from "./sheets/EditProjectSheet";
 import IntakeWizard from "./sheets/IntakeWizard";
 import MorningCallsSoldDialog from "./sheets/MorningCallsSoldDialog";
+import MoreSheet from "./sheets/MoreSheet";
 import NotesSheet from "./sheets/NotesSheet";
 import RotaSheet from "./sheets/RotaSheet";
 import TeamEditSheet from "./sheets/TeamEditSheet";
@@ -38,6 +41,7 @@ export default function Shell() {
   const [intakeOpen, setIntakeOpen] = useState(false);
   const [teamOpen, setTeamOpen] = useState(false);
   const [rotaOpen, setRotaOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [teamEditFor, setTeamEditFor] = useState<string | null>(null);
   const [editProjectFor, setEditProjectFor] = useState<string | null>(null);
   const [notesFor, setNotesFor] = useState<NotesTarget | null>(null);
@@ -75,6 +79,23 @@ export default function Shell() {
     if (liveStatus === "connected") void notif.refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveStatus]);
+
+  // Clicking a notification in the bell navigates to the screen it's about.
+  // The type is the primary routing signal; two title prefixes disambiguate
+  // the shared types whose PL-facing copy differs from the deliverer's.
+  const openNotification = (n: AppNotification) => {
+    if (
+      n.type === "delivery_logged" ||
+      n.type === "goal_change_requested" ||
+      (n.type === "stale_first_deliverable" && n.title.startsWith("Deliverer stalled")) ||
+      (n.type === "assigned" && n.title.startsWith("Seat claimed"))
+    ) {
+      setTab("PL");
+    } else {
+      setTab("Delivery");
+    }
+    bumpReload();
+  };
 
   const openNewProject = () => {
     setTab("PL");
@@ -170,7 +191,7 @@ export default function Shell() {
           onNewProject={openNewProject}
         />
         <div className="main-area">
-          <TopBar liveStatus={liveStatus} notif={notif} />
+          <TopBar liveStatus={liveStatus} notif={notif} onOpenNotification={openNotification} />
           <div className="content-wide">
             {sundayBanner}
             {activeTab}
@@ -196,15 +217,12 @@ export default function Shell() {
     <div className="relay">
       <MorningCallsSoldDialog onActioned={bumpReload} />
       <Header
-        tab={tab}
-        setTab={setTab}
         scope={scope}
         setScope={setScope}
-        plPendingCount={plPendingCount}
-        fdCount={fdCount}
         onOpenTeam={() => setTeamOpen(true)}
         liveStatus={liveStatus}
         notif={notif}
+        onOpenNotification={openNotification}
       />
 
       <div className="body">
@@ -214,9 +232,25 @@ export default function Shell() {
       </div>
 
       {tab === "PL" && (
-        <button className="fab" onClick={() => setIntakeOpen(true)}>
-          ＋ New project
+        <button className="fab" onClick={() => setIntakeOpen(true)} aria-label="New project" title="New project">
+          ＋
         </button>
+      )}
+
+      <MobileNav
+        tab={tab}
+        setTab={setTab}
+        plPendingCount={plPendingCount}
+        fdCount={fdCount}
+        onMore={() => setMoreOpen(true)}
+      />
+      {moreOpen && (
+        <MoreSheet
+          onClose={() => setMoreOpen(false)}
+          setTab={setTab}
+          onOpenTeam={() => setTeamOpen(true)}
+          onOpenRota={() => setRotaOpen(true)}
+        />
       )}
 
       {sheets}

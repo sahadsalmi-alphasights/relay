@@ -255,6 +255,7 @@ export default function ProjectLeadingTab({
   const { actor, people, nameOf, practiceOf, nowMs, effectiveHour, demoHour } = useApp();
   const [items, setItems] = useState<ProjectItem[] | null>(null);
   const [archived, setArchived] = useState<Project[]>([]);
+  const [archivedOpen, setArchivedOpen] = useState(false);
   // Phase D, item 5 — team-overview running list. Reuses the existing,
   // already-tested GET /capacity-ranking computation (personLoad + the
   // rawRemaining<=median "free" rule, rules/load.ts) rather than inventing a
@@ -647,10 +648,17 @@ export default function ProjectLeadingTab({
 
         {archived.length > 0 && (
           <>
-            <div className="section-lbl spaced">
+            {/* Collapsible — archived is reference material, not working set;
+                collapsed by default so the board ends at the live cards. */}
+            <button
+              className="section-lbl spaced archive-toggle"
+              onClick={() => setArchivedOpen((o) => !o)}
+              aria-expanded={archivedOpen}
+            >
+              <span className="archive-chevron">{archivedOpen ? "▾" : "▸"}</span>
               Archived <span className="count">{archived.length}</span>
-            </div>
-            {archived.map((p) => (
+            </button>
+            {archivedOpen && archived.map((p) => (
               <div key={p.id} className="rank-row">
                 <div className="rank-body">
                   <div className="rank-name">

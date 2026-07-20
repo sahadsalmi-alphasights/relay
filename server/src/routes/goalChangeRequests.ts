@@ -22,6 +22,9 @@ const goalChangeRequestsRoutes: FastifyPluginAsync = async (app) => {
     if (!canResolveGoalChangeRequest(actor.id, project)) {
       throw forbidden("only the PL may resolve a goal change request");
     }
+    // Idempotent: a double-click / concurrent resolve must not re-fire the
+    // "resolved" notification to the deliverer.
+    if (gcr.resolved) return gcr;
     const resolved = await resolveGoalChangeRequest(gcr.id);
     await insertAuditLog({
       entityType: "goal_change_request",

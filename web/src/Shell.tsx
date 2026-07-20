@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import Header, { type Scope, type Tab } from "./components/Header";
 import Sidebar from "./components/Sidebar";
 import TopBar from "./components/TopBar";
@@ -27,7 +27,7 @@ export interface NotesTarget {
 }
 
 export default function Shell() {
-  const { sunday, nowMs } = useApp();
+  const { sunday, nowMs, reloadPeople, reloadTeams } = useApp();
   const { isDesktop } = useViewport();
   const [tab, setTab] = useState<Tab>("PL");
   const [scope, setScope] = useState<Scope>("mine");
@@ -53,12 +53,28 @@ export default function Shell() {
   const handleLiveEvent = (event: LiveEvent) => {
     if (event.type === "notification") {
       notif.addLive(event.notification);
-      showBrowserNotification(event.notification.title, event.notification.body);
+      void showBrowserNotification(event.notification.title, event.notification.body);
     } else {
+      // Roster changes must refresh the directory caches (names/teams/membership
+      // filters), not just the current tab's data — otherwise a renamed or newly
+      // added teammate renders stale until a full reload.
+      if (event.type === "people") {
+        void reloadPeople();
+        void reloadTeams();
+      }
       bumpReload();
     }
   };
   const liveStatus = useLiveSocket(handleLiveEvent);
+
+  // Re-fetch notifications on every (re)connect: a notification sent while this
+  // client's socket was down (redeploy, wifi drop, backoff window) can't be
+  // delivered live, and the reconnect resync only invalidates tab data — so
+  // without this the bell silently misses it until a full page reload.
+  useEffect(() => {
+    if (liveStatus === "connected") void notif.refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveStatus]);
 
   const openNewProject = () => {
     setTab("PL");

@@ -93,7 +93,7 @@ export default function Header({
           {/* docs/AUDIT_LOG_SPEC.md — audit trails are sensitive; only a
               manager sees this entry at all, same gate the read API itself
               enforces server-side (never rely on hiding the button alone). */}
-          {actor.isManager && (
+          {(actor.isManager || actor.isOwner) && (
             <button className={tab === "AuditLog" ? "on-al" : ""} onClick={() => setTab("AuditLog")}>
               Audit
             </button>

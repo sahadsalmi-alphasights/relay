@@ -244,6 +244,9 @@ a.client:hover { text-decoration:underline; }
 
 /* §9 (built) — notification bell + panel */
 .bell-wrap { position:relative; }
+/* The bell reuses .eve-btn's square-button chrome but is the primary
+   notification affordance — 25% larger than the standard 32px control. */
+.bell-wrap .eve-btn { width:40px; height:40px; font-size:19px; border-radius:12px; }
 .bell-badge { position:absolute; top:-5px; right:-5px; }
 .notif-scrim { position:fixed; inset:0; z-index:39; background:transparent; }
 .notif-panel { position:absolute; top:calc(100% + 8px); right:0; z-index:40; width:320px; max-width:88vw; max-height:70vh; overflow-y:auto; background:var(--surface); border:1px solid var(--line); border-radius:14px; box-shadow:0 10px 30px rgba(0,0,0,.18); }

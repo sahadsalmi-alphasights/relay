@@ -4,6 +4,7 @@ import { dubaiHour, dubaiMinute } from "../lib/time";
 import { initials } from "../lib/format";
 import { useApp } from "../state/AppContext";
 import type { LiveStatus } from "../lib/useLiveSocket";
+import type { Notification as AppNotification } from "../api/types";
 import type { NotificationsState } from "../lib/useNotifications";
 import NotificationBell from "./NotificationBell";
 
@@ -20,6 +21,7 @@ export default function Header({
   onOpenTeam,
   liveStatus,
   notif,
+  onOpenNotification,
 }: {
   tab: Tab;
   setTab: (t: Tab) => void;
@@ -30,6 +32,7 @@ export default function Header({
   onOpenTeam: () => void;
   liveStatus: LiveStatus;
   notif: NotificationsState;
+  onOpenNotification?: (n: AppNotification) => void;
 }) {
   const { actor, setActor, nowMs, demoHour, setDemoHour, effectiveHour, effectiveAfterHours, logout } = useApp();
 
@@ -73,7 +76,7 @@ export default function Header({
           <button className="profile-btn" onClick={onOpenTeam} title="My team">
             {initials(actor.name)}
           </button>
-          <NotificationBell notif={notif} />
+          <NotificationBell notif={notif} onOpen={onOpenNotification} />
         </div>
       </div>
       <div className="controls">

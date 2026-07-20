@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import Header, { type Scope, type Tab } from "./components/Header";
+import type { Notification as AppNotification } from "./api/types";
 import Sidebar from "./components/Sidebar";
 import TopBar from "./components/TopBar";
 import AuditLogTab from "./tabs/AuditLogTab";
@@ -75,6 +76,23 @@ export default function Shell() {
     if (liveStatus === "connected") void notif.refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveStatus]);
+
+  // Clicking a notification in the bell navigates to the screen it's about.
+  // The type is the primary routing signal; two title prefixes disambiguate
+  // the shared types whose PL-facing copy differs from the deliverer's.
+  const openNotification = (n: AppNotification) => {
+    if (
+      n.type === "delivery_logged" ||
+      n.type === "goal_change_requested" ||
+      (n.type === "stale_first_deliverable" && n.title.startsWith("Deliverer stalled")) ||
+      (n.type === "assigned" && n.title.startsWith("Seat claimed"))
+    ) {
+      setTab("PL");
+    } else {
+      setTab("Delivery");
+    }
+    bumpReload();
+  };
 
   const openNewProject = () => {
     setTab("PL");
@@ -170,7 +188,7 @@ export default function Shell() {
           onNewProject={openNewProject}
         />
         <div className="main-area">
-          <TopBar liveStatus={liveStatus} notif={notif} />
+          <TopBar liveStatus={liveStatus} notif={notif} onOpenNotification={openNotification} />
           <div className="content-wide">
             {sundayBanner}
             {activeTab}
@@ -205,6 +223,7 @@ export default function Shell() {
         onOpenTeam={() => setTeamOpen(true)}
         liveStatus={liveStatus}
         notif={notif}
+        onOpenNotification={openNotification}
       />
 
       <div className="body">

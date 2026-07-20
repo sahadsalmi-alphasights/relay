@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
+import type { Notification as AppNotification } from "../api/types";
 import type { NotificationsState } from "../lib/useNotifications";
-import { requestNotificationPermission } from "../lib/pushNotifications";
+import { requestNotificationPermission, showBrowserNotification } from "../lib/pushNotifications";
 import { disablePush, enablePush, getPushSubscription, isPushSupported } from "../lib/webPush";
 
 const notifSupported = typeof Notification !== "undefined";
@@ -15,7 +16,14 @@ function timeAgo(iso: string): string {
   return `${Math.floor(hr / 24)}d ago`;
 }
 
-export default function NotificationBell({ notif }: { notif: NotificationsState }) {
+export default function NotificationBell({
+  notif,
+  onOpen,
+}: {
+  notif: NotificationsState;
+  /** Clicking a notification navigates to the screen it's about (wired by Shell). */
+  onOpen?: (n: AppNotification) => void;
+}) {
   const [open, setOpen] = useState(false);
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushBusy, setPushBusy] = useState(false);
@@ -25,7 +33,13 @@ export default function NotificationBell({ notif }: { notif: NotificationsState 
   const [perm, setPerm] = useState<NotificationPermission>(notifSupported ? Notification.permission : "denied");
 
   const enablePopups = async () => {
-    setPerm(await requestNotificationPermission());
+    const p = await requestNotificationPermission();
+    setPerm(p);
+    // Immediate, visible confirmation in Chrome — the browser prompt alone
+    // gives no feedback that pop-ups are now actually active.
+    if (p === "granted") {
+      void showBrowserNotification("Notifications enabled", "You'll get CapTracker pop-ups like this one.");
+    }
   };
 
   useEffect(() => {
@@ -41,10 +55,22 @@ export default function NotificationBell({ notif }: { notif: NotificationsState 
       } else {
         const ok = await enablePush();
         setPushEnabled(ok);
+        // enablePush() requests Notification permission as part of
+        // subscribing — reflect the new state and confirm visibly.
+        if (notifSupported) setPerm(Notification.permission);
+        if (ok) {
+          void showBrowserNotification("Push notifications on", "Chrome will notify you even when the tab is closed.");
+        }
       }
     } finally {
       setPushBusy(false);
     }
+  };
+
+  const openNotification = (n: AppNotification) => {
+    void notif.markRead(n.id);
+    setOpen(false);
+    onOpen?.(n);
   };
 
   return (
@@ -73,7 +99,8 @@ export default function NotificationBell({ notif }: { notif: NotificationsState 
                   <button
                     key={n.id}
                     className={"notif-item " + (n.read ? "" : "unread")}
-                    onClick={() => notif.markRead(n.id)}
+                    onClick={() => openNotification(n)}
+                    title="Open the screen this is about"
                   >
                     <div className="notif-title">{n.title}</div>
                     <div className="notif-body">{n.body}</div>

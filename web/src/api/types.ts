@@ -169,7 +169,13 @@ export interface AuditLogPage {
 export interface Notification {
   id: string;
   personId: string;
-  type: "assigned" | "goal_change_requested" | "goal_change_resolved" | "stale_first_deliverable" | "open_pool";
+  type:
+    | "assigned"
+    | "delivery_logged"
+    | "goal_change_requested"
+    | "goal_change_resolved"
+    | "stale_first_deliverable"
+    | "open_pool";
   title: string;
   body: string;
   entityType: string | null;

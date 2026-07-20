@@ -2,10 +2,19 @@ import { useEffect, useRef } from "react";
 import { dubaiHour, dubaiMinute } from "../lib/time";
 import { useApp } from "../state/AppContext";
 import type { LiveStatus } from "../lib/useLiveSocket";
+import type { Notification as AppNotification } from "../api/types";
 import type { NotificationsState } from "../lib/useNotifications";
 import NotificationBell from "./NotificationBell";
 
-export default function TopBar({ liveStatus, notif }: { liveStatus: LiveStatus; notif: NotificationsState }) {
+export default function TopBar({
+  liveStatus,
+  notif,
+  onOpenNotification,
+}: {
+  liveStatus: LiveStatus;
+  notif: NotificationsState;
+  onOpenNotification?: (n: AppNotification) => void;
+}) {
   const { nowMs, demoHour, setDemoHour, effectiveHour, effectiveAfterHours } = useApp();
   const barRef = useRef<HTMLDivElement>(null);
 
@@ -48,7 +57,7 @@ export default function TopBar({ liveStatus, notif }: { liveStatus: LiveStatus; 
         {effectiveHour < 15 ? "APAC live 2×" : "APAC done"}
       </span>
       <div className="topbar-spacer" />
-      <NotificationBell notif={notif} />
+      <NotificationBell notif={notif} onOpen={onOpenNotification} />
       {import.meta.env.DEV && (
         <div className="demo-clock">
           <input

@@ -62,7 +62,11 @@ body { margin:0; }
 /* Desktop tree root (>=768px) — sidebar + full-width main area. */
 .app-shell { font-family:'Inter',system-ui,sans-serif; color:var(--ink); background:var(--bg); min-height:100vh; width:100%;
   display:flex; align-items:stretch; }
-.relay button, .app-shell button { font-family:inherit; cursor:pointer; border:none; background:none; color:var(--ink); }
+/* Element-level reset (0,0,1) ON PURPOSE: as `.app-shell button` (0,1,1) it
+   silently out-ranked every one-class button style — .sidebar-new-btn,
+   .btn-pl, .fab — stripping their backgrounds so they only appeared on
+   :hover (whose extra pseudo-class won the fight). */
+button { font-family:inherit; cursor:pointer; border:none; background:none; color:var(--ink); }
 .relay button:focus-visible, .app-shell button:focus-visible { outline:2px solid var(--pl); outline-offset:2px; }
 .relay button:disabled, .app-shell button:disabled { cursor:not-allowed; }
 .hdr { position:sticky; top:0; z-index:20; background:var(--surface); border-bottom:1px solid var(--line); }

@@ -2,6 +2,10 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./styles.css";
+import { initTheme } from "./lib/theme";
+
+// Dark mode — set <html data-theme> before the first paint.
+initTheme();
 
 // §9 (built) — PWA installability + what makes Web Push reach the user with
 // the tab closed. Registering it is unconditional and harmless on its own;

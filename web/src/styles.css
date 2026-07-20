@@ -11,6 +11,26 @@ body { margin:0; }
      other at a glance despite both being warm hues. */
   --overdelivered:#7A5C12; --overdelivered-bg:#F5EFDD;
   --navy:#001D3A; --navy-hi:#0A2A4A; --navy-ink:#9FB0C2; }
+/* Dark mode — variable-driven, toggled via <html data-theme="dark"> (see
+   lib/theme.ts). Brand orange/navy and status hues stay; surfaces, ink and
+   the soft tints flip. A few hardcoded light chips get overrides below. */
+[data-theme="dark"] {
+  --bg:#0F1720; --surface:#182430; --ink:#E8EDF2; --soft:#8FA1B0; --line:#243140;
+  --pl-soft:#3A2A14; --dl-soft:#123430;
+  --green-bg:#12301F; --amber-bg:#33260F; --red-bg:#361A1A;
+  --overdelivered-bg:#2E2712;
+}
+[data-theme="dark"] .tag.dd, [data-theme="dark"] .tag.strategy { background:#243140; color:#B9C6D2; }
+[data-theme="dark"] .idle-badge { background:#243140; color:#B9C6D2; }
+[data-theme="dark"] .sunday-strip { background:#16283C; border-color:#1F3A57; color:#9FC1EA; }
+[data-theme="dark"] .mini.vac { background:#16283C; color:#9FC1EA; }
+[data-theme="dark"] .mini.busy { background:#243140; color:#B9C6D2; }
+[data-theme="dark"] .review-strip, [data-theme="dark"] .morning-banner { border-color:#4A3A14; color:#D9B96A; }
+[data-theme="dark"] .field input:focus, [data-theme="dark"] .field select:focus { background:var(--surface); }
+[data-theme="dark"] .field select option { background:var(--surface); }
+[data-theme="dark"] .suggest { border-color:#3A2A14; }
+[data-theme="dark"] .match-line.picked { border-color:#1E4B44; }
+
 .mono { font-family:'Space Grotesk',monospace; font-feature-settings:"tnum"; }
 /* Mobile tree root (<768px) — single narrow column, bottom sheets. Rendered
    only below the desktop breakpoint; see useViewport. */
@@ -335,8 +355,11 @@ a.client:hover { text-decoration:underline; }
    the actual on/off state lives entirely on the switch: a real
    track-and-thumb control rather than a colour fill on the whole row.
    (Navy-theme adaptation: row text/hover follow the sidebar palette.) */
-.eve-toggle-row { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:10px; font-size:13.5px; font-weight:600; color:#fff; text-align:left; width:100%; margin-top:8px; }
-.eve-toggle-row:hover { background:var(--navy-hi); }
+/* Scoped under .sidebar so this outranks the global `.app-shell button`
+   colour (0,2,1 vs 0,1,1) — an unscoped .eve-toggle-row silently loses that
+   specificity fight and renders in dark ink on the navy sidebar. */
+.sidebar .eve-toggle-row { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:10px; font-size:13.5px; font-weight:600; color:#fff; text-align:left; width:100%; margin-top:8px; }
+.sidebar .eve-toggle-row:hover { background:var(--navy-hi); }
 .eve-toggle-row .nav-icon { width:18px; text-align:center; flex-shrink:0; }
 .eve-toggle-row .nav-label { flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .toggle-switch { width:36px; height:20px; border-radius:999px; background:var(--navy-hi); position:relative; flex-shrink:0; transition:background .15s; }
@@ -391,6 +414,43 @@ a.client:hover { text-decoration:underline; }
 .data-table tr:hover td { background:var(--bg); }
 .data-table .num { text-align:right; font-family:'Space Grotesk'; font-weight:700; }
 .data-table th.num button { justify-content:flex-end; width:100%; }
+
+/* Collapsible Archived section (PL board) — the label row is the toggle. */
+.archive-toggle { display:flex; align-items:center; gap:8px; width:100%; text-align:left; cursor:pointer; }
+.archive-toggle .archive-chevron { width:12px; font-size:11px; color:var(--soft); }
+.archive-toggle:hover { color:var(--ink); }
+
+/* ==========================================================================
+   Mobile redesign — slim header, navy bottom nav (option 2 layout on the
+   navy bar), corner FAB, and the "More" sheet.
+   ========================================================================== */
+.time-pill { display:inline-flex; align-items:center; gap:6px; background:var(--bg); border-radius:999px; padding:5px 10px; font-size:11.5px; font-weight:700; font-family:'Space Grotesk'; color:var(--ink); white-space:nowrap; }
+.mobile-nav { position:fixed; bottom:0; left:50%; transform:translateX(-50%); width:100%; max-width:480px; z-index:35;
+  background:var(--navy); display:flex; align-items:stretch; justify-content:space-around;
+  padding:6px 4px calc(8px + env(safe-area-inset-bottom)); }
+.mobile-nav button { display:flex; flex-direction:column; align-items:center; gap:3px; flex:1; padding:5px 2px; color:var(--navy-ink); position:relative; }
+.mobile-nav button .nav-ico { width:20px; height:20px; }
+.mobile-nav button span.lbl { font-size:9.5px; font-weight:700; letter-spacing:.2px; }
+.mobile-nav button.active { color:var(--pl); }
+.mobile-nav .badge { position:absolute; top:0; right:calc(50% - 20px); }
+.menu-ico { width:20px; height:20px; display:inline-flex; flex-direction:column; justify-content:center; gap:4px; }
+.menu-ico span { display:block; height:2px; border-radius:2px; background:currentColor; }
+/* Corner FAB (mobile) — circular, above the bottom nav, thumb side. */
+.fab { position:fixed; bottom:calc(74px + env(safe-area-inset-bottom)); left:auto; right:16px; transform:none; z-index:34;
+  width:56px; height:56px; padding:0; border-radius:50%; background:var(--pl); color:#fff; font-weight:700; font-size:26px;
+  display:flex; align-items:center; justify-content:center; box-shadow:0 6px 20px rgba(0,0,0,.3); }
+/* Room for the fixed bar (and FAB) at the end of the scroll. */
+.relay { padding-bottom:calc(120px + env(safe-area-inset-bottom)); }
+/* "More" sheet rows — 48px touch targets, deck icons via .ico. */
+.more-item { display:flex; align-items:center; gap:12px; width:100%; min-height:48px; padding:6px 4px; border-bottom:1px solid var(--line); font-size:14px; font-weight:600; color:var(--ink); text-align:left; }
+.more-item:last-of-type { border-bottom:none; }
+.more-item .ico { width:20px; height:20px; }
+.more-item .more-gate { margin-left:auto; font-size:10px; font-weight:700; border-radius:5px; padding:2px 6px; background:var(--bg); color:var(--soft); }
+.more-item .more-chevron { margin-left:auto; color:var(--soft); }
+.more-persona { display:flex; align-items:center; gap:10px; background:var(--bg); border-radius:12px; padding:12px; margin-top:12px; }
+.more-persona .avatar { background:var(--pl); color:#fff; }
+/* Theme (dark mode) toggle — same square-control chrome as the bell. */
+.theme-btn { width:32px; height:32px; border-radius:10px; background:var(--bg); border:1px solid var(--line); font-size:15px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
 
 /* Sheet variants: mobile bottom sheet (default), desktop dialog (centered), desktop panel (right side). */
 .scrim-dialog { align-items:center; }

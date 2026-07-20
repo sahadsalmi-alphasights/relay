@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { dubaiHour, dubaiMinute } from "../lib/time";
 import { useApp } from "../state/AppContext";
+import { useTheme } from "../lib/theme";
 import type { LiveStatus } from "../lib/useLiveSocket";
 import type { Notification as AppNotification } from "../api/types";
 import type { NotificationsState } from "../lib/useNotifications";
@@ -16,6 +17,7 @@ export default function TopBar({
   onOpenNotification?: (n: AppNotification) => void;
 }) {
   const { nowMs, demoHour, setDemoHour, effectiveHour, effectiveAfterHours } = useApp();
+  const { theme, toggleTheme } = useTheme();
   const barRef = useRef<HTMLDivElement>(null);
 
   /**
@@ -57,6 +59,9 @@ export default function TopBar({
         {effectiveHour < 15 ? "APAC live 2×" : "APAC done"}
       </span>
       <div className="topbar-spacer" />
+      <button className="theme-btn" onClick={toggleTheme} title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}>
+        {theme === "dark" ? "☀️" : "🌙"}
+      </button>
       <NotificationBell notif={notif} onOpen={onOpenNotification} />
       {import.meta.env.DEV && (
         <div className="demo-clock">

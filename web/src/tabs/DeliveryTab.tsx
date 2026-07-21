@@ -14,6 +14,8 @@ interface DeliveryItem {
   assignment: Assignment;
   /** Big structural change — only shown when the project has more than one angle; the simple (one-angle) case stays exactly as before. */
   multiAngle: boolean;
+  /** Per-angle expert pool (2026-07-21) — THIS assignment's angle's pool; the card's live/asleep state reads this, not the project-level default. */
+  anglePool?: string;
 }
 
 /**
@@ -168,7 +170,11 @@ export default function DeliveryTab({
     const teamParam = scope === "team" && teamView ? `&teamId=${teamView}` : "";
     const list = await api.get<Project[]>(`/projects?role=delivering&scope=${scope}${teamParam}&status=active`);
     const details = await Promise.all(
-      list.map((p) => api.get<{ project: Project; assignments: Assignment[]; angles: unknown[] }>(`/projects/${p.id}`))
+      list.map((p) =>
+        api.get<{ project: Project; assignments: Assignment[]; angles: { id: string; expertPool?: string }[] }>(
+          `/projects/${p.id}`
+        )
+      )
     );
     // §8 scope toggle — "team" means every member of the VIEWED team's
     // assignments (own team by default, any team via the picker, or the
@@ -180,8 +186,15 @@ export default function DeliveryTab({
         : new Set([actor.id]);
     const rows: DeliveryItem[] = [];
     for (const d of details) {
+      const poolByAngle = new Map(d.angles.map((ang) => [ang.id, ang.expertPool]));
       for (const a of d.assignments) {
-        if (relevantIds.has(a.delivererId)) rows.push({ project: d.project, assignment: a, multiAngle: d.angles.length > 1 });
+        if (relevantIds.has(a.delivererId))
+          rows.push({
+            project: d.project,
+            assignment: a,
+            multiAngle: d.angles.length > 1,
+            anglePool: poolByAngle.get(a.angleId),
+          });
       }
     }
     // Automatic ordering: ghosts always last; then stage (First Deliverable
@@ -261,12 +274,15 @@ export default function DeliveryTab({
           .sort((a, b) => a.name.localeCompare(b.name))
       : [];
 
-  const renderCard = ({ project: p, assignment: a, multiAngle }: DeliveryItem) => {
+  const renderCard = ({ project: p, assignment: a, multiAngle, anglePool }: DeliveryItem) => {
+    // Per-angle pool (2026-07-21): the live/asleep state and the pool chip
+    // read THIS assignment's angle's pool; project pool is only the fallback.
+    const cardPool = (anglePool as Project["expertPool"] | undefined) ?? p.expertPool;
     const doneAll = a.delivered + a.customDelivered;
     const remaining = Math.max(a.goal - doneAll, 0);
     const pct = a.goal ? Math.min(100, Math.round((doneAll / a.goal) * 100)) : 0;
     const elapsed = nowMs - new Date(a.stageEnteredAt).getTime();
-    const ps = poolState(p.expertPool, effectiveHour);
+    const ps = poolState(cardPool, effectiveHour);
     // Manager feedback batch, item 8 — visual only: derived from the same
     // delivered/customDelivered vs goal every progress bar already reads,
     // nothing new tracked. `pct` above stays capped at 100 for the bar's
@@ -312,8 +328,8 @@ export default function DeliveryTab({
           <div className={"chip timer " + timerClass(elapsed)}>
             ⏱ {fmtElapsed(elapsed)} in {stageLabel(a.stage).replace(" Deliverable", "")}
           </div>
-          {ps === "dormant" && <div className="chip dormant">💤 {p.expertPool} asleep — goal inactive now</div>}
-          {ps === "live" && <div className="chip live">⚡ {p.expertPool} live — double weight, convert now</div>}
+          {ps === "dormant" && <div className="chip dormant">💤 {cardPool} asleep — goal inactive now</div>}
+          {ps === "live" && <div className="chip live">⚡ {cardPool} live — double weight, convert now</div>}
           {over > 0 && <div className="chip overdelivered">Overdelivered +{over}</div>}
         </div>
         <div className="progress">

@@ -535,6 +535,11 @@ export default function ProjectLeadingTab({
                           {ang.callsSold} of {ang.callsN} sold
                         </span>
                       )}
+                      {/* Per-angle expert pool (2026-07-21) — labelled only when it
+                          differs from the project default, so simple projects stay clean. */}
+                      {ang.expertPool && ang.expertPool !== p.expertPool && (
+                        <span title="This angle's expert pool">🌐 {ang.expertPool}</span>
+                      )}
                     </div>
                     {attainment !== null && (
                       <div className="sold-pulse-bar">

@@ -1,6 +1,7 @@
 export type PersonStatus = "Available" | "On vacation" | "Sick" | "Offline";
 
 export type ExpertPool = "Global" | "EU & MEA & India" | "AUS / NZ / Sing / JP" | "US only";
+export const EXPERT_POOLS: ExpertPool[] = ["Global", "EU & MEA & India", "AUS / NZ / Sing / JP", "US only"];
 
 export type Stage = "First Deliverable" | "Second Deliverable" | "Hail Mary" | "Selling";
 
@@ -77,6 +78,8 @@ export interface Angle {
   callsSoldUpdatedAt: string;
   /** "Invisible competition" — per-angle opt-out, defaults true. Only actionable at intake time for Due Diligence/Strategy angles. */
   invisibleCompetitionEnabled: boolean;
+  /** Expert pool per ANGLE (2026-07-21) — different angles of one project can target different pools/timezones. */
+  expertPool: ExpertPool;
 }
 
 export interface Assignment {

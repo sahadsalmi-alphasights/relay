@@ -49,6 +49,8 @@ interface AngleForm {
   invisibleCompetitionEnabled: boolean;
   /** The ghost picked for this angle (2026-07-21): person id, or null for none. Sent explicitly so the server assigns exactly what the wizard shows. */
   ghostPick: string | null;
+  /** Expert pool for THIS angle (2026-07-21); "" inherits the project-level pool. */
+  expertPool: "" | ExpertPool;
 }
 
 function newAngle(callsN: string): AngleForm {
@@ -62,6 +64,7 @@ function newAngle(callsN: string): AngleForm {
     overrides: {},
     invisibleCompetitionEnabled: true,
     ghostPick: null,
+    expertPool: "",
   };
 }
 
@@ -331,6 +334,8 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
             ...(f.projectType !== "Pitch"
               ? { invisibleCompetitionEnabled: a.invisibleCompetitionEnabled, ghostDelivererId: a.ghostPick }
               : {}),
+            // Per-angle pool; "" inherits the project-level pool picked in step 1.
+            expertPool: a.expertPool || f.expertPool,
           };
         }),
       });
@@ -415,6 +420,24 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
                       style={{ flex: 1, minWidth: 0 }}
                       placeholder="N"
                     />
+                    {/* Per-angle expert pool (2026-07-21) — only shown when the
+                        project has multiple angles; a single-angle project just
+                        uses the project-level pool above. */}
+                    {angles.length > 1 && (
+                      <select
+                        value={a.expertPool}
+                        onChange={(e) => updateAngle(i, { expertPool: e.target.value as "" | ExpertPool })}
+                        style={{ flex: 1, minWidth: 0 }}
+                        title="Expert pool for this angle"
+                      >
+                        <option value="">Pool: project default</option>
+                        {POOLS.map((p) => (
+                          <option key={p} value={p}>
+                            {p}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                     <button type="button" className="btn-sm btn-ghost" onClick={() => removeAngle(i)}>
                       ✕
                     </button>

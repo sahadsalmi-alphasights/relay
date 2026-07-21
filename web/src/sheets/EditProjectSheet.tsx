@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, ApiError } from "../api/client";
+import { EXPERT_POOLS } from "../api/types";
 import type { Angle, Project } from "../api/types";
 import Sheet from "../components/Sheet";
 import { CLIENT_ENTITY_IDS, entityName } from "../lib/format";
@@ -246,6 +247,20 @@ export default function EditProjectSheet({
               <span style={{ fontSize: 12, color: "var(--soft)" }}>
                 goal {ang.goalTotal} · {staffed} staffed
               </span>
+              {/* Per-angle expert pool (2026-07-21) — auto-saves like N; the
+                  pool feeds load weighting, so the ranking refreshes live. */}
+              <select
+                className="stage-select"
+                value={ang.expertPool}
+                title="Expert pool for this angle"
+                onChange={(e) => patchAngle(ang.id, { expertPool: e.target.value })}
+              >
+                {EXPERT_POOLS.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
               <button
                 className="btn-sm btn-ghost"
                 style={{ marginLeft: "auto", color: "#A82F2F" }}

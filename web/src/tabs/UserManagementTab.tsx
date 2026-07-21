@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { api, ApiError } from "../api/client";
 import type { AdminUser, PersonStatus, Role, Team } from "../api/types";
+import UserGroupsView from "../components/UserGroupsView";
 import { useViewport } from "../lib/useViewport";
 import { useApp } from "../state/AppContext";
 
@@ -44,6 +45,7 @@ export default function UserManagementTab({ reloadTick }: { reloadTick: number }
   const [teams, setTeams] = useState<Team[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [view, setView] = useState<"users" | "groups">("users");
   const [search, setSearch] = useState("");
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState<{ email: string; name: string; role: Role; teamId: string }>({
@@ -211,13 +213,23 @@ export default function UserManagementTab({ reloadTick }: { reloadTick: number }
         {counts.manager !== 1 ? "s" : ""} · {counts.member} member{counts.member !== 1 ? "s" : ""}
         {counts.deactivated > 0 ? ` · ${counts.deactivated} deactivated` : ""}
       </div>
-      <div className="audit-filters">
-        <input placeholder="Search name, email, or role" value={search} onChange={(e) => setSearch(e.target.value)} style={{ flex: 1, minWidth: 200 }} />
-        <button className="btn-sm btn-pl" onClick={() => setAdding((a) => !a)}>
-          {adding ? "Cancel" : "＋ Add user"}
+      <div className="subtabs">
+        <button className={"subtab" + (view === "users" ? " on" : "")} onClick={() => setView("users")}>
+          Users
+        </button>
+        <button className={"subtab" + (view === "groups" ? " on" : "")} onClick={() => setView("groups")}>
+          User groups
         </button>
       </div>
-      {adding && (
+      {view === "users" && (
+        <div className="audit-filters">
+          <input placeholder="Search name, email, or role" value={search} onChange={(e) => setSearch(e.target.value)} style={{ flex: 1, minWidth: 200 }} />
+          <button className="btn-sm btn-pl" onClick={() => setAdding((a) => !a)}>
+            {adding ? "Cancel" : "＋ Add user"}
+          </button>
+        </div>
+      )}
+      {view === "users" && adding && (
         <div className="card" style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
           <input style={{ ...inputStyle, flex: 2, minWidth: 180 }} placeholder="email@alphasights.com" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
           <input style={{ ...inputStyle, flex: 1, minWidth: 120 }} placeholder="Full name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
@@ -244,6 +256,17 @@ export default function UserManagementTab({ reloadTick }: { reloadTick: number }
       {error && <div className="err-line">{error}</div>}
     </>
   );
+
+  // "User groups" — same portal, organised by permission group. Works the
+  // same on desktop and mobile (the grid collapses to one column).
+  if (view === "groups") {
+    return (
+      <>
+        {header}
+        <UserGroupsView users={users} busyId={busyId} onChangeRole={changeRole} />
+      </>
+    );
+  }
 
   if (isDesktop) {
     return (

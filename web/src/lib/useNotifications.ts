@@ -19,6 +19,8 @@ export interface NotificationsState {
   addLive: (n: LiveNotification) => void;
   markRead: (id: string) => Promise<void>;
   markAllRead: () => Promise<void>;
+  /** Permanently deletes all of this person's notifications (server + tray). */
+  clearAll: () => Promise<void>;
   /** Re-fetch the authoritative list — called on every (re)connect so anything
    *  the server sent while the socket was down (and could not deliver) still
    *  shows up in the bell rather than being lost until a full page reload. */
@@ -76,5 +78,15 @@ export function useNotifications(): NotificationsState {
     }
   };
 
-  return { notifications, unreadCount, addLive, markRead, markAllRead, refresh };
+  const clearAll = async () => {
+    try {
+      await api.del("/notifications");
+      setNotifications([]);
+      setUnreadCount(0);
+    } catch {
+      // keep the current list on failure; the user can retry
+    }
+  };
+
+  return { notifications, unreadCount, addLive, markRead, markAllRead, clearAll, refresh };
 }

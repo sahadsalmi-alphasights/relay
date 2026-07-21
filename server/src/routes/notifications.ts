@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from "fastify";
-import { countUnread, listForPerson, markAllRead, markRead } from "../repositories/notifications";
+import { countUnread, deleteAllForPerson, listForPerson, markAllRead, markRead } from "../repositories/notifications";
 import { notFound } from "../errors";
 
 /** §9 (built) — the in-app notification centre: always scoped to the caller's own notifications. */
@@ -20,6 +20,12 @@ const notificationsRoutes: FastifyPluginAsync = async (app) => {
   app.post("/read-all", { preHandler: [app.requireAuth] }, async (request) => {
     const actor = request.actor!;
     await markAllRead(actor.id);
+    return { ok: true };
+  });
+
+  /** "Clear all" — permanently removes the caller's own notifications (theirs only, always). */
+  app.delete("/", { preHandler: [app.requireAuth] }, async (request) => {
+    await deleteAllForPerson(request.actor!.id);
     return { ok: true };
   });
 };

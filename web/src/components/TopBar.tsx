@@ -60,7 +60,12 @@ export default function TopBar({
       </span>
       <div className="topbar-spacer" />
       <button className="theme-btn" onClick={toggleTheme} title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}>
-        {theme === "dark" ? "☀️" : "🌙"}
+        {/* Half-filled "contrast" circle — deliberately NOT a sun/moon, which
+            read as evening coverage. The moon now belongs to that toggle. */}
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor" stroke="none" />
+        </svg>
       </button>
       <NotificationBell notif={notif} onOpen={onOpenNotification} />
       {import.meta.env.DEV && (

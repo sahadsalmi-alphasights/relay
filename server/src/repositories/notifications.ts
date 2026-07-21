@@ -71,6 +71,16 @@ export async function markAllRead(personId: string): Promise<void> {
 }
 
 /**
+ * "Clear all" in the bell tray — permanently removes the caller's own rows.
+ * Note lastNotificationAt() below derives broadcast re-ping timing from these
+ * rows; clearing can at worst cause one extra re-ping for an open seat, which
+ * is acceptable for a personal housekeeping action.
+ */
+export async function deleteAllForPerson(personId: string): Promise<void> {
+  await pool.query(`DELETE FROM notification WHERE person_id = $1`, [personId]);
+}
+
+/**
  * CHANGE 3 — the 15-minute re-ping needs to know "when did we last broadcast
  * this," and there's no dedicated broadcast table to ask (no-schema-changes
  * constraint for this batch) — so this derives it from the notification rows

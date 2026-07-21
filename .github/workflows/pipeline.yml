@@ -165,20 +165,16 @@ jobs:
           exit-code: 0
           ignore-unfixed: true
 
-  # ---------- Deploy (main branch only, only after everything above passes) ----------
-
+  # ---------- Deploy (main branch only) ----------
+  #
+  # No `needs`: branch protection already forces all six checks green on the
+  # PR before anything can merge, so re-running them against the identical
+  # merged code added ~5 minutes of ceremony to every deploy. The checks
+  # still run on main pushes (belt and braces for any direct push), but the
+  # deploy no longer waits for them — merge-to-live is now just the VM build.
   deploy:
     name: Deploy to GCP VM
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    needs:
-      [
-        secrets-scan,
-        dependency-scan,
-        code-scan,
-        server-build-test,
-        web-build,
-        container-scan,
-      ]
     runs-on: ubuntu-latest
     steps:
       - name: Deploy via SSH

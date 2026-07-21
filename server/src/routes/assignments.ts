@@ -244,9 +244,20 @@ const assignmentsRoutes: FastifyPluginAsync = async (app) => {
       if (!canSwapDeliverer(actor, project)) throw forbidden("only the PL or a manager may swap the deliverer");
       if (!request.body?.newDelivererId) throw badRequest("newDelivererId is required");
 
+      // Per-ANGLE duplicate check, matching the add route and the DB's
+      // (angle, deliverer) uniqueness: one person may hold seats on two
+      // different angles of the same project. This was project-wide, which
+      // made cross-angle replacements work at creation but 400 in Edit team.
       const projectAssignments = await listAssignmentsByProject(project.id);
-      if (projectAssignments.some((a) => a.id !== assignment.id && a.delivererId === request.body.newDelivererId)) {
-        throw badRequest("that person already has an assignment on this project");
+      if (
+        projectAssignments.some(
+          (a) =>
+            a.id !== assignment.id &&
+            a.angleId === assignment.angleId &&
+            a.delivererId === request.body.newDelivererId
+        )
+      ) {
+        throw badRequest("that person already has an assignment on this angle");
       }
 
       const { assignment: swapped, auditEntry } = swapDeliverer(assignment, request.body.newDelivererId, actor.id);

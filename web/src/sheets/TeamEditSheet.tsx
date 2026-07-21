@@ -42,6 +42,11 @@ export default function TeamEditSheet({
   const [addGoal, setAddGoal] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Managers and blocked people are the exception picks, so both sections
+  // start folded — the eligible list (everyone from the capacity ranking)
+  // stays the focus. Expanded, every name is visible and pickable.
+  const [managersOpen, setManagersOpen] = useState(false);
+  const [blockedOpen, setBlockedOpen] = useState(false);
 
   const reload = async () => {
     const detail = await api.get<{ project: Project; assignments: Assignment[]; angles: Angle[] }>(
@@ -245,49 +250,68 @@ export default function TeamEditSheet({
           )}
           {/* Blocked candidates are selectable too — they can never be the
               suggestion, so picking one is automatically an override (reason
-              optional, logged), same treatment as managers below. */}
-          {candidates.map((r) => (
-            <div
-              key={r.personId}
-              className={"match-line " + (r.eligible ? "" : "blocked") + (selectedId === r.personId ? " picked" : "")}
-              onClick={() => setSelectedId(r.personId)}
-              style={{ cursor: "pointer" }}
-            >
-              <div className="avatar">{initials(nameOf(r.personId))}</div>
-              <div>
-                <div className="assignee-name">
-                  {nameOf(r.personId)} <span style={{ color: "var(--soft)", fontWeight: 500 }}>· {practiceOf(r.personId)}</span>
-                  {r.personId === suggestedId && <span className="picktag" style={{ marginLeft: 6 }}>Suggested</span>}
+              optional, logged). Eligible people render up top; blocked fold
+              into their own section below, like managers. */}
+          {(() => {
+            const candidateRow = (r: (typeof candidates)[number]) => (
+              <div
+                key={r.personId}
+                className={"match-line " + (r.eligible ? "" : "blocked") + (selectedId === r.personId ? " picked" : "")}
+                onClick={() => setSelectedId(r.personId)}
+                style={{ cursor: "pointer" }}
+              >
+                <div className="avatar">{initials(nameOf(r.personId))}</div>
+                <div>
+                  <div className="assignee-name">
+                    {nameOf(r.personId)} <span style={{ color: "var(--soft)", fontWeight: 500 }}>· {practiceOf(r.personId)}</span>
+                    {r.personId === suggestedId && <span className="picktag" style={{ marginLeft: 6 }}>Suggested</span>}
+                  </div>
+                  <div className="assignee-sub">
+                    {!r.eligible
+                      ? r.ineligibleReason === "not_on_sunday_rota"
+                        ? "Not on today's rota"
+                        : r.ineligibleReason === "first_deliverable_conflict"
+                        ? "Busy — first deliverable elsewhere"
+                        : "Evening coverage off — applies from 7pm"
+                      : r.free
+                      ? "Free"
+                      : "Available"}
+                    {onOtherAngles.has(r.personId) ? " · already on another angle of this project" : ""}
+                  </div>
                 </div>
-                <div className="assignee-sub">
-                  {/* Reason text must match the real reason — this used to
-                      fall back to "Evening coverage off" for EVERY non-rota
-                      block, so mid-day First-Deliverable conflicts looked
-                      like the after-hours rule firing at 11am. */}
-                  {!r.eligible
-                    ? r.ineligibleReason === "not_on_sunday_rota"
-                      ? "Not on today's rota"
-                      : r.ineligibleReason === "first_deliverable_conflict"
-                      ? "Busy — first deliverable elsewhere"
-                      : "Evening coverage off — applies from 7pm"
-                    : r.free
-                    ? "Free"
-                    : "Available"}
-                  {onOtherAngles.has(r.personId) ? " · already on another angle of this project" : ""}
+                <div className="load-score" style={{ marginLeft: "auto" }}>
+                  <b>{r.load.toFixed(1)}</b>
+                  <small>Load</small>
                 </div>
               </div>
-              <div className="load-score" style={{ marginLeft: "auto" }}>
-                <b>{r.load.toFixed(1)}</b>
-                <small>Load</small>
-              </div>
-            </div>
-          ))}
-          {candidates.length === 0 && <div className="empty">No other candidates.</div>}
+            );
+            const eligibleCandidates = candidates.filter((r) => r.eligible);
+            const blockedCandidates = candidates.filter((r) => !r.eligible);
+            return (
+              <>
+                {eligibleCandidates.map(candidateRow)}
+                {eligibleCandidates.length === 0 && blockedCandidates.length === 0 && (
+                  <div className="empty">No other candidates.</div>
+                )}
+                {blockedCandidates.length > 0 && (
+                  <>
+                    <button className="archive-toggle" style={{ marginTop: 10 }} onClick={() => setBlockedOpen((o) => !o)}>
+                      {blockedOpen ? "▾" : "▸"} Blocked right now — always a manual pick · {blockedCandidates.length}
+                    </button>
+                    {blockedOpen && blockedCandidates.map(candidateRow)}
+                  </>
+                )}
+              </>
+            );
+          })()}
 
           {managers.length > 0 && (
             <>
-              <div className="section-lbl spaced">Or add a manager (never suggested — always a manual pick)</div>
-              {managers.map((m) => (
+              <button className="archive-toggle" style={{ marginTop: 12 }} onClick={() => setManagersOpen((o) => !o)}>
+                {managersOpen ? "▾" : "▸"} Or add a manager (never suggested — always a manual pick) · {managers.length}
+              </button>
+              {managersOpen &&
+                managers.map((m) => (
                 <div
                   key={m.id}
                   className={"match-line " + (selectedId === m.id ? " picked" : "")}

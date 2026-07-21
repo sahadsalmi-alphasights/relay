@@ -1,4 +1,4 @@
-import { pool } from "../db";
+import { pool, withTransaction } from "../db";
 import type { PersonStatus } from "../rules/types";
 
 export type Role = "owner" | "manager" | "member";
@@ -217,12 +217,62 @@ export async function listBroadcastRecipients(afterHours: boolean): Promise<Pers
   return rows;
 }
 
+/** Thrown by deletePersonCascade when the person still leads projects. */
+export class LeadsProjectsError extends Error {
+  count: number;
+  constructor(count: number) {
+    super("person still leads projects");
+    this.count = count;
+  }
+}
+
+export interface CascadeDeleteSummary {
+  assignments: number;
+  notes: number;
+  notifications: number;
+  projectsReassigned: number;
+}
+
 /**
- * Hard delete — only possible for people with no history: any FK reference
- * (assignments, audit entries, notifications, rota rows, …) makes Postgres
- * refuse, and the route translates that into "deactivate instead". This is
- * for pre-provisioned mistakes and test accounts, not for leavers.
+ * Hard delete with cascade (owner explicitly chose this over the earlier
+ * refuse-on-any-history behavior): the person's own footprint — delivery
+ * rounds, goal-change requests, assignments, notes, rota entries, swap
+ * requests, notifications, push subscriptions — is removed with them.
+ * Audit history is PRESERVED: their audit_log rows stay, with actor_id
+ * nulled (the deletion's own audit entry snapshots who they were).
+ *
+ * Someone who still LEADS projects (project.pl_id) can't just vanish —
+ * whole boards would orphan. The caller passes reassignPlTo (chosen in the
+ * portal's picker) and their projects move to that person atomically in the
+ * same transaction; without it, LeadsProjectsError tells the UI to ask.
  */
-export async function deletePerson(id: string): Promise<void> {
-  await pool.query(`DELETE FROM person WHERE id = $1`, [id]);
+export async function deletePersonCascade(id: string, reassignPlTo?: string): Promise<CascadeDeleteSummary> {
+  return withTransaction(async (tx) => {
+    const { rows: led } = await tx.query(`SELECT count(*)::int AS n FROM project WHERE pl_id = $1`, [id]);
+    let projectsReassigned = 0;
+    if (led[0].n > 0) {
+      if (!reassignPlTo) throw new LeadsProjectsError(led[0].n);
+      projectsReassigned =
+        (await tx.query(`UPDATE project SET pl_id = $2 WHERE pl_id = $1`, [id, reassignPlTo])).rowCount ?? 0;
+    }
+
+    await tx.query(
+      `DELETE FROM delivery_round WHERE assignment_id IN (SELECT id FROM assignment WHERE deliverer_id = $1)`,
+      [id]
+    );
+    await tx.query(
+      `DELETE FROM goal_change_request
+       WHERE requested_by = $1 OR assignment_id IN (SELECT id FROM assignment WHERE deliverer_id = $1)`,
+      [id]
+    );
+    const assignments = (await tx.query(`DELETE FROM assignment WHERE deliverer_id = $1`, [id])).rowCount ?? 0;
+    const notes = (await tx.query(`DELETE FROM note WHERE author_id = $1`, [id])).rowCount ?? 0;
+    await tx.query(`DELETE FROM sunday_rota WHERE person_id = $1`, [id]);
+    await tx.query(`DELETE FROM sunday_swap_request WHERE requested_by = $1`, [id]);
+    const notifications = (await tx.query(`DELETE FROM notification WHERE person_id = $1`, [id])).rowCount ?? 0;
+    await tx.query(`DELETE FROM push_subscription WHERE person_id = $1`, [id]);
+    await tx.query(`UPDATE audit_log SET actor_id = NULL WHERE actor_id = $1`, [id]);
+    await tx.query(`DELETE FROM person WHERE id = $1`, [id]);
+    return { assignments, notes, notifications, projectsReassigned };
+  });
 }

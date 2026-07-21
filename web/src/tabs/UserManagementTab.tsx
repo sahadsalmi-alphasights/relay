@@ -129,14 +129,36 @@ export default function UserManagementTab({ reloadTick }: { reloadTick: number }
       setError(err instanceof ApiError ? err.message : "Could not create the team");
     }
   };
+  // Delete flow: cascade removes the person's footprint (audit rows are kept,
+  // unattributed). If they lead projects the server answers 409 and we open
+  // the reassignment picker — choose the new PL, then delete proceeds.
+  const [reassign, setReassign] = useState<{ user: AdminUser; to: string } | null>(null);
+  const attemptDelete = async (u: AdminUser, reassignPlTo?: string) => {
+    setBusyId(u.id);
+    setError(null);
+    try {
+      await api.del(`/users/${u.id}${reassignPlTo ? `?reassignPlTo=${reassignPlTo}` : ""}`);
+      setReassign(null);
+      await load();
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409 && err.message.includes("take them over")) {
+        setError(err.message);
+        setReassign({ user: u, to: "" });
+      } else {
+        setError(err instanceof ApiError ? err.message : "That change could not be saved");
+      }
+    } finally {
+      setBusyId(null);
+    }
+  };
   const deleteUser = (u: AdminUser) => {
     if (
       !window.confirm(
-        `Permanently delete ${u.name}? Only possible for accounts with no project or audit history — otherwise deactivate them.`
+        `Permanently delete ${u.name}? Their assignments, notifications and personal data are removed; audit history is kept without attribution. If they lead projects, you'll pick who takes those over.`
       )
     )
       return;
-    void run(u.id, () => api.del(`/users/${u.id}`));
+    void attemptDelete(u);
   };
 
   const addUser = async () => {
@@ -316,6 +338,37 @@ export default function UserManagementTab({ reloadTick }: { reloadTick: number }
         </div>
       )}
       {error && <div className="err-line">{error}</div>}
+      {view === "users" && reassign && (
+        <div className="card" style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: "var(--ink)" }}>
+            Hand {reassign.user.name}'s projects to:
+          </span>
+          <select
+            className="stage-select"
+            value={reassign.to}
+            onChange={(e) => setReassign({ ...reassign, to: e.target.value })}
+          >
+            <option value="">— Pick the new PL —</option>
+            {users
+              .filter((u) => u.id !== reassign.user.id && !u.deactivatedAt)
+              .map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.name}
+                </option>
+              ))}
+          </select>
+          <button
+            className="btn-sm btn-pl"
+            disabled={!reassign.to || busyId === reassign.user.id}
+            onClick={() => attemptDelete(reassign.user, reassign.to)}
+          >
+            Reassign & delete
+          </button>
+          <button className="btn-sm btn-ghost" onClick={() => setReassign(null)}>
+            Cancel
+          </button>
+        </div>
+      )}
     </>
   );
 

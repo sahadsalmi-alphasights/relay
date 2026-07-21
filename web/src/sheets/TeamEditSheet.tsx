@@ -233,12 +233,15 @@ export default function TeamEditSheet({
               </div>
             </div>
           )}
+          {/* Blocked candidates are selectable too — they can never be the
+              suggestion, so picking one is automatically an override (reason
+              optional, logged), same treatment as managers below. */}
           {candidates.map((r) => (
             <div
               key={r.personId}
               className={"match-line " + (r.eligible ? "" : "blocked") + (selectedId === r.personId ? " picked" : "")}
-              onClick={() => r.eligible && setSelectedId(r.personId)}
-              style={{ cursor: r.eligible ? "pointer" : "default" }}
+              onClick={() => setSelectedId(r.personId)}
+              style={{ cursor: "pointer" }}
             >
               <div className="avatar">{initials(nameOf(r.personId))}</div>
               <div>

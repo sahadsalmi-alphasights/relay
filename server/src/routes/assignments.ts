@@ -232,7 +232,7 @@ const assignmentsRoutes: FastifyPluginAsync = async (app) => {
   // than who the ranking suggested) carries a justification, logged
   // separately to the audit trail; never a notification about the override
   // itself, only the ordinary "assigned" one below.
-  app.post<{ Params: { id: string }; Body: { newDelivererId?: string; override?: { justification: string } } }>(
+  app.post<{ Params: { id: string }; Body: { newDelivererId?: string; override?: { justification?: string } } }>(
     "/:id/swap",
     { preHandler: [app.requireAuth] },
     async (request) => {
@@ -252,14 +252,14 @@ const assignmentsRoutes: FastifyPluginAsync = async (app) => {
       const { assignment: swapped, auditEntry } = swapDeliverer(assignment, request.body.newDelivererId, actor.id);
       const updated = await updateAssignmentDeliverer(assignment.id, swapped.delivererId);
       await insertAuditLog(auditEntry);
-      if (request.body.override?.justification) {
+      if (request.body.override) {
         await insertAuditLog({
           entityType: "assignment",
           entityId: assignment.id,
           actorId: actor.id,
           action: "manual_override",
           oldValue: { insteadOf: assignment.delivererId },
-          newValue: { pickedInstead: swapped.delivererId, justification: request.body.override.justification },
+          newValue: { pickedInstead: swapped.delivererId, justification: request.body.override.justification || null },
         });
       }
       // Old AND new deliverer must both hear about it -- the old one loses this card entirely.

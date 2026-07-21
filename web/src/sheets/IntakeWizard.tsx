@@ -218,7 +218,8 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
     free: false,
   });
   const confirmOverride = () => {
-    if (overridingAngle === null || !overridingId || !justificationText.trim()) return;
+    // Justification is optional (2026-07-21); the override is audit-logged either way.
+    if (overridingAngle === null || !overridingId) return;
     const angleIndex = overridingAngle;
     const angle = angles[angleIndex];
     // An angle with zero auto-picked candidates ("No one available now") has
@@ -283,7 +284,7 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
             assignments: a.picked.map((r) => ({
               delivererId: r.personId,
               goal: perPerson,
-              ...(a.overrides[r.personId] ? { override: { justification: a.overrides[r.personId] } } : {}),
+              ...(r.personId in a.overrides ? { override: { justification: a.overrides[r.personId] } } : {}),
             })),
             // "Invisible competition" — only meaningful for Due Diligence/Strategy; omitted for Pitch (server default applies, harmlessly unread there).
             ...(f.projectType !== "Pitch" ? { invisibleCompetitionEnabled: a.invisibleCompetitionEnabled } : {}),
@@ -576,7 +577,7 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
                   )}
                   {a.ranked?.slice(0, 8).map((r) => {
                     const isPicked = a.picked.some((p) => p.personId === r.personId);
-                    const isOverridden = !!a.overrides[r.personId];
+                    const isOverridden = r.personId in a.overrides;
                     const isBlockedByFDConflict = r.ineligibleReason === "first_deliverable_conflict";
                     const placedElsewhere = !isPicked ? placedOnOtherAngle(r.personId, angleIndex) : null;
                     return (
@@ -655,7 +656,7 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
                         <p style={{ fontSize: 12, margin: "8px 0", color: "var(--ink)" }}>{nameOf(replaceTarget)}</p>
                       )}
                       <div className="field">
-                        <label>Justification — required to pick someone other than suggested</label>
+                        <label>Justification — optional, saved to the audit trail if you add one</label>
                         <input
                           ref={justificationRef}
                           value={justificationText}
@@ -667,7 +668,7 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
                         <button className="btn btn-ghost" onClick={() => setOverridingAngle(null)}>
                           Cancel
                         </button>
-                        <button className="btn btn-pl" disabled={!justificationText.trim()} onClick={confirmOverride}>
+                        <button className="btn btn-pl" onClick={confirmOverride}>
                           Confirm override
                         </button>
                       </div>

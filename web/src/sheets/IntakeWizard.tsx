@@ -575,9 +575,11 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
                       </button>
                     </div>
                   )}
+                  {/* No cap: every eligible person from the capacity ranking
+                      appears (same backing query), so the PL can always
+                      override onto anyone. */}
                   {(a.ranked ?? [])
                     .filter((r) => r.eligible)
-                    .slice(0, 8)
                     .map((r) => {
                       const isPicked = a.picked.some((p) => p.personId === r.personId);
                       const isOverridden = r.personId in a.overrides;

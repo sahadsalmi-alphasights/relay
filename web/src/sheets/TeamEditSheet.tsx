@@ -77,8 +77,18 @@ export default function TeamEditSheet({
   }
 
   const multiAngle = angles.length > 1;
-  const alreadyOnProject = new Set(assignments.map((a) => a.delivererId));
-  const candidates = ranked.filter((r) => !alreadyOnProject.has(r.personId));
+  // Exclusion is per-ANGLE, not per-project: one person may hold seats on two
+  // different angles of the same project (the DB uniqueness is (angle,
+  // deliverer)). Only people already on the TARGET angle are hidden.
+  const targetAngleId =
+    action?.mode === "swap"
+      ? assignments.find((x) => x.id === action.assignmentId)?.angleId ?? null
+      : action?.mode === "add"
+      ? action.angleId
+      : null;
+  const onTargetAngle = new Set(assignments.filter((x) => x.angleId === targetAngleId).map((x) => x.delivererId));
+  const onOtherAngles = new Set(assignments.filter((x) => x.angleId !== targetAngleId).map((x) => x.delivererId));
+  const candidates = ranked.filter((r) => !onTargetAngle.has(r.personId));
   const suggestedId = candidates.find((r) => r.eligible)?.personId;
   // Managers are excluded from the ranked candidate pool entirely (never
   // suggested, never auto-picked — see services/candidates.ts), so they
@@ -87,7 +97,7 @@ export default function TeamEditSheet({
   // loaded client-side, always resolving to an override (a manager can never
   // equal `suggestedId`, since they were never in `ranked` to begin with).
   const managers = people.filter(
-    (p) => (p.isManager || p.isOwner) && p.status === "Available" && !p.deactivatedAt && !alreadyOnProject.has(p.id)
+    (p) => (p.isManager || p.isOwner) && p.status === "Available" && !p.deactivatedAt && !onTargetAngle.has(p.id)
   );
 
   const startSwap = (a: Assignment) => {
@@ -257,6 +267,7 @@ export default function TeamEditSheet({
                     : r.free
                     ? "Free"
                     : "Available"}
+                  {onOtherAngles.has(r.personId) ? " · already on another angle of this project" : ""}
                 </div>
               </div>
               <div className="load-score" style={{ marginLeft: "auto" }}>

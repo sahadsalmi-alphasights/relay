@@ -4,8 +4,9 @@ import { badRequest, conflict, forbidden, notFound } from "../errors";
 import { insertAuditLog } from "../repositories/auditLog";
 import {
   createUser,
-  deletePerson,
+  deletePersonCascade,
   findPersonById,
+  LeadsProjectsError,
   listPeopleAdmin,
   roleOf,
   setDeactivated,
@@ -13,6 +14,7 @@ import {
   updateProfile,
   type Role,
 } from "../repositories/people";
+import { publish } from "../ws/hub";
 import type { PersonStatus } from "../rules/types";
 import { getPermissionMatrix, PERMISSION_KEYS, type PermissionKey } from "../rules/permissionMatrix";
 import { hydratePermissionMatrix, savePermission } from "../repositories/rolePermissions";
@@ -196,37 +198,58 @@ const usersRoutes: FastifyPluginAsync = async (app) => {
   );
 
   /**
-   * Hard delete — pre-provisioned mistakes and test accounts only. Anyone
-   * with history (assignments, audit entries, notifications, …) is protected
-   * by FK constraints: Postgres refuses and we answer 409 "deactivate
-   * instead", so no delivery data can ever be orphaned. The deletion itself
-   * is audit-logged with a snapshot of who was removed.
+   * Hard delete with cascade: the person's footprint (assignments, rounds,
+   * goal-change requests, notes, rota entries, notifications, push subs)
+   * goes with them; audit rows are kept, unattributed. If they still lead
+   * projects, the client must pass ?reassignPlTo=<personId> — the portal
+   * shows a picker on the 409 — and the projects move to the new PL in the
+   * same transaction as the delete.
    */
-  app.delete<{ Params: { id: string } }>("/:id", { preHandler: [app.requireOwner] }, async (request) => {
-    const actor = request.actor!;
-    const target = await findPersonById(request.params.id);
-    if (!target) throw notFound("unknown person");
-    if (target.id === actor.id) throw badRequest("you cannot delete yourself");
-    if (isAllowlistedOwner(target.email)) throw forbidden("a permanent owner (allowlist) cannot be deleted");
+  app.delete<{ Params: { id: string }; Querystring: { reassignPlTo?: string } }>(
+    "/:id",
+    { preHandler: [app.requireOwner] },
+    async (request) => {
+      const actor = request.actor!;
+      const target = await findPersonById(request.params.id);
+      if (!target) throw notFound("unknown person");
+      if (target.id === actor.id) throw badRequest("you cannot delete yourself");
+      if (isAllowlistedOwner(target.email)) throw forbidden("a permanent owner (allowlist) cannot be deleted");
 
-    try {
-      await deletePerson(target.id);
-    } catch (err) {
-      if ((err as { code?: string }).code === "23503") {
-        throw conflict(`${target.name} has project or audit history and cannot be deleted — deactivate instead`);
+      const reassignPlTo = request.query?.reassignPlTo || undefined;
+      if (reassignPlTo) {
+        const newPl = await findPersonById(reassignPlTo);
+        if (!newPl) throw badRequest("unknown reassignment target");
+        if (newPl.id === target.id) throw badRequest("cannot reassign projects to the person being deleted");
+        if (newPl.deactivatedAt) throw badRequest("the reassignment target is deactivated");
       }
-      throw err;
+
+      let summary;
+      try {
+        summary = await deletePersonCascade(target.id, reassignPlTo);
+      } catch (err) {
+        if (err instanceof LeadsProjectsError) {
+          throw conflict(
+            `${target.name} leads ${err.count} project${err.count === 1 ? "" : "s"} — choose who should take them over`
+          );
+        }
+        if ((err as { code?: string }).code === "23503") {
+          throw conflict(`${target.name} has data this delete doesn't cover yet — deactivate instead`);
+        }
+        throw err;
+      }
+      await insertAuditLog({
+        entityType: "person",
+        entityId: target.id,
+        actorId: actor.id,
+        action: "delete_user",
+        oldValue: { email: target.email, name: target.name, role: roleOf(target) },
+        newValue: { ...summary, projectsReassignedTo: reassignPlTo ?? null },
+      });
+      publish({ type: "people" });
+      publish({ type: "capacity-ranking" });
+      return { ok: true, ...summary };
     }
-    await insertAuditLog({
-      entityType: "person",
-      entityId: target.id,
-      actorId: actor.id,
-      action: "delete_user",
-      oldValue: { email: target.email, name: target.name, role: roleOf(target) },
-      newValue: null,
-    });
-    return { ok: true };
-  });
+  );
 
   app.post<{ Params: { id: string } }>(
     "/:id/reactivate",

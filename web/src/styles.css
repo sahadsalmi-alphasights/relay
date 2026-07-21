@@ -369,6 +369,14 @@ a.client:hover { text-decoration:underline; }
 .gm-tag { margin-left:6px; font-size:9px; font-weight:800; letter-spacing:.4px; text-transform:uppercase; color:#A82F2F; background:#FBE7E7; border-radius:5px; padding:1px 6px; vertical-align:1px; }
 [data-theme="dark"] .gm-tag { color:#FF6B60; background:#331413; }
 .group-foot { margin-top:14px; font-size:10.5px; color:var(--soft); line-height:1.55; max-width:760px; }
+.perm-table { max-width:760px; margin-top:10px; }
+.perm-table th:nth-child(n+2), .perm-table td:nth-child(n+2) { width:84px; }
+.perm-group td { padding-top:14px; font-size:10px; font-weight:800; letter-spacing:.5px; text-transform:uppercase; color:var(--soft); border-bottom:none; }
+.perm-label { font-size:12px; font-weight:700; color:var(--ink); }
+.perm-hint { font-size:10.5px; color:var(--soft); margin-top:1px; }
+.perm-check { width:15px; height:15px; accent-color:#FC8300; cursor:pointer; }
+.perm-lock { font-weight:800; color:#FC8300; cursor:default; }
+.perm-never { color:var(--soft); cursor:default; }
 
 /* Notification deep-link — the targeted card pulses so the eye lands on it. */
 @keyframes cardflash { 0% { box-shadow:0 0 0 3px var(--pl), 0 8px 24px rgba(252,131,0,.35); } 70% { box-shadow:0 0 0 3px var(--pl), 0 4px 14px rgba(252,131,0,.18); } 100% { box-shadow:0 0 0 0 rgba(252,131,0,0); } }

@@ -32,6 +32,10 @@ export interface AdminUser extends Person {
   role: Role;
 }
 
+/** User groups → adjustable permission matrix. Owners aren't in it — they always hold every permission. */
+export type PermissionRole = "manager" | "member";
+export type PermissionMatrix = Record<PermissionRole, Record<string, boolean>>;
+
 export interface Team {
   id: string;
   name: string;

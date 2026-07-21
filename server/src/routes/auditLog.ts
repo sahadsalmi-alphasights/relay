@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import { forbidden } from "../errors";
 import { listAuditLog } from "../repositories/auditLog";
+import { canViewAuditLog } from "../rules/permissions";
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
@@ -33,10 +34,9 @@ const auditLogRoutes: FastifyPluginAsync = async (app) => {
     // regardless of team" is the closest existing concept to "admin" and is
     // a deliberate call, not an oversight -- worth revisiting if a narrower
     // role is ever introduced.
-    // Owner is a superset of Manager. An owner granted via the email allowlist
-    // has is_owner=true but not is_manager, so check both — otherwise a founder
-    // sees the sidebar entry (gated on manager||owner) and gets a 403 here.
-    if (!actor.isManager && !actor.isOwner) throw forbidden("only a manager or owner may view the audit log");
+    // Owner is a superset of Manager. Since 2026-07-21 this is the matrix key
+    // "audit.view" (owners always pass; groups per the User-groups matrix).
+    if (!canViewAuditLog(actor)) throw forbidden("your group does not have audit-log access");
 
     const q = request.query ?? {};
     const limit = Math.min(MAX_LIMIT, Math.max(1, Number(q.limit) || DEFAULT_LIMIT));

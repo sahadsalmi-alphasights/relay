@@ -1,13 +1,16 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
+  canArchiveProject,
   canEditAssignmentProgress,
   canEditGoal,
+  canEditProjectFields,
   canEditSundayRota,
   canManageTeamRoster,
   canRequestGoalChange,
   canSetEveningCoverage,
   canSetPersonStatus,
 } from "./permissions";
+import { PERMISSION_DEFAULTS, replacePermissionMatrix, resetPermissionMatrix } from "./permissionMatrix";
 
 describe("§5e/§7b — the PL owns the goal; managers and owners have full project control", () => {
   const project = { plId: "pl-1" };
@@ -67,6 +70,28 @@ describe("§7b — manager powers are scoped to their own team only", () => {
     expect(canEditSundayRota(managerOfAlpha, { teamId: "beta" })).toBe(false);
     expect(canManageTeamRoster(managerOfAlpha, { teamId: "alpha" })).toBe(true);
     expect(canManageTeamRoster(managerOfAlpha, { teamId: "beta" })).toBe(false);
+  });
+});
+
+describe("User-groups matrix — group grants are adjustable; owners are not", () => {
+  afterEach(() => resetPermissionMatrix());
+
+  it("granting members projects.edit_any lets a plain member edit any project", () => {
+    replacePermissionMatrix({
+      manager: { ...PERMISSION_DEFAULTS.manager },
+      member: { ...PERMISSION_DEFAULTS.member, "projects.edit_any": true },
+    });
+    expect(canEditProjectFields({ id: "m-1" }, { plId: "pl-1" })).toBe(true);
+  });
+
+  it("revoking managers' archive/delete stops managers — but never an owner, and never the PL themselves", () => {
+    replacePermissionMatrix({
+      manager: { ...PERMISSION_DEFAULTS.manager, "projects.archive_delete": false },
+      member: { ...PERMISSION_DEFAULTS.member },
+    });
+    expect(canArchiveProject({ id: "mgr-1", isManager: true }, { plId: "pl-1" })).toBe(false);
+    expect(canArchiveProject({ id: "own-1", isOwner: true }, { plId: "pl-1" })).toBe(true);
+    expect(canArchiveProject({ id: "pl-1", isManager: true }, { plId: "pl-1" })).toBe(true);
   });
 });
 

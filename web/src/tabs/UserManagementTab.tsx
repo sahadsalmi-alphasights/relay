@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { api, ApiError } from "../api/client";
-import type { AdminUser, PersonStatus, Role, Team } from "../api/types";
+import type { AdminUser, PermissionMatrix, PermissionRole, PersonStatus, Role, Team } from "../api/types";
 import UserGroupsView from "../components/UserGroupsView";
 import { useViewport } from "../lib/useViewport";
 import { useApp } from "../state/AppContext";
@@ -43,6 +43,7 @@ export default function UserManagementTab({ reloadTick }: { reloadTick: number }
   const { isDesktop } = useViewport();
   const [users, setUsers] = useState<AdminUser[] | null>(null);
   const [teams, setTeams] = useState<Team[]>([]);
+  const [matrix, setMatrix] = useState<PermissionMatrix | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [view, setView] = useState<"users" | "groups">("users");
@@ -58,9 +59,14 @@ export default function UserManagementTab({ reloadTick }: { reloadTick: number }
   const load = async () => {
     setError(null);
     try {
-      const [u, t] = await Promise.all([api.get<AdminUser[]>("/users"), api.get<Team[]>("/teams")]);
+      const [u, t, p] = await Promise.all([
+        api.get<AdminUser[]>("/users"),
+        api.get<Team[]>("/teams"),
+        api.get<{ matrix: PermissionMatrix }>("/users/permissions"),
+      ]);
       setUsers(u);
       setTeams(t);
+      setMatrix(p.matrix);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not load users");
     }
@@ -85,6 +91,18 @@ export default function UserManagementTab({ reloadTick }: { reloadTick: number }
   };
 
   const changeRole = (u: AdminUser, role: Role) => run(u.id, () => api.patch(`/users/${u.id}/role`, { role }));
+  // Matrix toggle: optimistic flip, server truth on response, reload on failure.
+  const togglePermission = async (role: PermissionRole, key: string, allowed: boolean) => {
+    setError(null);
+    setMatrix((prev) => (prev ? { ...prev, [role]: { ...prev[role], [key]: allowed } } : prev));
+    try {
+      const res = await api.patch<{ matrix: PermissionMatrix }>("/users/permissions", { role, key, allowed });
+      setMatrix(res.matrix);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "That permission change could not be saved");
+      await load();
+    }
+  };
   const patchField = (u: AdminUser, patch: Record<string, unknown>) =>
     run(u.id, () => api.patch(`/users/${u.id}`, patch));
   const toggleActive = (u: AdminUser) =>
@@ -263,7 +281,13 @@ export default function UserManagementTab({ reloadTick }: { reloadTick: number }
     return (
       <>
         {header}
-        <UserGroupsView users={users} busyId={busyId} onChangeRole={changeRole} />
+        <UserGroupsView
+          users={users}
+          busyId={busyId}
+          onChangeRole={changeRole}
+          matrix={matrix}
+          onTogglePermission={togglePermission}
+        />
       </>
     );
   }

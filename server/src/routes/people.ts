@@ -13,7 +13,7 @@ import {
   updatePersonStatus,
 } from "../repositories/people";
 import { badRequest, forbidden, notFound } from "../errors";
-import { canManageTeamRoster, canSetPersonStatus } from "../rules/permissions";
+import { canManageTeamRoster, canSetGhostFlag, canSetPersonStatus } from "../rules/permissions";
 import { shouldWarnOnStatusChange } from "../rules/project";
 import type { PersonStatus } from "../rules/types";
 import { publish } from "../ws/hub";
@@ -123,8 +123,8 @@ const peopleRoutes: FastifyPluginAsync = async (app) => {
       const actor = request.actor!;
       const target = await findPersonById(request.params.id);
       if (!target) throw notFound("unknown person");
-      if (!target.teamId || !canManageTeamRoster(actor, { teamId: target.teamId })) {
-        throw forbidden("only a manager may set ghost status for their own team");
+      if (!target.teamId || !canSetGhostFlag(actor, { teamId: target.teamId })) {
+        throw forbidden("your group cannot set ghost status for this team");
       }
       if (typeof request.body?.isGhost !== "boolean") throw badRequest("isGhost must be a boolean");
       const updated = await setGhostFlag(target.id, request.body.isGhost);

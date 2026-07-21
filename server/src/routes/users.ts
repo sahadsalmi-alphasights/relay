@@ -13,6 +13,8 @@ import {
   type Role,
 } from "../repositories/people";
 import type { PersonStatus } from "../rules/types";
+import { getPermissionMatrix, PERMISSION_KEYS, type PermissionKey } from "../rules/permissionMatrix";
+import { hydratePermissionMatrix, savePermission } from "../repositories/rolePermissions";
 
 const ROLES: Role[] = ["owner", "manager", "member"];
 const STATUSES: PersonStatus[] = ["Available", "On vacation", "Sick", "Offline"];
@@ -30,6 +32,46 @@ const usersRoutes: FastifyPluginAsync = async (app) => {
   app.get("/", { preHandler: [app.requireOwner] }, async () => {
     return listPeopleAdmin();
   });
+
+  /**
+   * User groups → permission matrix. GET re-hydrates from the DB so the page
+   * always shows stored truth; PATCH flips one (role, key) cell. Owner rows
+   * don't exist — owners always hold every permission in code — and the
+   * portal itself is owner-only and not adjustable, so the matrix can never
+   * create a lockout.
+   */
+  app.get("/permissions", { preHandler: [app.requireOwner] }, async () => {
+    await hydratePermissionMatrix();
+    return { matrix: getPermissionMatrix(), keys: PERMISSION_KEYS };
+  });
+
+  app.patch<{ Body: { role?: string; key?: string; allowed?: boolean } }>(
+    "/permissions",
+    { preHandler: [app.requireOwner] },
+    async (request) => {
+      const { role, key, allowed } = request.body ?? {};
+      if (role !== "manager" && role !== "member") {
+        throw badRequest("role must be manager or member — owners always have every permission");
+      }
+      if (!key || !(PERMISSION_KEYS as readonly string[]).includes(key)) {
+        throw badRequest("unknown permission key");
+      }
+      if (typeof allowed !== "boolean") throw badRequest("allowed must be a boolean");
+
+      const permKey = key as PermissionKey;
+      const before = getPermissionMatrix()[role][permKey];
+      await savePermission(role, permKey, allowed);
+      await insertAuditLog({
+        entityType: "role_permission",
+        entityId: `${role}:${permKey}`,
+        actorId: request.actor!.id,
+        action: "set_permission",
+        oldValue: { allowed: before },
+        newValue: { allowed },
+      });
+      return { matrix: getPermissionMatrix() };
+    }
+  );
 
   app.patch<{ Params: { id: string }; Body: { role?: Role } }>(
     "/:id/role",

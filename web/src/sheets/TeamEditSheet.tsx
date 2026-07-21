@@ -282,22 +282,34 @@ export default function TeamEditSheet({
             </>
           )}
 
-          {isOverride && (
-            <div className="field">
-              <label>Justification — required to pick someone other than the suggested candidate</label>
-              <input
-                value={justification}
-                onChange={(e) => setJustification(e.target.value)}
-                placeholder="e.g. client asked for this specific person"
-              />
-            </div>
-          )}
-
           <div className="sheet-footer">
+            {/* The justification lives HERE, next to the button it unlocks —
+                it used to render above, after the full candidate + manager
+                lists, where picking someone near the top left it scrolled out
+                of view: the confirm button then sat disabled with no visible
+                reason (the "cursor shows blocked" bug). */}
+            {isOverride && (
+              <div className="field">
+                <label>Justification — required to pick someone other than the suggested candidate</label>
+                <input
+                  autoFocus
+                  value={justification}
+                  onChange={(e) => setJustification(e.target.value)}
+                  placeholder="e.g. client asked for this specific person"
+                />
+              </div>
+            )}
             <button
               className="btn btn-pl"
               style={{ width: "100%" }}
               disabled={!selectedId || busy || (isOverride && !justification.trim())}
+              title={
+                !selectedId
+                  ? "Pick a person first"
+                  : isOverride && !justification.trim()
+                  ? "Add a one-line justification to confirm this override"
+                  : undefined
+              }
               onClick={confirm}
             >
               {isOverride ? "Confirm override" : "Confirm"}

@@ -343,6 +343,9 @@ a.client:hover { text-decoration:underline; }
 .notif-switch { padding:0; display:flex; }
 .toggle-switch.sw-flat { background:var(--line); }
 .toggle-switch.sw-flat.on { background:var(--green); }
+/* Why a toggle refused to turn on — shown under the row, never silent. */
+.notif-setting-error { padding:2px 6px 7px; font-size:11px; font-weight:600; line-height:1.45; color:#A82F2F; }
+[data-theme="dark"] .notif-setting-error { color:#FF6B60; }
 
 /* Notification deep-link — the targeted card pulses so the eye lands on it. */
 @keyframes cardflash { 0% { box-shadow:0 0 0 3px var(--pl), 0 8px 24px rgba(252,131,0,.35); } 70% { box-shadow:0 0 0 3px var(--pl), 0 4px 14px rgba(252,131,0,.18); } 100% { box-shadow:0 0 0 0 rgba(252,131,0,0); } }

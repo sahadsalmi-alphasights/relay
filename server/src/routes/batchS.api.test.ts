@@ -50,10 +50,19 @@ describe("Batch S — soft delete", () => {
     expect(afterRow.load).toBe(0);
   });
 
-  it("only the PL may delete their project", async () => {
+  it("a plain member may not delete someone else's project", async () => {
     const cookie = await loginAs(app, fx.delivererAlpha);
     const res = await app.inject({ method: "POST", url: `/projects/${fx.project}/delete`, cookies: cookieHeader(cookie) });
     expect(res.statusCode).toBe(403);
+  });
+
+  it("a manager may delete any project, even outside their team (§7b update 2026-07-21)", async () => {
+    const cookie = await loginAs(app, fx.managerBeta); // manager on Team_Beta; project is Team_Alpha's
+    const res = await app.inject({ method: "POST", url: `/projects/${fx.project}/delete`, cookies: cookieHeader(cookie) });
+    expect(res.statusCode).toBe(200);
+
+    const { rows } = await pool.query(`SELECT deleted_at FROM project WHERE id = $1`, [fx.project]);
+    expect(rows[0].deleted_at).not.toBeNull();
   });
 
   it("is audit-logged, and the row is flagged not removed (soft delete, never a hard delete)", async () => {

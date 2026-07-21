@@ -475,7 +475,7 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
     const actor = request.actor!;
     const project = await findProjectById(request.params.id);
     if (!project) throw notFound("project not found");
-    if (!canEditProjectFields(actor.id, project)) throw forbidden("only the PL may edit the team");
+    if (!canEditProjectFields(actor, project)) throw forbidden("only the PL or a manager may edit the team");
     if (!request.body?.delivererId || typeof request.body.goal !== "number") {
       throw badRequest("delivererId and goal are required");
     }
@@ -536,7 +536,7 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
       const actor = request.actor!;
       const project = await findProjectById(request.params.id);
       if (!project) throw notFound("project not found");
-      if (!canEditProjectFields(actor.id, project)) throw forbidden("only the PL may add angles");
+      if (!canEditProjectFields(actor, project)) throw forbidden("only the PL or a manager may add angles");
       const body = request.body ?? {};
       if (!body.name || !body.name.trim()) throw badRequest("name is required");
       const minCallsN = project.projectType === "Pitch" ? 0 : 1;
@@ -551,7 +551,7 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
     }
   );
 
-  // §5e — only the PL may edit project fields.
+  // §5e — only the PL or a manager may edit project fields.
   app.patch<{ Params: { id: string }; Body: Record<string, unknown> }>(
     "/:id",
     { preHandler: [app.requireAuth] },
@@ -559,7 +559,7 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
       const actor = request.actor!;
       const project = await findProjectById(request.params.id);
       if (!project) throw notFound("project not found");
-      if (!canEditProjectFields(actor.id, project)) throw forbidden("only the PL may edit this project");
+      if (!canEditProjectFields(actor, project)) throw forbidden("only the PL or a manager may edit this project");
       // projectLink is required (bug fix) -- a PATCH can't be used to clear it,
       // and whatever it's changed to must still be a valid http(s) URL.
       if (request.body && "projectLink" in request.body) {
@@ -599,7 +599,7 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
     const actor = request.actor!;
     const project = await findProjectById(request.params.id);
     if (!project) throw notFound("project not found");
-    if (!canArchiveProject(actor.id, project)) throw forbidden("only the PL may archive this project");
+    if (!canArchiveProject(actor, project)) throw forbidden("only the PL or a manager may archive this project");
     const updated = await archiveProject(project.id);
     await insertAuditLog({ entityType: "project", entityId: project.id, actorId: actor.id, action: "archive" });
     const assignments = await listAssignmentsByProject(project.id);
@@ -612,7 +612,7 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
     const actor = request.actor!;
     const project = await findProjectById(request.params.id);
     if (!project) throw notFound("project not found");
-    if (!canArchiveProject(actor.id, project)) throw forbidden("only the PL may resurface this project");
+    if (!canArchiveProject(actor, project)) throw forbidden("only the PL or a manager may resurface this project");
     const updated = await resurfaceProject(project.id);
     await insertAuditLog({ entityType: "project", entityId: project.id, actorId: actor.id, action: "resurface" });
     const assignments = await listAssignmentsByProject(project.id);
@@ -632,7 +632,7 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
     const actor = request.actor!;
     const project = await findProjectById(request.params.id);
     if (!project) throw notFound("project not found");
-    if (!canArchiveProject(actor.id, project)) throw forbidden("only the PL may delete this project");
+    if (!canArchiveProject(actor, project)) throw forbidden("only the PL or a manager may delete this project");
     const deleted = await softDeleteProject(project.id);
     if (!deleted) throw notFound("project not found");
     await insertAuditLog({ entityType: "project", entityId: project.id, actorId: actor.id, action: "delete" });
@@ -786,7 +786,7 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
       const actor = request.actor!;
       const project = await findProjectById(request.params.id);
       if (!project) throw notFound("project not found");
-      if (!canEditProjectFields(actor.id, project)) throw forbidden("only the PL may view pending goal change requests");
+      if (!canEditProjectFields(actor, project)) throw forbidden("only the PL or a manager may view pending goal change requests");
       return listUnresolvedForProject(project.id);
     }
   );

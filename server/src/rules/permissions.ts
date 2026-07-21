@@ -7,29 +7,47 @@ export interface ProjectOwnership {
   plId: string;
 }
 
-/** §5e — the PL owns goal/custom_goal, always. A deliverer may never write to them. */
-export function canEditGoal(actorId: string, project: ProjectOwnership): boolean {
-  return actorId === project.plId;
+/**
+ * Who may act on a project's PL-side controls (edit, goals, stage, team,
+ * archive, delete, resolve goal changes). §7b update 2026-07-21: managers
+ * and owners have full control over every project, not just their own —
+ * Team view is where a manager runs their people's boards. Plain members
+ * are still PL-only on their own projects, and deliverer-side writes
+ * (progress logging) remain the deliverer's alone below.
+ */
+export interface ProjectActor {
+  id: string;
+  isManager?: boolean;
+  isOwner?: boolean;
 }
 
-export function canEditProjectFields(actorId: string, project: ProjectOwnership): boolean {
-  return actorId === project.plId;
+function plOrManagement(actor: ProjectActor, project: ProjectOwnership): boolean {
+  return actor.id === project.plId || actor.isOwner === true || actor.isManager === true;
 }
 
-export function canSwapDeliverer(actorId: string, project: ProjectOwnership): boolean {
-  return actorId === project.plId;
+/** §5e — the PL owns goal/custom_goal (a deliverer may never write to them); managers/owners may too (§7b). */
+export function canEditGoal(actor: ProjectActor, project: ProjectOwnership): boolean {
+  return plOrManagement(actor, project);
 }
 
-export function canChangeStage(actorId: string, project: ProjectOwnership): boolean {
-  return actorId === project.plId;
+export function canEditProjectFields(actor: ProjectActor, project: ProjectOwnership): boolean {
+  return plOrManagement(actor, project);
 }
 
-export function canArchiveProject(actorId: string, project: ProjectOwnership): boolean {
-  return actorId === project.plId;
+export function canSwapDeliverer(actor: ProjectActor, project: ProjectOwnership): boolean {
+  return plOrManagement(actor, project);
 }
 
-export function canResolveGoalChangeRequest(actorId: string, project: ProjectOwnership): boolean {
-  return actorId === project.plId;
+export function canChangeStage(actor: ProjectActor, project: ProjectOwnership): boolean {
+  return plOrManagement(actor, project);
+}
+
+export function canArchiveProject(actor: ProjectActor, project: ProjectOwnership): boolean {
+  return plOrManagement(actor, project);
+}
+
+export function canResolveGoalChangeRequest(actor: ProjectActor, project: ProjectOwnership): boolean {
+  return plOrManagement(actor, project);
 }
 
 export interface AssignmentOwnership {

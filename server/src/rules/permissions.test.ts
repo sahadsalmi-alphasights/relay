@@ -9,15 +9,24 @@ import {
   canSetPersonStatus,
 } from "./permissions";
 
-describe("§5e — the PL owns the goal, always", () => {
+describe("§5e/§7b — the PL owns the goal; managers and owners have full project control", () => {
   const project = { plId: "pl-1" };
 
   it("lets the PL edit goal/custom_goal", () => {
-    expect(canEditGoal("pl-1", project)).toBe(true);
+    expect(canEditGoal({ id: "pl-1" }, project)).toBe(true);
   });
 
-  it("never lets a deliverer edit goal/custom_goal, even on their own assignment", () => {
-    expect(canEditGoal("deliverer-1", project)).toBe(false);
+  it("never lets a plain member edit goal/custom_goal, even on their own assignment", () => {
+    expect(canEditGoal({ id: "deliverer-1" }, project)).toBe(false);
+    expect(canEditGoal({ id: "deliverer-1", isManager: false, isOwner: false }, project)).toBe(false);
+  });
+
+  it("lets a manager edit any project's goals (§7b update 2026-07-21)", () => {
+    expect(canEditGoal({ id: "mgr-1", isManager: true }, project)).toBe(true);
+  });
+
+  it("lets an owner edit any project's goals", () => {
+    expect(canEditGoal({ id: "own-1", isOwner: true }, project)).toBe(true);
   });
 });
 

@@ -10,7 +10,7 @@ import { publish } from "../ws/hub";
 import { projectRecipientIds } from "../ws/recipients";
 
 /**
- * §5e — only the PL may resolve a goal change request.
+ * §5e — only the PL or a manager may resolve a goal change request.
  *
  * Batch S, item 4 — resolve is no longer a single undifferentiated action:
  * the PL must say ACCEPT or DECLINE. Accepting actually applies what was
@@ -32,8 +32,8 @@ const goalChangeRequestsRoutes: FastifyPluginAsync = async (app) => {
       if (!assignment) throw notFound("assignment not found");
       const project = await findProjectById(assignment.projectId);
       if (!project) throw notFound("project not found");
-      if (!canResolveGoalChangeRequest(actor.id, project)) {
-        throw forbidden("only the PL may resolve a goal change request");
+      if (!canResolveGoalChangeRequest(actor, project)) {
+        throw forbidden("only the PL or a manager may resolve a goal change request");
       }
       const outcome = request.body?.outcome;
       if (outcome !== "accepted" && outcome !== "declined") {

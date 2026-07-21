@@ -38,6 +38,7 @@ export default function NotificationBell({
   const [open, setOpen] = useState(false);
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushBusy, setPushBusy] = useState(false);
+  const [pushError, setPushError] = useState<string | null>(null);
   const [perm, setPerm] = useState<NotificationPermission>(notifSupported ? Notification.permission : "denied");
   const [soundOn, setSoundOn] = useState(isSoundEnabled());
 
@@ -62,18 +63,24 @@ export default function NotificationBell({
 
   const togglePush = async () => {
     setPushBusy(true);
+    setPushError(null);
     try {
       if (pushEnabled) {
         await disablePush();
         setPushEnabled(false);
       } else {
-        const ok = await enablePush();
-        setPushEnabled(ok);
+        const result = await enablePush();
+        setPushEnabled(result.ok);
         if (notifSupported) setPerm(Notification.permission);
-        if (ok) {
+        if (result.ok) {
           void showBrowserNotification("Push notifications on", "Chrome will notify you even when the tab is closed.");
+        } else {
+          // Never let the switch just snap back with no explanation.
+          setPushError(result.reason);
         }
       }
+    } catch {
+      setPushError("Something went wrong turning push on — try again.");
     } finally {
       setPushBusy(false);
     }
@@ -183,14 +190,17 @@ export default function NotificationBell({
                 </button>
               </div>
               {isPushSupported() && (
-                <div className="notif-setting-row">
-                  <span>Push (tab closed too)</span>
-                  <button className="notif-switch" disabled={pushBusy} onClick={togglePush} aria-pressed={pushEnabled}>
-                    <span className={"toggle-switch sw-flat " + (pushEnabled ? "on" : "")}>
-                      <span className="thumb" />
-                    </span>
-                  </button>
-                </div>
+                <>
+                  <div className="notif-setting-row">
+                    <span>Push (tab closed too)</span>
+                    <button className="notif-switch" disabled={pushBusy} onClick={togglePush} aria-pressed={pushEnabled}>
+                      <span className={"toggle-switch sw-flat " + (pushEnabled ? "on" : "")}>
+                        <span className="thumb" />
+                      </span>
+                    </button>
+                  </div>
+                  {pushError && <div className="notif-setting-error">{pushError}</div>}
+                </>
               )}
             </div>
           </div>

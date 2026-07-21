@@ -248,13 +248,15 @@ export default function EditProjectSheet({
                 goal {ang.goalTotal} · {staffed} staffed
               </span>
               {/* Per-angle expert pool (2026-07-21) — auto-saves like N; the
-                  pool feeds load weighting, so the ranking refreshes live. */}
+                  pool feeds load weighting, so the ranking refreshes live.
+                  "Project default" (null) inherits the project's pool, live. */}
               <select
                 className="stage-select"
-                value={ang.expertPool}
+                value={ang.expertPool ?? ""}
                 title="Expert pool for this angle"
-                onChange={(e) => patchAngle(ang.id, { expertPool: e.target.value })}
+                onChange={(e) => patchAngle(ang.id, { expertPool: e.target.value || null })}
               >
+                <option value="">Project default</option>
                 {EXPERT_POOLS.map((p) => (
                   <option key={p} value={p}>
                     {p}

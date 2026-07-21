@@ -18,8 +18,8 @@ export interface AngleRow {
   callsSoldUpdatedAt: string;
   /** "Invisible competition" — per-angle opt-out, defaults true. Only meaningful for Due Diligence/Strategy angles; carried uniformly for schema simplicity. */
   invisibleCompetitionEnabled: boolean;
-  /** Expert pool per ANGLE (2026-07-21) — different angles of one project can target different pools/timezones. */
-  expertPool: string;
+  /** Expert pool per ANGLE (2026-07-21) — null inherits the project's pool, live. Consumers read COALESCE(angle, project). */
+  expertPool: string | null;
 }
 
 const SELECT = `

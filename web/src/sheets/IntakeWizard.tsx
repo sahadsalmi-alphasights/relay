@@ -334,8 +334,9 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
             ...(f.projectType !== "Pitch"
               ? { invisibleCompetitionEnabled: a.invisibleCompetitionEnabled, ghostDelivererId: a.ghostPick }
               : {}),
-            // Per-angle pool; "" inherits the project-level pool picked in step 1.
-            expertPool: a.expertPool || f.expertPool,
+            // Per-angle pool only when this angle explicitly diverged; omitted
+            // = NULL server-side = inherit the project pool, live.
+            ...(a.expertPool ? { expertPool: a.expertPool } : {}),
           };
         }),
       });

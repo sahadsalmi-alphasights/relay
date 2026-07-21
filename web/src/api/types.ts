@@ -78,8 +78,8 @@ export interface Angle {
   callsSoldUpdatedAt: string;
   /** "Invisible competition" — per-angle opt-out, defaults true. Only actionable at intake time for Due Diligence/Strategy angles. */
   invisibleCompetitionEnabled: boolean;
-  /** Expert pool per ANGLE (2026-07-21) — different angles of one project can target different pools/timezones. */
-  expertPool: ExpertPool;
+  /** Expert pool per ANGLE (2026-07-21) — null inherits the project's pool, live. */
+  expertPool: ExpertPool | null;
 }
 
 export interface Assignment {

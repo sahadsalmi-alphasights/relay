@@ -348,6 +348,8 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
       const ghostEligibleAngles: { id: string; realGoal: number; explicit?: string | null }[] = [];
 
       for (const ang of angleInputs) {
+        // expertPool only when the wizard explicitly diverged this angle;
+        // omitted stays NULL = inherit the project's pool, live.
         const createdAngle = await createAngle(
           created.id,
           ang.name!.trim(),
@@ -355,7 +357,7 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
           ang.goalTotal!,
           ang.invisibleCompetitionEnabled,
           tx,
-          ang.expertPool ?? body.expertPool
+          ang.expertPool
         );
         for (const a of ang.assignments ?? []) {
           await createAssignment(createdAngle.id, a.delivererId, a.goal, false, tx);
@@ -598,7 +600,7 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
       }
       const goalTotal = body.goalTotal ?? suggestGoal(body.callsN, project.projectType as ProjectType);
       // Per-angle expert pool (2026-07-21): a new angle can target its own
-      // pool/timezone; omitted inherits the project's.
+      // pool/timezone; omitted stays NULL = inherit the project's, live.
       const created = await createAngle(
         project.id,
         body.name.trim(),
@@ -606,7 +608,7 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
         goalTotal,
         undefined,
         undefined,
-        (body as { expertPool?: string }).expertPool ?? project.expertPool
+        (body as { expertPool?: string }).expertPool
       );
       await insertAuditLog({ entityType: "angle", entityId: created.id, actorId: actor.id, action: "create", newValue: body });
       await publishProjectChanged(project.id, [project.plId]);
@@ -803,8 +805,8 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
             projectLink: project.projectLink,
             projectType: project.projectType as ProjectType,
             // Per-angle since 2026-07-21 — a broadcast names the pool of the
-            // ANGLE that needs seats, not a project-wide one.
-            expertPool: angle.expertPool,
+            // ANGLE that needs seats; null inherits the project's.
+            expertPool: angle.expertPool ?? project.expertPool,
             angleId: angle.id,
             angleName: angle.name,
             callsN: angle.callsN,

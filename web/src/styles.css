@@ -130,6 +130,15 @@ button { font-family:inherit; cursor:pointer; border:none; background:none; colo
 .card-top { display:flex; justify-content:space-between; align-items:flex-start; gap:10px;
   background:var(--bg); margin:-14px -14px 0; padding:12px 14px; border-radius:16px 16px 0 0; }
 .client { font-family:'Space Grotesk'; font-weight:700; font-size:16px; letter-spacing:-.3px; color:var(--ink); }
+/* Client-entity header tints — CSS (not inline) so dark mode can swap each
+   firm's pale wash for a deep brand-tinted one; the near-white --ink header
+   text was unreadable ("blurry") on the light tints in dark mode. */
+.card-top.entity-tint-1 { background:#DCEFE5; } [data-theme="dark"] .card-top.entity-tint-1 { background:#11291D; }
+.card-top.entity-tint-2 { background:#E0E7FF; } [data-theme="dark"] .card-top.entity-tint-2 { background:#111B36; }
+.card-top.entity-tint-3 { background:#FBE3E0; } [data-theme="dark"] .card-top.entity-tint-3 { background:#331413; }
+.card-top.entity-tint-4 { background:#DEE7F4; } [data-theme="dark"] .card-top.entity-tint-4 { background:#0F1D33; }
+.card-top.entity-tint-5 { background:#FFEAD4; } [data-theme="dark"] .card-top.entity-tint-5 { background:#33230E; }
+
 /* Client-entity logo chip — real logo on a white tile (logos need neutral
    ground on tinted headers); branded monogram when the logo can't load. */
 .entity-logo { border-radius:7px; background:#fff; border:1px solid rgba(10,20,35,.10); object-fit:contain; padding:2.5px; flex-shrink:0; }

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { api, ApiError } from "../api/client";
 import type { AdminUser, PermissionMatrix, PermissionRole, PersonStatus, Role, Team } from "../api/types";
 import UserGroupsView from "../components/UserGroupsView";
+import UserTeamsView from "../components/UserTeamsView";
 import { useViewport } from "../lib/useViewport";
 import { useApp } from "../state/AppContext";
 
@@ -46,7 +47,7 @@ export default function UserManagementTab({ reloadTick }: { reloadTick: number }
   const [matrix, setMatrix] = useState<PermissionMatrix | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [view, setView] = useState<"users" | "groups">("users");
+  const [view, setView] = useState<"users" | "groups" | "teams">("users");
   const [search, setSearch] = useState("");
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState<{ email: string; name: string; role: Role; teamId: string }>({
@@ -107,6 +108,27 @@ export default function UserManagementTab({ reloadTick }: { reloadTick: number }
     run(u.id, () => api.patch(`/users/${u.id}`, patch));
   const toggleActive = (u: AdminUser) =>
     run(u.id, () => api.post(`/users/${u.id}/${u.deactivatedAt ? "reactivate" : "deactivate"}`));
+  // Teams tab actions — same run() error surface as everything else here.
+  const renameTeam = (t: Team, name: string) => run(t.id, () => api.patch(`/teams/${t.id}`, { name }));
+  const assignManager = (t: Team, personId: string | null) =>
+    run(t.id, () => api.patch(`/teams/${t.id}/manager`, { personId }));
+  const deleteTeam = (t: Team, memberCount: number) => {
+    if (memberCount > 0) {
+      setError(`${t.name} still has ${memberCount} member${memberCount === 1 ? "" : "s"} — move them to another team first`);
+      return;
+    }
+    if (!window.confirm(`Delete team ${t.name}? This cannot be undone.`)) return;
+    void run(t.id, () => api.del(`/teams/${t.id}`));
+  };
+  const createTeamByName = async (name: string) => {
+    setError(null);
+    try {
+      await api.post("/teams", { name });
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not create the team");
+    }
+  };
   const deleteUser = (u: AdminUser) => {
     if (
       !window.confirm(
@@ -257,6 +279,9 @@ export default function UserManagementTab({ reloadTick }: { reloadTick: number }
         <button className={"subtab" + (view === "groups" ? " on" : "")} onClick={() => setView("groups")}>
           User groups
         </button>
+        <button className={"subtab" + (view === "teams" ? " on" : "")} onClick={() => setView("teams")}>
+          Teams
+        </button>
       </div>
       {view === "users" && (
         <div className="audit-filters">
@@ -306,6 +331,23 @@ export default function UserManagementTab({ reloadTick }: { reloadTick: number }
           onChangeRole={changeRole}
           matrix={matrix}
           onTogglePermission={togglePermission}
+        />
+      </>
+    );
+  }
+
+  if (view === "teams") {
+    return (
+      <>
+        {header}
+        <UserTeamsView
+          teams={teams}
+          users={users}
+          busyId={busyId}
+          onRename={renameTeam}
+          onAssignManager={assignManager}
+          onDelete={deleteTeam}
+          onCreate={createTeamByName}
         />
       </>
     );

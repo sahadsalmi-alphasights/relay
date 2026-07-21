@@ -52,7 +52,7 @@ const anglesRoutes: FastifyPluginAsync = async (app) => {
     if (!angle) throw notFound("angle not found");
     const project = await findProjectById(angle.projectId);
     if (!project) throw notFound("project not found");
-    if (!canEditProjectFields(actor.id, project)) throw forbidden("only the PL may edit angles");
+    if (!canEditProjectFields(actor, project)) throw forbidden("only the PL or a manager may edit angles");
 
     const body = request.body ?? {};
     if (body.name !== undefined && !body.name.trim()) throw badRequest("name cannot be empty");
@@ -115,7 +115,7 @@ const anglesRoutes: FastifyPluginAsync = async (app) => {
     if (!angle) throw notFound("angle not found");
     const project = await findProjectById(angle.projectId);
     if (!project) throw notFound("project not found");
-    if (!canEditProjectFields(actor.id, project)) throw forbidden("only the PL may remove angles");
+    if (!canEditProjectFields(actor, project)) throw forbidden("only the PL or a manager may remove angles");
 
     const assignmentCount = await countAssignmentsForAngle(angle.id);
     if (assignmentCount > 0) throw badRequest("remove this angle's assignments before deleting it");

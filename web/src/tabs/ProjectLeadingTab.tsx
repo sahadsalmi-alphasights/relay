@@ -322,26 +322,28 @@ export default function ProjectLeadingTab({
     if (scope === "team") api.get<CapacityRankRow[]>("/capacity-ranking").then(setRankRows);
   }, [scope, reloadTick, demoHour]);
 
+  // Card actions share one error surface: a rejected mutation must never die
+  // as an unhandled rejection (the "clicked OK and nothing happened" bug) —
+  // show the server's own message (e.g. a 403 reason) and leave the board as-is.
+  const runAction = async (action: () => Promise<unknown>) => {
+    try {
+      await action();
+      onReload();
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "That didn't go through — try again.");
+    }
+  };
   // Batch S, item 4 — accept applies the requested goal/status; decline
   // resolves without touching either. Same route, outcome in the body.
-  const resolveRequest = async (id: string, outcome: "accepted" | "declined") => {
-    await api.patch(`/goal-change-requests/${id}/resolve`, { outcome });
-    onReload();
-  };
-  const archiveProject = async (id: string) => {
-    await api.post(`/projects/${id}/archive`);
-    onReload();
-  };
-  const resurface = async (id: string) => {
-    await api.post(`/projects/${id}/resurface`);
-    onReload();
-  };
-  // Batch S, item 3 — soft delete, PL-only, destructive: confirm before
-  // sending. Server never hard-deletes; this just flags deleted_at.
+  const resolveRequest = (id: string, outcome: "accepted" | "declined") =>
+    runAction(() => api.patch(`/goal-change-requests/${id}/resolve`, { outcome }));
+  const archiveProject = (id: string) => runAction(() => api.post(`/projects/${id}/archive`));
+  const resurface = (id: string) => runAction(() => api.post(`/projects/${id}/resurface`));
+  // Batch S, item 3 — soft delete (PL / manager / owner), destructive:
+  // confirm before sending. Server never hard-deletes; this flags deleted_at.
   const deleteProject = async (id: string, client: string) => {
     if (!window.confirm(`Delete ${client}? This removes it from every view. It cannot be undone from the app.`)) return;
-    await api.post(`/projects/${id}/delete`);
-    onReload();
+    await runAction(() => api.post(`/projects/${id}/delete`));
   };
 
   if (!items) return <div className="empty">Loading…</div>;

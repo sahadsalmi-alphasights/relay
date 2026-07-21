@@ -118,7 +118,7 @@ const assignmentsRoutes: FastifyPluginAsync = async (app) => {
       if (!assignment) throw notFound("assignment not found");
       const project = await findProjectById(assignment.projectId);
       if (!project) throw notFound("project not found");
-      if (!canEditGoal(actor.id, project)) {
+      if (!canEditGoal(actor, project)) {
         throw forbidden("only the project's PL may edit goal/custom_goal");
       }
       if (typeof request.body?.goal !== "number") {
@@ -150,7 +150,7 @@ const assignmentsRoutes: FastifyPluginAsync = async (app) => {
     if (!assignment) throw notFound("assignment not found");
     const project = await findProjectById(assignment.projectId);
     if (!project) throw notFound("project not found");
-    if (!canChangeStage(actor.id, project)) throw forbidden("only the PL may change stage");
+    if (!canChangeStage(actor, project)) throw forbidden("only the PL or a manager may change stage");
     const nextStage = advanceStage(assignment.stage);
     const updated = await setAssignmentStage(assignment.id, nextStage);
     await insertAuditLog({
@@ -174,7 +174,7 @@ const assignmentsRoutes: FastifyPluginAsync = async (app) => {
     if (!assignment) throw notFound("assignment not found");
     const project = await findProjectById(assignment.projectId);
     if (!project) throw notFound("project not found");
-    if (!canChangeStage(actor.id, project)) throw forbidden("only the PL may change stage");
+    if (!canChangeStage(actor, project)) throw forbidden("only the PL or a manager may change stage");
     const prevStage = backStage(assignment.stage);
     const updated = await setAssignmentStage(assignment.id, prevStage);
     await insertAuditLog({
@@ -207,7 +207,7 @@ const assignmentsRoutes: FastifyPluginAsync = async (app) => {
       if (!assignment) throw notFound("assignment not found");
       const project = await findProjectById(assignment.projectId);
       if (!project) throw notFound("project not found");
-      if (!canChangeStage(actor.id, project)) throw forbidden("only the PL may change stage");
+      if (!canChangeStage(actor, project)) throw forbidden("only the PL or a manager may change stage");
       const stage = request.body?.stage;
       if (!stage || !STAGE_ORDER.includes(stage)) {
         throw badRequest(`stage must be one of: ${STAGE_ORDER.join(", ")}`);
@@ -241,7 +241,7 @@ const assignmentsRoutes: FastifyPluginAsync = async (app) => {
       if (!assignment) throw notFound("assignment not found");
       const project = await findProjectById(assignment.projectId);
       if (!project) throw notFound("project not found");
-      if (!canSwapDeliverer(actor.id, project)) throw forbidden("only the PL may swap the deliverer");
+      if (!canSwapDeliverer(actor, project)) throw forbidden("only the PL or a manager may swap the deliverer");
       if (!request.body?.newDelivererId) throw badRequest("newDelivererId is required");
 
       const projectAssignments = await listAssignmentsByProject(project.id);

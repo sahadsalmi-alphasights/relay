@@ -253,9 +253,9 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
   const matchHintText =
     `Prefers your practice area when free.` +
     (blockedByFirstDeliverable.length > 0
-      ? ` ${blockedByFirstDeliverable.length} blocked (already on a First Deliverable).`
+      ? ` ${blockedByFirstDeliverable.length} blocked (already on a First Deliverable) — listed below, pickable with an override.`
       : "") +
-    ` Use "Pick instead" for anyone else — needs a reason.`;
+    ` Use "Pick instead" for anyone else (reason optional, logged).`;
   // CHANGE 4 — partial fill: some (not zero, not all) of an angle's wanted
   // seats got filled. Zero eligible anywhere (totalEligible === 0) is
   // Change 3's broadcast case instead, handled by the existing "No one
@@ -575,46 +575,78 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
                       </button>
                     </div>
                   )}
-                  {a.ranked?.slice(0, 8).map((r) => {
-                    const isPicked = a.picked.some((p) => p.personId === r.personId);
-                    const isOverridden = r.personId in a.overrides;
-                    const isBlockedByFDConflict = r.ineligibleReason === "first_deliverable_conflict";
-                    const placedElsewhere = !isPicked ? placedOnOtherAngle(r.personId, angleIndex) : null;
-                    return (
-                      <div key={r.personId} className={"match-line " + (isPicked ? "picked " : "") + (r.eligible ? "" : "blocked")}>
+                  {(a.ranked ?? [])
+                    .filter((r) => r.eligible)
+                    .slice(0, 8)
+                    .map((r) => {
+                      const isPicked = a.picked.some((p) => p.personId === r.personId);
+                      const isOverridden = r.personId in a.overrides;
+                      const placedElsewhere = !isPicked ? placedOnOtherAngle(r.personId, angleIndex) : null;
+                      return (
+                        <div key={r.personId} className={"match-line " + (isPicked ? "picked " : "")}>
+                          <div className="avatar">{initials(nameOf(r.personId))}</div>
+                          <div>
+                            <div className="assignee-name">
+                              {nameOf(r.personId)} <span style={{ color: "var(--soft)", fontWeight: 500 }}>· {practiceOf(r.personId)}</span>
+                            </div>
+                            <div className="assignee-sub">
+                              {isPicked
+                                ? <span className="picktag">Picked ✓{isOverridden ? " · override" : r.practiceAreaMatch ? " · your practice" : ""}</span>
+                                : placedElsewhere
+                                ? `Picked on ${placedElsewhere}`
+                                : r.free
+                                ? "Free"
+                                : "Available"}
+                            </div>
+                          </div>
+                          <div className="load-score">
+                            <b>{r.load.toFixed(1)}</b>
+                            <small>Load</small>
+                          </div>
+                          {!isPicked && a.picked.length > 0 && (
+                            <button className="btn-sm btn-ghost" style={{ marginLeft: 8 }} onClick={() => startOverride(angleIndex, r.personId)}>
+                              Pick instead
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+
+                  {/* Blocked people used to rank below the eligible and fall off
+                      the top-8 slice — invisible. They're their own section now,
+                      like managers: never auto-picked, always manually pickable
+                      as an override (reason optional, logged). */}
+                  {(a.ranked ?? []).some((r) => !r.eligible) && (
+                    <div className="section-lbl" style={{ marginTop: 10 }}>
+                      Blocked right now — always a manual pick
+                    </div>
+                  )}
+                  {(a.ranked ?? [])
+                    .filter((r) => !r.eligible)
+                    .map((r) => (
+                      <div key={r.personId} className="match-line blocked">
                         <div className="avatar">{initials(nameOf(r.personId))}</div>
                         <div>
                           <div className="assignee-name">
                             {nameOf(r.personId)} <span style={{ color: "var(--soft)", fontWeight: 500 }}>· {practiceOf(r.personId)}</span>
                           </div>
                           <div className="assignee-sub">
-                            {!r.eligible
-                              ? r.ineligibleReason === "not_on_sunday_rota"
-                                ? "Not on today's Sunday rota"
-                                : r.ineligibleReason === "first_deliverable_conflict"
-                                ? "Busy — first deliverable elsewhere"
-                                : "Evening coverage off"
-                              : isPicked
-                              ? <span className="picktag">Picked ✓{isOverridden ? " · override" : r.practiceAreaMatch ? " · your practice" : ""}</span>
-                              : placedElsewhere
-                              ? `Picked on ${placedElsewhere}`
-                              : r.free
-                              ? "Free"
-                              : "Available"}
+                            {r.ineligibleReason === "not_on_sunday_rota"
+                              ? "Not on today's Sunday rota"
+                              : r.ineligibleReason === "first_deliverable_conflict"
+                              ? "Busy — first deliverable elsewhere"
+                              : "Evening coverage off"}
                           </div>
                         </div>
                         <div className="load-score">
                           <b>{r.load.toFixed(1)}</b>
                           <small>Load</small>
                         </div>
-                        {!isPicked && (r.eligible || isBlockedByFDConflict) && a.picked.length > 0 && (
-                          <button className="btn-sm btn-ghost" style={{ marginLeft: 8 }} onClick={() => startOverride(angleIndex, r.personId)}>
-                            Pick instead
-                          </button>
-                        )}
+                        <button className="btn-sm btn-ghost" style={{ marginLeft: 8 }} onClick={() => startOverride(angleIndex, r.personId)}>
+                          Pick instead
+                        </button>
                       </div>
-                    );
-                  })}
+                    ))}
 
                   {/* Managers never appear in `a.ranked` (excluded at the
                       source — never suggested, never auto-picked), so

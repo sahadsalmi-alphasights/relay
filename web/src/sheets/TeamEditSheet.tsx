@@ -124,12 +124,14 @@ export default function TeamEditSheet({
 
   const confirm = async () => {
     if (!action || !selectedId) return;
-    if (isOverride && !justification.trim()) return;
     if (action.mode === "add" && !action.angleId) return;
     setBusy(true);
     setError(null);
     try {
-      const override = isOverride ? { justification: justification.trim() } : undefined;
+      // Optional since 2026-07-21: an override no longer demands a written
+      // reason. The override itself is still always audit-logged server-side;
+      // any text typed here is recorded with it.
+      const override = isOverride ? (justification.trim() ? { justification: justification.trim() } : {}) : undefined;
       if (action.mode === "swap") {
         await api.post(`/assignments/${action.assignmentId}/swap`, { newDelivererId: selectedId, override });
       } else {
@@ -290,7 +292,7 @@ export default function TeamEditSheet({
                 reason (the "cursor shows blocked" bug). */}
             {isOverride && (
               <div className="field">
-                <label>Justification — required to pick someone other than the suggested candidate</label>
+                <label>Justification — optional, saved to the audit trail if you add one</label>
                 <input
                   autoFocus
                   value={justification}
@@ -302,14 +304,8 @@ export default function TeamEditSheet({
             <button
               className="btn btn-pl"
               style={{ width: "100%" }}
-              disabled={!selectedId || busy || (isOverride && !justification.trim())}
-              title={
-                !selectedId
-                  ? "Pick a person first"
-                  : isOverride && !justification.trim()
-                  ? "Add a one-line justification to confirm this override"
-                  : undefined
-              }
+              disabled={!selectedId || busy}
+              title={!selectedId ? "Pick a person first" : undefined}
               onClick={confirm}
             >
               {isOverride ? "Confirm override" : "Confirm"}

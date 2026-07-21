@@ -248,7 +248,7 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
         name?: string;
         callsN?: number;
         goalTotal?: number;
-        assignments?: { delivererId: string; goal: number; override?: { justification: string } }[];
+        assignments?: { delivererId: string; goal: number; override?: { justification?: string } }[];
         /** "Invisible competition" — per-angle opt-out for ghost suggestion below; omitted means the column's own default (true). */
         invisibleCompetitionEnabled?: boolean;
       }[];
@@ -337,17 +337,18 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
         for (const a of ang.assignments ?? []) {
           await createAssignment(createdAngle.id, a.delivererId, a.goal, false, tx);
           // §6 (built) — an override (the PL picked someone other than who the
-          // ranking/auto-match suggested) always carries a justification; log it
-          // to the audit trail. Never notify anyone about the override itself —
-          // the ordinary "assigned" notification below still reaches the person.
-          if (a.override?.justification) {
+          // ranking/auto-match suggested) is always logged to the audit trail;
+          // the written justification is optional (2026-07-21) and recorded
+          // when given. Never notify anyone about the override itself — the
+          // ordinary "assigned" notification below still reaches the person.
+          if (a.override) {
             await insertAuditLog(
               {
                 entityType: "assignment",
                 entityId: created.id,
                 actorId: actor.id,
                 action: "manual_override",
-                newValue: { pickedInstead: a.delivererId, justification: a.override.justification },
+                newValue: { pickedInstead: a.delivererId, justification: a.override.justification || null },
               },
               tx
             );
@@ -470,7 +471,7 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
    */
   app.post<{
     Params: { id: string };
-    Body: { angleId?: string; delivererId?: string; goal?: number; override?: { justification: string } };
+    Body: { angleId?: string; delivererId?: string; goal?: number; override?: { justification?: string } };
   }>("/:id/assignments", { preHandler: [app.requireAuth] }, async (request) => {
     const actor = request.actor!;
     const project = await findProjectById(request.params.id);
@@ -502,13 +503,13 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
       action: "add_to_team",
       newValue: { delivererId: request.body.delivererId, goal: request.body.goal, angleId },
     });
-    if (request.body.override?.justification) {
+    if (request.body.override) {
       await insertAuditLog({
         entityType: "assignment",
         entityId: created.id,
         actorId: actor.id,
         action: "manual_override",
-        newValue: { pickedInstead: request.body.delivererId, justification: request.body.override.justification },
+        newValue: { pickedInstead: request.body.delivererId, justification: request.body.override.justification || null },
       });
     }
     await publishProjectChanged(project.id, [project.plId, request.body.delivererId]);

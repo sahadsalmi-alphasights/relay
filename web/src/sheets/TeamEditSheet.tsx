@@ -2,11 +2,11 @@ import { useEffect, useState } from "react";
 import { api, ApiError } from "../api/client";
 import type { Angle, Assignment, Project, RankedCandidate } from "../api/types";
 import Sheet from "../components/Sheet";
-import { initials } from "../lib/format";
+import { ghostsLast, initials } from "../lib/format";
 import { useApp } from "../state/AppContext";
 
 type Action =
-  | { mode: "swap"; assignmentId: string; currentDelivererId: string }
+  | { mode: "swap"; assignmentId: string; currentDelivererId: string; ghost?: boolean }
   | { mode: "add"; angleId: string | null };
 
 /**
@@ -36,6 +36,8 @@ export default function TeamEditSheet({
   const [assignments, setAssignments] = useState<Assignment[] | null>(null);
   const [angles, setAngles] = useState<Angle[] | null>(null);
   const [ranked, setRanked] = useState<RankedCandidate[] | null>(null);
+  // "Invisible competition" — the ghost pool, for changing an angle's ghost.
+  const [ghostRanked, setGhostRanked] = useState<RankedCandidate[]>([]);
   const [action, setAction] = useState<Action | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [justification, setJustification] = useState("");
@@ -66,6 +68,17 @@ export default function TeamEditSheet({
       angles: [{ key: "0", staffCount: 1 }],
     });
     setRanked(match.ranked);
+    // Ghost pool (same route, ghost flag). Failure is fine — the Change
+    // button on a ghost row just shows an empty list.
+    try {
+      const g = await api.post<{ ranked: RankedCandidate[] }>("/projects/intake/match", {
+        angles: [{ key: "0", staffCount: 1 }],
+        ghost: true,
+      });
+      setGhostRanked(g.ranked);
+    } catch {
+      setGhostRanked([]);
+    }
   };
 
   useEffect(() => {
@@ -93,7 +106,10 @@ export default function TeamEditSheet({
       : null;
   const onTargetAngle = new Set(assignments.filter((x) => x.angleId === targetAngleId).map((x) => x.delivererId));
   const onOtherAngles = new Set(assignments.filter((x) => x.angleId !== targetAngleId).map((x) => x.delivererId));
-  const candidates = ranked.filter((r) => !onTargetAngle.has(r.personId));
+  // Ghost swaps draw from the ghost pool; everything else from the normal one.
+  const ghostAction = action?.mode === "swap" && action.ghost === true;
+  const pool = ghostAction ? ghostRanked : ranked;
+  const candidates = pool.filter((r) => !onTargetAngle.has(r.personId));
   const suggestedId = candidates.find((r) => r.eligible)?.personId;
   // Managers are excluded from the ranked candidate pool entirely (never
   // suggested, never auto-picked — see services/candidates.ts), so they
@@ -106,10 +122,24 @@ export default function TeamEditSheet({
   );
 
   const startSwap = (a: Assignment) => {
-    setAction({ mode: "swap", assignmentId: a.id, currentDelivererId: a.delivererId });
+    setAction({ mode: "swap", assignmentId: a.id, currentDelivererId: a.delivererId, ghost: a.isGhost });
     setSelectedId(null);
     setJustification("");
     setError(null);
+  };
+  // "Invisible competition" — remove the angle's ghost entirely (ghost-only
+  // server-side; a real deliverer can only be swapped, never deleted).
+  const removeGhost = async (a: Assignment) => {
+    if (!window.confirm(`Remove ghost ${nameOf(a.delivererId)} from this angle?`)) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.del(`/assignments/${a.id}`);
+      onChanged();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not remove the ghost");
+      setBusy(false);
+    }
   };
   const goalForAngle = (angleId: string) => {
     const angle = angles.find((a) => a.id === angleId);
@@ -177,21 +207,29 @@ export default function TeamEditSheet({
       {!action && (
         <>
           <div className="section-lbl spaced">Current team</div>
-          {assignments.map((a) => (
+          {ghostsLast(assignments).map((a) => (
             <div key={a.id} className="match-line">
-              <div className="avatar">{initials(nameOf(a.delivererId))}</div>
+              <div className="avatar">{a.isGhost ? "👻" : initials(nameOf(a.delivererId))}</div>
               <div>
                 <div className="assignee-name">
                   {nameOf(a.delivererId)} <span style={{ color: "var(--soft)", fontWeight: 500 }}>· {practiceOf(a.delivererId)}</span>
+                  {a.isGhost && <span className="picktag" style={{ marginLeft: 6 }}>👻 Ghost</span>}
                 </div>
                 <div className="assignee-sub">
                   {multiAngle ? `${a.angleName} · ` : ""}
                   goal {a.goal} · {a.delivered + a.customDelivered} delivered
                 </div>
               </div>
-              <button className="btn-sm btn-pl" style={{ marginLeft: "auto" }} onClick={() => startSwap(a)}>
-                Change
-              </button>
+              <span style={{ marginLeft: "auto", display: "inline-flex", gap: 6 }}>
+                <button className="btn-sm btn-pl" onClick={() => startSwap(a)}>
+                  Change
+                </button>
+                {a.isGhost && (
+                  <button className="btn-sm btn-ghost btn-del-user" disabled={busy} onClick={() => removeGhost(a)}>
+                    Remove
+                  </button>
+                )}
+              </span>
             </div>
           ))}
           <div className="sheet-footer">
@@ -234,7 +272,9 @@ export default function TeamEditSheet({
       {action && (action.mode === "swap" || action.angleId) && (
         <>
           <div className="section-lbl spaced">
-            {action.mode === "swap" ? `Replace ${nameOf(action.currentDelivererId)}` : `Add a deliverer — ${angleName(action.angleId!)}`}
+            {action.mode === "swap"
+              ? `Replace ${nameOf(action.currentDelivererId)}${action.ghost ? " (ghost — picking from the ghost pool)" : ""}`
+              : `Add a deliverer — ${angleName(action.angleId!)}`}
           </div>
           {action.mode === "add" && (
             <div className="suggest" style={{ marginBottom: 12 }}>
@@ -305,7 +345,7 @@ export default function TeamEditSheet({
             );
           })()}
 
-          {managers.length > 0 && (
+          {managers.length > 0 && !ghostAction && (
             <>
               <button className="archive-toggle" style={{ marginTop: 12 }} onClick={() => setManagersOpen((o) => !o)}>
                 {managersOpen ? "▾" : "▸"} Or add a manager (never suggested — always a manual pick) · {managers.length}

@@ -19,6 +19,8 @@ export type Scope = "mine" | "team";
 export default function Header({
   scope,
   setScope,
+  teamView = "",
+  setTeamView,
   onOpenTeam,
   liveStatus,
   notif,
@@ -26,12 +28,15 @@ export default function Header({
 }: {
   scope: Scope;
   setScope: (s: Scope) => void;
+  /** "" = own team, "all" = whole BU, else a team id. */
+  teamView?: string;
+  setTeamView?: (t: string) => void;
   onOpenTeam: () => void;
   liveStatus: LiveStatus;
   notif: NotificationsState;
   onOpenNotification?: (n: AppNotification) => void;
 }) {
-  const { actor, nowMs, demoHour, setDemoHour, effectiveHour, effectiveAfterHours } = useApp();
+  const { actor, nowMs, demoHour, setDemoHour, effectiveHour, effectiveAfterHours, teams } = useApp();
   const { theme, toggleTheme } = useTheme();
 
   const liveHour = dubaiHour(nowMs);
@@ -76,6 +81,19 @@ export default function Header({
           <button className={scope === "team" ? "on" : ""} onClick={() => setScope("team")}>
             Team view
           </button>
+          {scope === "team" && setTeamView && (
+            <select className="team-picker team-picker-mobile" value={teamView} onChange={(e) => setTeamView(e.target.value)}>
+              <option value="">My team</option>
+              {teams
+                .filter((t) => t.id !== actor.teamId)
+                .map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              <option value="all">All teams</option>
+            </select>
+          )}
         </div>
       </div>
       <div className="timebar">

@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import { insertAuditLog } from "../repositories/auditLog";
 import {
+  deleteAssignmentCascade,
   findAssignmentById,
   listAssignmentsByProject,
   setAssignmentStage,
@@ -16,6 +17,7 @@ import {
   canChangeStage,
   canEditAssignmentProgress,
   canEditGoal,
+  canEditProjectFields,
   canRequestGoalChange,
   canSwapDeliverer,
 } from "../rules/permissions";
@@ -261,6 +263,8 @@ const assignmentsRoutes: FastifyPluginAsync = async (app) => {
       }
 
       const { assignment: swapped, auditEntry } = swapDeliverer(assignment, request.body.newDelivererId, actor.id);
+      // (ghost swaps ride this same route — the assignment keeps is_ghost, so
+      // a ghost seat stays a ghost seat whoever fills it)
       const updated = await updateAssignmentDeliverer(assignment.id, swapped.delivererId);
       await insertAuditLog(auditEntry);
       if (request.body.override) {
@@ -288,6 +292,34 @@ const assignmentsRoutes: FastifyPluginAsync = async (app) => {
       return updated;
     }
   );
+
+  /**
+   * "Invisible competition" — remove an angle's ghost entirely. Ghost-only:
+   * a real deliverer is swapped, never deleted (their delivery history must
+   * survive). PL / manager / owner; cascade removes the ghost's rounds and
+   * goal-change requests; audit-logged.
+   */
+  app.delete<{ Params: { id: string } }>("/:id", { preHandler: [app.requireAuth] }, async (request) => {
+    const actor = request.actor!;
+    const assignment = await findAssignmentById(request.params.id);
+    if (!assignment) throw notFound("assignment not found");
+    const project = await findProjectById(assignment.projectId);
+    if (!project) throw notFound("project not found");
+    if (!canEditProjectFields(actor, project)) throw forbidden("only the PL or a manager may remove a ghost");
+    if (!assignment.isGhost) throw badRequest("only ghost assignments can be removed");
+
+    await deleteAssignmentCascade(assignment.id);
+    await insertAuditLog({
+      entityType: "assignment",
+      entityId: assignment.id,
+      actorId: actor.id,
+      action: "ghost_remove",
+      oldValue: { personId: assignment.delivererId, angleId: assignment.angleId, goal: assignment.goal },
+    });
+    await publishProjectChanged(project.id, [project.plId, assignment.delivererId]);
+    publish({ type: "capacity-ranking" });
+    return { ok: true };
+  });
 
   /**
    * §5e — a deliverer may only *request* a goal change, never write it

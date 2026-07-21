@@ -21,7 +21,7 @@ import {
   type ProjectRow,
 } from "../repositories/projects";
 import { countAssignmentsForAngle, seatTargetForAngle } from "../repositories/angles";
-import { listPeopleByTeam } from "../repositories/people";
+import { findPersonById, listPeopleByTeam } from "../repositories/people";
 import { sundayRotaPersonIdsForDate, listAvailableCandidatesWithAssignments } from "../services/candidates";
 import { badRequest, conflict, forbidden, notFound } from "../errors";
 import { isEligible } from "../rules/eligibility";
@@ -82,10 +82,13 @@ async function withProjectFlags(project: ProjectRow, now: Date) {
 }
 
 const projectsRoutes: FastifyPluginAsync = async (app) => {
-  // §8 scope toggle — "mine" is just the actor; "team" is every teammate (actor included).
-  // `role` picks which relationship to the project: leading (pl_id) or delivering (an assignment).
+  // §8 scope toggle — "mine" is just the actor; "team" is every teammate
+  // (actor included). Since 2026-07-21, Team view can also LOOK at any other
+  // team (`teamId=<uuid>`) or the whole BU (`teamId=all`) — view is open to
+  // every authed user; every write route still enforces its own permissions,
+  // so foreign teams are effectively read-only for plain members.
   app.get("/", { preHandler: [app.requireAuth] }, async (request) => {
-    const q = request.query as { role?: string; scope?: string; status?: string; archived?: string };
+    const q = request.query as { role?: string; scope?: string; status?: string; archived?: string; teamId?: string };
     const actor = request.actor!;
     const filter: ProjectFilter = {
       status: q.status as ProjectFilter["status"],
@@ -93,16 +96,26 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
     };
 
     let teamIds: string[] | null = null;
-    if (q.scope === "team" && actor.teamId) {
-      teamIds = (await listPeopleByTeam(actor.teamId)).map((p) => p.id);
+    let wholeBu = false;
+    if (q.scope === "team") {
+      if (q.teamId === "all") {
+        wholeBu = true;
+      } else {
+        const targetTeamId = q.teamId || actor.teamId;
+        if (targetTeamId) teamIds = (await listPeopleByTeam(targetTeamId)).map((p) => p.id);
+      }
     }
 
     if (q.role === "leading") {
-      if (teamIds) filter.plIdIn = teamIds;
-      else filter.plId = actor.id;
+      if (!wholeBu) {
+        if (teamIds) filter.plIdIn = teamIds;
+        else filter.plId = actor.id;
+      }
     } else if (q.role === "delivering") {
-      if (teamIds) filter.delivererIdIn = teamIds;
-      else filter.delivererId = actor.id;
+      if (!wholeBu) {
+        if (teamIds) filter.delivererIdIn = teamIds;
+        else filter.delivererId = actor.id;
+      }
     }
 
     const rows = await listProjects(filter);
@@ -204,7 +217,7 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
    * so a blocked person is never silently auto-picked but still appears in
    * `ranked` (ineligible, with a reason) for the PL to see and override.
    */
-  app.post<{ Body: { angles?: { key?: string; staffCount?: number }[] } }>(
+  app.post<{ Body: { angles?: { key?: string; staffCount?: number }[]; ghost?: boolean } }>(
     "/intake/match",
     { preHandler: [app.requireAuth] },
     async (request) => {
@@ -219,7 +232,10 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
       const now = resolveNow(request);
       const hour = dubaiHour(now);
       const rotaSet = await sundayRotaPersonIdsForDate(dubaiDateKey(now));
-      const candidates = await listAvailableCandidatesWithAssignments();
+      // `ghost: true` ranks the ghost pool instead — same ranking machinery,
+      // different candidates. Used by the wizard's per-angle ghost picker and
+      // Edit team's change-ghost flow.
+      const candidates = await listAvailableCandidatesWithAssignments({ ghost: request.body?.ghost === true });
       const context = {
         now,
         sundayRotaPersonIds: rotaSet,
@@ -251,6 +267,8 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
         assignments?: { delivererId: string; goal: number; override?: { justification?: string } }[];
         /** "Invisible competition" — per-angle opt-out for ghost suggestion below; omitted means the column's own default (true). */
         invisibleCompetitionEnabled?: boolean;
+        /** Explicit ghost choice (2026-07-21): a person id uses exactly that ghost; null means "no ghost for this angle"; omitted keeps the auto-allocation. */
+        ghostDelivererId?: string | null;
       }[];
     };
   }>("/", { preHandler: [app.requireAuth] }, async (request) => {
@@ -323,7 +341,9 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
       // Angles that got a real associate AND are eligible for a ghost
       // suggestion (Due Diligence/Strategy only, never Pitch; toggle not
       // explicitly off). Populated in the loop, consumed by the ghost pass.
-      const ghostEligibleAngles: { id: string; realGoal: number }[] = [];
+      // `explicit` carries the wizard's per-angle choice: a person id, null
+      // ("no ghost here"), or undefined (auto-allocate, the original path).
+      const ghostEligibleAngles: { id: string; realGoal: number; explicit?: string | null }[] = [];
 
       for (const ang of angleInputs) {
         const createdAngle = await createAngle(
@@ -375,7 +395,7 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
         // to compete against, so it's never a candidate here.
         const firstRealAssignment = (ang.assignments ?? [])[0];
         if (isDDOrStrategy && firstRealAssignment && createdAngle.invisibleCompetitionEnabled) {
-          ghostEligibleAngles.push({ id: createdAngle.id, realGoal: firstRealAssignment.goal });
+          ghostEligibleAngles.push({ id: createdAngle.id, realGoal: firstRealAssignment.goal, explicit: ang.ghostDelivererId });
         }
       }
 
@@ -385,33 +405,62 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
       // people). SILENT FAILURE per angle — no eligible ghost means that angle
       // simply gets none: no warning, no notification, no broadcast.
       if (ghostEligibleAngles.length > 0) {
-        const now = resolveNow(request);
-        const hour = dubaiHour(now);
-        const rotaSet = await sundayRotaPersonIdsForDate(dubaiDateKey(now));
-        const ghostContext = { now, sundayRotaPersonIds: rotaSet, plPracticeArea: actor.practiceArea ?? "" };
-        const ghostCandidates = await listAvailableCandidatesWithAssignments({ ghost: true });
-        const ghostRanked = applyFirstDeliverableBlock(rankCandidates(ghostCandidates, ghostContext), ghostCandidates, hour);
-        const { perAngle } = allocateAcrossAngles(
-          ghostRanked,
-          ghostEligibleAngles.map((a) => ({ key: a.id, staffCount: 1 }))
-        );
-        for (const alloc of perAngle) {
-          const pick = alloc.picked[0];
-          if (!pick) continue; // silent failure — no ghost available for this angle
-          const angleInfo = ghostEligibleAngles.find((a) => a.id === alloc.key)!;
-          const ghostAssignment = await createAssignment(angleInfo.id, pick.personId, angleInfo.realGoal, true, tx);
-          ghostDelivererIds.push(pick.personId);
-          ghostNotifications.push({ personId: pick.personId, goal: angleInfo.realGoal });
+        // Explicit picks first (2026-07-21): the wizard now selects the ghost
+        // per angle with the same machinery as real deliverers. A person id
+        // is used verbatim (validated below), null skips the angle entirely,
+        // and undefined keeps the original auto-allocation.
+        const explicitAngles = ghostEligibleAngles.filter((a) => typeof a.explicit === "string");
+        const autoAngles = ghostEligibleAngles.filter((a) => a.explicit === undefined);
+
+        for (const angleInfo of explicitAngles) {
+          const ghostPerson = await findPersonById(angleInfo.explicit as string);
+          if (!ghostPerson) throw badRequest("unknown ghost deliverer");
+          if (!ghostPerson.isGhost) throw badRequest(`${ghostPerson.name} is not flagged as a ghost deliverer`);
+          if (ghostPerson.deactivatedAt) throw badRequest(`${ghostPerson.name} is deactivated`);
+          const ghostAssignment = await createAssignment(angleInfo.id, ghostPerson.id, angleInfo.realGoal, true, tx);
+          ghostDelivererIds.push(ghostPerson.id);
+          ghostNotifications.push({ personId: ghostPerson.id, goal: angleInfo.realGoal });
           await insertAuditLog(
             {
               entityType: "assignment",
               entityId: ghostAssignment.id,
               actorId: actor.id,
               action: "ghost_assign",
-              newValue: { personId: pick.personId, angleId: angleInfo.id, goal: angleInfo.realGoal },
+              newValue: { personId: ghostPerson.id, angleId: angleInfo.id, goal: angleInfo.realGoal, manualPick: true },
             },
             tx
           );
+        }
+
+        if (autoAngles.length > 0) {
+          const now = resolveNow(request);
+          const hour = dubaiHour(now);
+          const rotaSet = await sundayRotaPersonIdsForDate(dubaiDateKey(now));
+          const ghostContext = { now, sundayRotaPersonIds: rotaSet, plPracticeArea: actor.practiceArea ?? "" };
+          const ghostCandidates = await listAvailableCandidatesWithAssignments({ ghost: true });
+          const ghostRanked = applyFirstDeliverableBlock(rankCandidates(ghostCandidates, ghostContext), ghostCandidates, hour);
+          const { perAngle } = allocateAcrossAngles(
+            ghostRanked,
+            autoAngles.map((a) => ({ key: a.id, staffCount: 1 }))
+          );
+          for (const alloc of perAngle) {
+            const pick = alloc.picked[0];
+            if (!pick) continue; // silent failure — no ghost available for this angle
+            const angleInfo = autoAngles.find((a) => a.id === alloc.key)!;
+            const ghostAssignment = await createAssignment(angleInfo.id, pick.personId, angleInfo.realGoal, true, tx);
+            ghostDelivererIds.push(pick.personId);
+            ghostNotifications.push({ personId: pick.personId, goal: angleInfo.realGoal });
+            await insertAuditLog(
+              {
+                entityType: "assignment",
+                entityId: ghostAssignment.id,
+                actorId: actor.id,
+                action: "ghost_assign",
+                newValue: { personId: pick.personId, angleId: angleInfo.id, goal: angleInfo.realGoal },
+              },
+              tx
+            );
+          }
         }
       }
 

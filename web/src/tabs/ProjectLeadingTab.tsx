@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { Angle, Assignment, CapacityRankRow, GoalChangeRequest, Note, Project, Stage } from "../api/types";
-import { barColor, entityBrand, initials, overDelivered, paceInfo, stageClass, stageLabel, typeClass } from "../lib/format";
+import { barColor, entityBrand, ghostsLast, initials, overDelivered, paceInfo, stageClass, stageLabel, typeClass } from "../lib/format";
 import EntityLogo from "../components/EntityLogo";
 import { fmtElapsed, poolState, timerClass } from "../lib/time";
 import { useApp } from "../state/AppContext";
@@ -238,6 +238,7 @@ function CallsSoldEditor({ angles, onSave }: { angles: Angle[]; onSave: () => vo
 
 export default function ProjectLeadingTab({
   scope,
+  teamView = "",
   reloadTick,
   onReload,
   onPendingCount,
@@ -247,6 +248,8 @@ export default function ProjectLeadingTab({
   focusProject,
 }: {
   scope: Scope;
+  /** Team view target: "" = own team, "all" = whole BU, else a team id. */
+  teamView?: string;
   reloadTick: number;
   onReload: () => void;
   onPendingCount: (n: number) => void;
@@ -278,9 +281,10 @@ export default function ProjectLeadingTab({
   // second definition of load or free for this one screen.
   const [rankRows, setRankRows] = useState<CapacityRankRow[] | null>(null);
 
+  const teamParam = scope === "team" && teamView ? `&teamId=${teamView}` : "";
   const load = async () => {
-    const active = await api.get<Project[]>(`/projects?role=leading&scope=${scope}&archived=false`);
-    const archivedList = await api.get<Project[]>(`/projects?role=leading&scope=${scope}&archived=true`);
+    const active = await api.get<Project[]>(`/projects?role=leading&scope=${scope}${teamParam}&archived=false`);
+    const archivedList = await api.get<Project[]>(`/projects?role=leading&scope=${scope}${teamParam}&archived=true`);
     const details = await Promise.all(
       active.map((p) =>
         api.get<{ project: Project; assignments: Assignment[]; angles: Angle[]; notes: Note[] }>(`/projects/${p.id}`)
@@ -315,7 +319,7 @@ export default function ProjectLeadingTab({
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scope, reloadTick]);
+  }, [scope, teamView, reloadTick]);
 
   useEffect(() => {
     // Team-view-only panel (below) -- don't bother fetching it in My view.
@@ -349,10 +353,23 @@ export default function ProjectLeadingTab({
   if (!items) return <div className="empty">Loading…</div>;
 
   // §8 Team view — grouped by person, not just a wider flat list: one
-  // section per team member (including those leading nothing), each
-  // showing only the projects that member leads.
+  // section per member of whichever team is being viewed (own team by
+  // default, any team via the sidebar picker, or the whole BU).
+  const viewedTeamId = teamView || actor.teamId;
   const teamMembers =
-    scope === "team" ? [...people].filter((p) => p.teamId === actor.teamId).sort((a, b) => a.name.localeCompare(b.name)) : [];
+    scope === "team"
+      ? [...people]
+          .filter((p) => !p.deactivatedAt && (teamView === "all" ? true : p.teamId === viewedTeamId))
+          .sort((a, b) => a.name.localeCompare(b.name))
+      : [];
+
+  // Foreign teams are view-only for plain members: every write route
+  // enforces this server-side anyway; hiding the controls just makes the
+  // read-only nature honest instead of a trail of 403s. Managers/owners
+  // keep full control everywhere (User-groups matrix), and your own
+  // projects stay editable even inside an all-teams view.
+  const foreignView = scope === "team" && !!teamView && teamView !== (actor.teamId ?? "");
+  const foreignReadOnly = foreignView && !actor.isManager && !actor.isOwner;
 
   // Phase D, item 5 — the running-list team roster is always the actor's own
   // team, independent of the My view/Team view scope toggle (which only
@@ -370,7 +387,7 @@ export default function ProjectLeadingTab({
   // §6/§8 — one assignee's own row: name, progress, stage/timer/back/advance.
   // Shared between the single-angle (flat list) and multi-angle (grouped)
   // renderings below, so there's exactly one place this markup lives.
-  const renderAssigneeRow = (a: Assignment) => {
+  const renderAssigneeRow = (a: Assignment, readOnly = false) => {
     const elapsed = nowMs - new Date(a.stageEnteredAt).getTime();
     return (
       <div key={a.id} className="assignee-block">
@@ -384,7 +401,7 @@ export default function ProjectLeadingTab({
             </div>
             <div className="assignee-sub">{a.customDelivered > 0 ? `Incl. ${a.customDelivered} custom` : "No custom"}</div>
           </div>
-          <AssigneeGoalEditor assignment={a} onSave={onReload} />
+          {!readOnly && <AssigneeGoalEditor assignment={a} onSave={onReload} />}
         </div>
         {/* §6/§8 — this assignee's own stage, timer, and the phase dropdown (per-deliverer, domain change 8). */}
         <div className="assignee-actions-row">
@@ -393,7 +410,7 @@ export default function ProjectLeadingTab({
               frees up enough width for this row to stay on one line. */}
           <span className={"stage-pill " + stageClass(a.stage)}>{stageLabel(a.stage)}</span>
           <span className={"chip timer " + timerClass(elapsed)}>⏱ {fmtElapsed(elapsed)}</span>
-          <StageDropdown assignment={a} onSave={onReload} />
+          {!readOnly && <StageDropdown assignment={a} onSave={onReload} />}
         </div>
       </div>
     );
@@ -401,7 +418,14 @@ export default function ProjectLeadingTab({
 
   const renderCard = ({ project: p, assignments, angles, notes }: ProjectItem) => {
         const { goal, done, pct } = projStats(assignments);
-        const pace = paceInfo(pct, p.earliestStage ?? "First Deliverable");
+        // Beating the target is a win, not a scolding: over-sold (5 of 2) or
+        // over-delivered used to still render "Behind" (stage-forced or the
+        // capped pct). Exceeded wins over everything, including Hail Mary.
+        const exceeded = (p.callsN > 0 && p.callsSold > p.callsN) || (goal > 0 && done > goal);
+        const pace = exceeded
+          ? { color: "var(--green)", label: "Exceeded 🎉" }
+          : paceInfo(pct, p.earliestStage ?? "First Deliverable");
+        const readOnly = foreignReadOnly && p.plId !== actor.id;
         const ps = poolState(p.expertPool, effectiveHour);
         // §8.1 (corrected) — computed server-side, per angle then OR'd; never
         // re-derived here from summed totals (see rules/project.ts for why).
@@ -541,38 +565,43 @@ export default function ProjectLeadingTab({
                             Unstaffed
                           </div>
                         ) : (
-                          angleAssignments.map(renderAssigneeRow)
+                          ghostsLast(angleAssignments).map((x) => renderAssigneeRow(x, readOnly))
                         )}
                       </div>
                     );
                   })
-                : assignments.map(renderAssigneeRow)}
+                : ghostsLast(assignments).map((x) => renderAssigneeRow(x, readOnly))}
             </div>
             {/* Phase D (v2), item 12 — exactly two logical action rows, with
                 a divider between them (same weight/colour as the header
                 divider, item 6 -- no new style introduced). Row 1: manage
-                the project's set-up. Row 2: manage its lifecycle. */}
-            <div className="actions">
-              <button className="btn btn-pl" onClick={() => onEditTeam(p.id)}>
-                Edit team
-              </button>
-              <button className="btn btn-ghost" onClick={() => onEditProject(p.id)} title="Edit project set-up">
-                ✏️ Edit
-              </button>
-              <CallsSoldEditor angles={angles} onSave={onReload} />
-            </div>
-            <div className="actions actions-row2">
-              <button className="btn btn-ghost" onClick={() => onNotes({ projectId: p.id })}>
-                📝 Notes
-              </button>
-              <button className="btn btn-ghost" onClick={() => archiveProject(p.id)}>
-                Archive
-              </button>
-              {/* Batch S, item 3 — destructive, confirmed in deleteProject() before the request ever goes out. */}
-              <button className="btn btn-ghost" style={{ color: "#A82F2F" }} onClick={() => deleteProject(p.id, p.client)}>
-                🗑 Delete
-              </button>
-            </div>
+                the project's set-up. Row 2: manage its lifecycle. Hidden
+                entirely on a foreign-team read-only view. */}
+            {!readOnly && (
+              <>
+                <div className="actions">
+                  <button className="btn btn-pl" onClick={() => onEditTeam(p.id)}>
+                    Edit team
+                  </button>
+                  <button className="btn btn-ghost" onClick={() => onEditProject(p.id)} title="Edit project set-up">
+                    ✏️ Edit
+                  </button>
+                  <CallsSoldEditor angles={angles} onSave={onReload} />
+                </div>
+                <div className="actions actions-row2">
+                  <button className="btn btn-ghost" onClick={() => onNotes({ projectId: p.id })}>
+                    📝 Notes
+                  </button>
+                  <button className="btn btn-ghost" onClick={() => archiveProject(p.id)}>
+                    Archive
+                  </button>
+                  {/* Batch S, item 3 — destructive, confirmed in deleteProject() before the request ever goes out. */}
+                  <button className="btn btn-ghost" style={{ color: "#A82F2F" }} onClick={() => deleteProject(p.id, p.client)}>
+                    🗑 Delete
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         );
   };

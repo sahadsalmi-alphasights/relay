@@ -123,12 +123,15 @@ function RequestChange({
 
 export default function DeliveryTab({
   scope,
+  teamView = "",
   reloadTick,
   onReload,
   onNotes,
   focusProject,
 }: {
   scope: Scope;
+  /** Team view target: "" = own team, "all" = whole BU, else a team id. */
+  teamView?: string;
   reloadTick: number;
   onReload: () => void;
   onNotes: (t: NotesTarget) => void;
@@ -158,22 +161,27 @@ export default function DeliveryTab({
   }, [focusProject?.tick, items]);
 
   const load = async () => {
-    const list = await api.get<Project[]>(`/projects?role=delivering&scope=${scope}&status=active`);
+    const teamParam = scope === "team" && teamView ? `&teamId=${teamView}` : "";
+    const list = await api.get<Project[]>(`/projects?role=delivering&scope=${scope}${teamParam}&status=active`);
     const details = await Promise.all(
       list.map((p) => api.get<{ project: Project; assignments: Assignment[]; angles: unknown[] }>(`/projects/${p.id}`))
     );
-    // §8 scope toggle — "team" means every teammate's assignments, broken out
-    // per person, not just the actor's own. Filtering to `actor.id` here (as
-    // this used to) silently emptied Team view for anyone whose teammates,
-    // not themselves, held the assignments (bug 4).
+    // §8 scope toggle — "team" means every member of the VIEWED team's
+    // assignments (own team by default, any team via the picker, or the
+    // whole BU), broken out per person, not just the actor's own.
+    const viewedTeamId = teamView || actor.teamId;
     const relevantIds =
-      scope === "team" ? new Set(people.filter((p) => p.teamId === actor.teamId).map((p) => p.id)) : new Set([actor.id]);
+      scope === "team"
+        ? new Set(people.filter((p) => (teamView === "all" ? true : p.teamId === viewedTeamId)).map((p) => p.id))
+        : new Set([actor.id]);
     const rows: DeliveryItem[] = [];
     for (const d of details) {
       for (const a of d.assignments) {
         if (relevantIds.has(a.delivererId)) rows.push({ project: d.project, assignment: a, multiAngle: d.angles.length > 1 });
       }
     }
+    // Ghosts sit at the bottom of each person's cards, never above the real work.
+    rows.sort((a, b) => Number(a.assignment.isGhost) - Number(b.assignment.isGhost));
     setItems(rows);
     // CHANGE 3 — broadcast fallback: one row per angle still needing seats
     // (org-wide, same visibility the old whole-project open pool always
@@ -184,7 +192,7 @@ export default function DeliveryTab({
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scope, reloadTick]);
+  }, [scope, teamView, reloadTick]);
 
   useEffect(() => {
     api.get<CapacityRankRow[]>("/capacity-ranking").then((rows) => setMyCapacity(rows.find((r) => r.personId === actor.id) ?? null));
@@ -221,7 +229,11 @@ export default function DeliveryTab({
   // section per team member (including those with nothing on), each
   // showing only that member's own assignments.
   const teamMembers =
-    scope === "team" ? [...people].filter((p) => p.teamId === actor.teamId).sort((a, b) => a.name.localeCompare(b.name)) : [];
+    scope === "team"
+      ? [...people]
+          .filter((p) => !p.deactivatedAt && (teamView === "all" ? true : p.teamId === (teamView || actor.teamId)))
+          .sort((a, b) => a.name.localeCompare(b.name))
+      : [];
 
   const renderCard = ({ project: p, assignment: a, multiAngle }: DeliveryItem) => {
     const doneAll = a.delivered + a.customDelivered;

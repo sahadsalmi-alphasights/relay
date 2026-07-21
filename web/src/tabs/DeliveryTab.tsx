@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, ApiError } from "../api/client";
 import type { Assignment, CapacityRankRow, Project, ProjectStatus } from "../api/types";
-import { barColor, entityBrand, entityTint, initials, overDelivered, stageClass, stageLabel, typeClass } from "../lib/format";
+import { barColor, entityBrand, initials, overDelivered, stageClass, stageLabel, typeClass } from "../lib/format";
 import EntityLogo from "../components/EntityLogo";
 import { fmtElapsed, poolState, timerClass } from "../lib/time";
 import { useApp } from "../state/AppContext";
@@ -240,7 +240,7 @@ export default function DeliveryTab({
             board (§format.ts CLIENT_ENTITY_MAP, one shared config, not
             duplicated) -- managers reported the delivery board had no
             colour at all. */}
-        <div className="card-top" style={{ background: entityTint(p.clientEntity) }}>
+        <div className={"card-top entity-tint-" + p.clientEntity}>
           <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
             <EntityLogo entity={p.clientEntity} />
             <div style={{ minWidth: 0 }}>

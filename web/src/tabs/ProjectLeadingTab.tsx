@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { Angle, Assignment, CapacityRankRow, GoalChangeRequest, Note, Project, Stage } from "../api/types";
-import { barColor, entityBrand, entityTint, initials, overDelivered, paceInfo, stageClass, stageLabel, typeClass } from "../lib/format";
+import { barColor, entityBrand, initials, overDelivered, paceInfo, stageClass, stageLabel, typeClass } from "../lib/format";
 import EntityLogo from "../components/EntityLogo";
 import { fmtElapsed, poolState, timerClass } from "../lib/time";
 import { useApp } from "../state/AppContext";
@@ -416,7 +416,7 @@ export default function ProjectLeadingTab({
                 all five tints are pale and text stays var(--ink)/pill-own
                 colours; "Behind"/chase-client render lower in the card, on
                 the plain white body, never inside this tinted block. */}
-            <div className="card-top" style={{ background: entityTint(p.clientEntity) }}>
+            <div className={"card-top entity-tint-" + p.clientEntity}>
               <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
                 <EntityLogo entity={p.clientEntity} />
                 <div style={{ minWidth: 0 }}>

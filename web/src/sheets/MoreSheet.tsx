@@ -80,7 +80,7 @@ export default function MoreSheet({
       )}
 
       <button className="more-item" onClick={toggleEvening}>
-        <span className="ico" style={ico("coverage.png")} aria-hidden="true" />
+        <span className="ico" style={ico("moon.svg")} aria-hidden="true" />
         Evening coverage
         <span className={"toggle-switch " + (actor.eveningCoverage ? "on" : "")} style={{ marginLeft: "auto", background: actor.eveningCoverage ? "var(--green)" : "var(--line)" }}>
           <span className="thumb" />

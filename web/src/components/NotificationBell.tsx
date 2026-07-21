@@ -126,11 +126,25 @@ export default function NotificationBell({
             <div className="notif-panel-header">
               <b>Notifications</b>
               {notif.unreadCount > 0 && <span className="notif-count">{notif.unreadCount} new</span>}
-              {notif.unreadCount > 0 && (
-                <button className="notif-markall" onClick={() => notif.markAllRead()}>
-                  Mark all read
-                </button>
-              )}
+              <span className="notif-head-actions">
+                {notif.unreadCount > 0 && (
+                  <button className="notif-markall" onClick={() => notif.markAllRead()}>
+                    Mark all read
+                  </button>
+                )}
+                {notif.notifications.length > 0 && (
+                  <button
+                    className="notif-markall notif-clear"
+                    onClick={() => {
+                      if (window.confirm("Clear all notifications? They'll be permanently removed.")) {
+                        void notif.clearAll();
+                      }
+                    }}
+                  >
+                    Clear all
+                  </button>
+                )}
+              </span>
             </div>
             {notif.notifications.length === 0 ? (
               <div className="notif-empty">

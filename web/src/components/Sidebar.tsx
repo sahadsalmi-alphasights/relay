@@ -84,7 +84,7 @@ export default function Sidebar({
         onClick={toggleEvening}
         title={actor.eveningCoverage ? "Evening coverage ON — tap to go off" : "Evening coverage OFF — tap to go on"}
       >
-        <span className="nav-icon ico" style={ico("coverage.png")} aria-hidden="true" />
+        <span className="nav-icon ico" style={ico("moon.svg")} aria-hidden="true" />
         <span className="nav-label">Evening coverage</span>
         <span className={"toggle-switch " + (actor.eveningCoverage ? "on" : "")}>
           <span className="thumb" />

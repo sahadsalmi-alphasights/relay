@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, ApiError } from "../api/client";
+import { applyCardOrder, loadCardOrder, moveBefore, saveCardOrder } from "../lib/cardOrder";
 import type { Assignment, CapacityRankRow, Project, ProjectStatus } from "../api/types";
 import { barColor, entityBrand, initials, overDelivered, stageClass, stageLabel, typeClass } from "../lib/format";
 import EntityLogo from "../components/EntityLogo";
@@ -141,6 +142,9 @@ export default function DeliveryTab({
   const [items, setItems] = useState<DeliveryItem[] | null>(null);
   const [broadcasts, setBroadcasts] = useState<BroadcastRow[]>([]);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  // Drag re-arrange (My view only).
+  const dragIdRef = useRef<string | null>(null);
+  const [orderRev, setOrderRev] = useState(0);
   const [acceptError, setAcceptError] = useState<string | null>(null);
   // Manager feedback batch, item 7 — the actor's own row from the existing,
   // already-tested GET /capacity-ranking (personLoad + rawRemaining<=median
@@ -180,8 +184,17 @@ export default function DeliveryTab({
         if (relevantIds.has(a.delivererId)) rows.push({ project: d.project, assignment: a, multiAngle: d.angles.length > 1 });
       }
     }
-    // Ghosts sit at the bottom of each person's cards, never above the real work.
-    rows.sort((a, b) => Number(a.assignment.isGhost) - Number(b.assignment.isGhost));
+    // Automatic ordering: ghosts always last; then stage (First Deliverable
+    // leads, then Second, Hail Mary, Selling); within a stage the HIGHER
+    // goal first; ties broken by most recent stage entry.
+    const STAGE_RANK: Record<string, number> = { "First Deliverable": 0, "Second Deliverable": 1, "Hail Mary": 2, "Selling": 3 };
+    rows.sort(
+      (a, b) =>
+        Number(a.assignment.isGhost) - Number(b.assignment.isGhost) ||
+        (STAGE_RANK[a.assignment.stage] ?? 9) - (STAGE_RANK[b.assignment.stage] ?? 9) ||
+        b.assignment.goal - a.assignment.goal ||
+        new Date(b.assignment.stageEnteredAt).getTime() - new Date(a.assignment.stageEnteredAt).getTime()
+    );
     setItems(rows);
     // CHANGE 3 — broadcast fallback: one row per angle still needing seats
     // (org-wide, same visibility the old whole-project open pool always
@@ -219,6 +232,19 @@ export default function DeliveryTab({
 
   if (!items) return <div className="empty">Loading…</div>;
 
+  // My view: the individual can drag cards into their own order (persisted
+  // per person in this browser); unknown/new cards keep the automatic order.
+  const orderKey = `captracker-order-dl-${actor.id}`;
+  void orderRev; // re-read localStorage after every drop
+  const mineOrdered = scope === "mine" ? applyCardOrder(items, (it) => it.assignment.id, loadCardOrder(orderKey)) : items;
+  const dropOn = (targetId: string) => {
+    const dragged = dragIdRef.current;
+    dragIdRef.current = null;
+    if (!dragged || dragged === targetId) return;
+    saveCardOrder(orderKey, moveBefore(mineOrdered.map((it) => it.assignment.id), dragged, targetId));
+    setOrderRev((r) => r + 1);
+  };
+
   // Decline hides it for THIS person only, this session — same client-side-only
   // pattern the open pool already used before broadcasts existed (never
   // persisted: a real per-person "declined" record would need a new table,
@@ -247,7 +273,19 @@ export default function DeliveryTab({
     // width; only the fill colour changes when over.
     const over = overDelivered(doneAll, a.goal);
     return (
-      <div key={a.id} className="card" data-project-id={p.id} style={{ borderTop: `3px solid ${entityBrand(p.clientEntity)}` }}>
+      <div
+        key={a.id}
+        className="card"
+        data-project-id={p.id}
+        style={{ borderTop: `3px solid ${entityBrand(p.clientEntity)}` }}
+        draggable={scope === "mine"}
+        title={scope === "mine" ? "Drag to re-arrange your board" : undefined}
+        onDragStart={() => (dragIdRef.current = a.id)}
+        onDragOver={(e) => {
+          if (scope === "mine") e.preventDefault();
+        }}
+        onDrop={() => scope === "mine" && dropOn(a.id)}
+      >
         {/* Manager feedback batch, item 2 — same header tint as the project
             board (§format.ts CLIENT_ENTITY_MAP, one shared config, not
             duplicated) -- managers reported the delivery board had no
@@ -497,7 +535,7 @@ export default function DeliveryTab({
               <b>Nothing assigned</b>When a PL staffs you, it lands here.
             </div>
           )}
-          <div className="card-grid">{items.map(renderCard)}</div>
+          <div className="card-grid">{mineOrdered.map(renderCard)}</div>
         </>
       )}
     </>

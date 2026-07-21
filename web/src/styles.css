@@ -386,6 +386,10 @@ a.client:hover { text-decoration:underline; }
 .team-picker-mobile { margin-left:8px; padding:4px 6px; border-radius:8px; font-size:12px; font-weight:600;
   background:var(--surface); color:var(--ink); border:1px solid var(--line); max-width:150px; }
 
+/* Intake wizard — the per-angle ghost picker row (always bottom of its angle). */
+.ghost-line { background:#F3E8FB; border-color:#E3CCF5; }
+[data-theme="dark"] .ghost-line { background:#241333; border-color:#3A2153; }
+
 /* Notification deep-link — the targeted card pulses so the eye lands on it. */
 @keyframes cardflash { 0% { box-shadow:0 0 0 3px var(--pl), 0 8px 24px rgba(252,131,0,.35); } 70% { box-shadow:0 0 0 3px var(--pl), 0 4px 14px rgba(252,131,0,.18); } 100% { box-shadow:0 0 0 0 rgba(252,131,0,0); } }
 .card-flash { animation:cardflash 2.6s ease-out; }

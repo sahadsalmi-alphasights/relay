@@ -154,6 +154,17 @@ export async function updateAssignmentGoal(id: string, patch: { goal: number }):
   return (await findAssignmentById(id))!;
 }
 
+/**
+ * Removes an assignment and its child rows (rounds, goal-change requests).
+ * Only ghost assignments are removable via the API — a real deliverer's
+ * history is never deleted, only swapped or archived with the project.
+ */
+export async function deleteAssignmentCascade(id: string): Promise<void> {
+  await pool.query(`DELETE FROM delivery_round WHERE assignment_id = $1`, [id]);
+  await pool.query(`DELETE FROM goal_change_request WHERE assignment_id = $1`, [id]);
+  await pool.query(`DELETE FROM assignment WHERE id = $1`, [id]);
+}
+
 export async function updateAssignmentDeliverer(id: string, delivererId: string): Promise<AssignmentRow> {
   await pool.query(`UPDATE assignment SET deliverer_id = $2 WHERE id = $1`, [id, delivererId]);
   return (await findAssignmentById(id))!;

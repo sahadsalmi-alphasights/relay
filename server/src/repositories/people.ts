@@ -112,6 +112,12 @@ export async function setOwner(id: string, isOwner: boolean): Promise<PersonRow>
   return (await findPersonById(id))!;
 }
 
+/** Targeted is_manager flip (Teams tab manager assignment) — never touches is_owner. */
+export async function setManagerFlag(id: string, isManager: boolean): Promise<PersonRow> {
+  await pool.query(`UPDATE person SET is_manager = $2 WHERE id = $1`, [id, isManager]);
+  return (await findPersonById(id))!;
+}
+
 /**
  * Set a person's role from the portal. member -> neither flag; manager ->
  * is_manager only; owner -> is_owner (keeps is_manager too so nothing that

@@ -380,6 +380,12 @@ a.client:hover { text-decoration:underline; }
 .btn-del-user { color:#D14343; }
 [data-theme="dark"] .btn-del-user { color:#FF6B60; }
 
+/* Team view picker — which team (or the whole BU) Team view looks at. */
+.sidebar .team-picker { width:100%; margin-top:6px; padding:6px 8px; border-radius:8px; font-size:12px; font-weight:600;
+  background:var(--navy-hi, #0A2A4A); color:#fff; border:1px solid #26344A; }
+.team-picker-mobile { margin-left:8px; padding:4px 6px; border-radius:8px; font-size:12px; font-weight:600;
+  background:var(--surface); color:var(--ink); border:1px solid var(--line); max-width:150px; }
+
 /* Notification deep-link — the targeted card pulses so the eye lands on it. */
 @keyframes cardflash { 0% { box-shadow:0 0 0 3px var(--pl), 0 8px 24px rgba(252,131,0,.35); } 70% { box-shadow:0 0 0 3px var(--pl), 0 4px 14px rgba(252,131,0,.18); } 100% { box-shadow:0 0 0 0 rgba(252,131,0,0); } }
 .card-flash { animation:cardflash 2.6s ease-out; }

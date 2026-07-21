@@ -69,6 +69,11 @@ export function overDelivered(done: number, goal: number): number {
   return Math.max(0, done - goal);
 }
 
+/** Ghosts render LAST in any assignment list — the invisible competition sits under the real team, never above it. Stable sort keeps the original order within each group. */
+export function ghostsLast<T extends { isGhost: boolean }>(list: T[]): T[] {
+  return [...list].sort((a, b) => Number(a.isGhost) - Number(b.isGhost));
+}
+
 export function paceInfo(pct: number, stage: string): { color: string; label: string } {
   if (stage === "Hail Mary") return { color: "var(--red)", label: "Behind" };
   if (stage === "Selling") return { color: "var(--pl)", label: stageLabel(stage) };

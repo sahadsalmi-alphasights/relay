@@ -82,10 +82,13 @@ async function withProjectFlags(project: ProjectRow, now: Date) {
 }
 
 const projectsRoutes: FastifyPluginAsync = async (app) => {
-  // §8 scope toggle — "mine" is just the actor; "team" is every teammate (actor included).
-  // `role` picks which relationship to the project: leading (pl_id) or delivering (an assignment).
+  // §8 scope toggle — "mine" is just the actor; "team" is every teammate
+  // (actor included). Since 2026-07-21, Team view can also LOOK at any other
+  // team (`teamId=<uuid>`) or the whole BU (`teamId=all`) — view is open to
+  // every authed user; every write route still enforces its own permissions,
+  // so foreign teams are effectively read-only for plain members.
   app.get("/", { preHandler: [app.requireAuth] }, async (request) => {
-    const q = request.query as { role?: string; scope?: string; status?: string; archived?: string };
+    const q = request.query as { role?: string; scope?: string; status?: string; archived?: string; teamId?: string };
     const actor = request.actor!;
     const filter: ProjectFilter = {
       status: q.status as ProjectFilter["status"],
@@ -93,16 +96,26 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
     };
 
     let teamIds: string[] | null = null;
-    if (q.scope === "team" && actor.teamId) {
-      teamIds = (await listPeopleByTeam(actor.teamId)).map((p) => p.id);
+    let wholeBu = false;
+    if (q.scope === "team") {
+      if (q.teamId === "all") {
+        wholeBu = true;
+      } else {
+        const targetTeamId = q.teamId || actor.teamId;
+        if (targetTeamId) teamIds = (await listPeopleByTeam(targetTeamId)).map((p) => p.id);
+      }
     }
 
     if (q.role === "leading") {
-      if (teamIds) filter.plIdIn = teamIds;
-      else filter.plId = actor.id;
+      if (!wholeBu) {
+        if (teamIds) filter.plIdIn = teamIds;
+        else filter.plId = actor.id;
+      }
     } else if (q.role === "delivering") {
-      if (teamIds) filter.delivererIdIn = teamIds;
-      else filter.delivererId = actor.id;
+      if (!wholeBu) {
+        if (teamIds) filter.delivererIdIn = teamIds;
+        else filter.delivererId = actor.id;
+      }
     }
 
     const rows = await listProjects(filter);

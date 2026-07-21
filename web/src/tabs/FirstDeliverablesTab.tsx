@@ -59,9 +59,12 @@ export default function FirstDeliverablesTab({
 
   useEffect(() => {
     const load = async () => {
+      // BU-wide by design (2026-07-21): this board is the org's first-
+      // deliverable pulse — EVERY individual currently in First Deliverable
+      // across all teams, regardless of the sidebar scope toggle.
       const [leading, delivering] = await Promise.all([
-        api.get<Project[]>(`/projects?role=leading&scope=${scope}&status=active`),
-        api.get<Project[]>(`/projects?role=delivering&scope=${scope}&status=active`),
+        api.get<Project[]>(`/projects?role=leading&scope=team&teamId=all&status=active`),
+        api.get<Project[]>(`/projects?role=delivering&scope=team&teamId=all&status=active`),
       ]);
       const byId = new Map<string, Project>();
       for (const p of [...leading, ...delivering]) byId.set(p.id, p);
@@ -71,18 +74,11 @@ export default function FirstDeliverablesTab({
         projects.map((p) => api.get<{ project: Project; assignments: Assignment[] }>(`/projects/${p.id}`))
       );
 
-      // Relevant to this scope: for "mine", the actor as PL or as deliverer;
-      // for "team", any teammate as PL or as deliverer (same rule bug 4's
-      // fix uses in DeliveryTab, applied here per-assignment).
-      const relevantIds = scope === "team" ? new Set(people.filter((p) => p.teamId === actor.teamId).map((p) => p.id)) : new Set([actor.id]);
-
       const now = Date.now();
       const built: Row[] = [];
       for (const d of details) {
-        const projectIsRelevant = relevantIds.has(d.project.plId);
         for (const a of d.assignments) {
           if (a.stage !== "First Deliverable") continue;
-          if (!projectIsRelevant && !relevantIds.has(a.delivererId)) continue;
           built.push({ project: d.project, assignment: a, elapsed: now - new Date(a.stageEnteredAt).getTime() });
         }
       }
@@ -110,7 +106,7 @@ export default function FirstDeliverablesTab({
   if (!rows) return <div className="empty">Loading…</div>;
 
   const overdue = rows.filter((r) => r.elapsed / 60000 >= 30).length;
-  const scopeNote = scope === "team" ? "Team view" : "My projects only";
+  const scopeNote = "Entire BU — every team, every deliverer currently in First Deliverable";
   const footNote = "Sorted by time in first deliverable. At 30 min with no update, a ping would go to the PL and deliverer (phase two).";
 
   if (isDesktop) {

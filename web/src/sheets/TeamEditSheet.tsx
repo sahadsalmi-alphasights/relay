@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { api, ApiError } from "../api/client";
 import type { Angle, Assignment, Project, RankedCandidate } from "../api/types";
 import Sheet from "../components/Sheet";
-import { initials } from "../lib/format";
+import { ghostsLast, initials } from "../lib/format";
 import { useApp } from "../state/AppContext";
 
 type Action =
@@ -177,7 +177,7 @@ export default function TeamEditSheet({
       {!action && (
         <>
           <div className="section-lbl spaced">Current team</div>
-          {assignments.map((a) => (
+          {ghostsLast(assignments).map((a) => (
             <div key={a.id} className="match-line">
               <div className="avatar">{initials(nameOf(a.delivererId))}</div>
               <div>

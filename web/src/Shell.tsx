@@ -37,6 +37,8 @@ export default function Shell() {
   const { isDesktop } = useViewport();
   const [tab, setTab] = useState<Tab>("PL");
   const [scope, setScope] = useState<Scope>("mine");
+  // Team view target: "" = own team (default), "all" = whole BU, else a team id.
+  const [teamView, setTeamView] = useState<string>("");
   const [plPendingCount, setPlPendingCount] = useState(0);
   const [fdCount, setFdCount] = useState(0);
   const [reloadTick, setReloadTick] = useState(0);
@@ -183,6 +185,7 @@ export default function Shell() {
       {tab === "PL" && (
         <ProjectLeadingTab
           scope={scope}
+          teamView={teamView}
           reloadTick={reloadTick}
           onReload={bumpReload}
           onPendingCount={setPlPendingCount}
@@ -193,7 +196,14 @@ export default function Shell() {
         />
       )}
       {tab === "Delivery" && (
-        <DeliveryTab scope={scope} reloadTick={reloadTick} onReload={bumpReload} onNotes={setNotesFor} focusProject={focusProject} />
+        <DeliveryTab
+          scope={scope}
+          teamView={teamView}
+          reloadTick={reloadTick}
+          onReload={bumpReload}
+          onNotes={setNotesFor}
+          focusProject={focusProject}
+        />
       )}
       {tab === "Ranking" && <CapacityRankingTab reloadTick={reloadTick} />}
       {tab === "GhostRanking" && <CapacityRankingTab reloadTick={reloadTick} ghostOnly />}
@@ -212,6 +222,8 @@ export default function Shell() {
           setTab={setTab}
           scope={scope}
           setScope={setScope}
+          teamView={teamView}
+          setTeamView={setTeamView}
           plPendingCount={plPendingCount}
           fdCount={fdCount}
           onOpenTeam={() => setTeamOpen(true)}
@@ -246,6 +258,8 @@ export default function Shell() {
       <Header
         scope={scope}
         setScope={setScope}
+        teamView={teamView}
+        setTeamView={setTeamView}
         onOpenTeam={() => setTeamOpen(true)}
         liveStatus={liveStatus}
         notif={notif}

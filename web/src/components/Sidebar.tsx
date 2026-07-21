@@ -22,6 +22,8 @@ export default function Sidebar({
   setTab,
   scope,
   setScope,
+  teamView,
+  setTeamView,
   plPendingCount,
   fdCount,
   onOpenTeam,
@@ -31,12 +33,15 @@ export default function Sidebar({
   setTab: (t: Tab) => void;
   scope: Scope;
   setScope: (s: Scope) => void;
+  /** "" = own team, "all" = whole BU, else a team id. */
+  teamView: string;
+  setTeamView: (t: string) => void;
   plPendingCount: number;
   fdCount: number;
   onOpenTeam: () => void;
   onNewProject: () => void;
 }) {
-  const { actor, setActor, logout } = useApp();
+  const { actor, setActor, logout, teams } = useApp();
 
   const toggleEvening = async () => {
     const updated = await api.patch<Person>("/people/me/evening-coverage", {
@@ -99,6 +104,27 @@ export default function Sidebar({
         <button className={scope === "team" ? "on" : ""} onClick={() => setScope("team")}>
           Team view
         </button>
+        {/* Which team? Own by default; any other team is view-only for plain
+            members (write routes enforce it — this is transparency, not power).
+            "All teams" is the whole consulting BU at once. */}
+        {scope === "team" && (
+          <select
+            className="team-picker"
+            value={teamView}
+            onChange={(e) => setTeamView(e.target.value)}
+            title="Choose which team to view"
+          >
+            <option value="">My team</option>
+            {teams
+              .filter((t) => t.id !== actor.teamId)
+              .map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            <option value="all">All teams — entire BU</option>
+          </select>
+        )}
       </div>
 
       {/* Management group, pinned to the bottom and separated from Scope. */}

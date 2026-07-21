@@ -637,7 +637,7 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
                               ? "Not on today's Sunday rota"
                               : r.ineligibleReason === "first_deliverable_conflict"
                               ? "Busy — first deliverable elsewhere"
-                              : "Evening coverage off"}
+                              : "Evening coverage off — applies from 7pm"}
                           </div>
                         </div>
                         <div className="load-score">

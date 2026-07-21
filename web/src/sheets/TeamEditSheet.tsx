@@ -260,10 +260,16 @@ export default function TeamEditSheet({
                   {r.personId === suggestedId && <span className="picktag" style={{ marginLeft: 6 }}>Suggested</span>}
                 </div>
                 <div className="assignee-sub">
+                  {/* Reason text must match the real reason — this used to
+                      fall back to "Evening coverage off" for EVERY non-rota
+                      block, so mid-day First-Deliverable conflicts looked
+                      like the after-hours rule firing at 11am. */}
                   {!r.eligible
                     ? r.ineligibleReason === "not_on_sunday_rota"
                       ? "Not on today's rota"
-                      : "Evening coverage off"
+                      : r.ineligibleReason === "first_deliverable_conflict"
+                      ? "Busy — first deliverable elsewhere"
+                      : "Evening coverage off — applies from 7pm"
                     : r.free
                     ? "Free"
                     : "Available"}

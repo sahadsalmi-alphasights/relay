@@ -15,6 +15,10 @@ services:
       retries: 10
 
   api:
+    # Pulled prebuilt from GHCR by the deploy (built on GitHub's runners —
+    # never on this 1 GB VM). `build:` kept only as an emergency fallback:
+    # `docker compose ... build api` still works if the registry is out.
+    image: ghcr.io/sahadsalmi-alphasights/relay-api:latest
     build:
       context: ./server
       dockerfile: Dockerfile.prod
@@ -43,6 +47,7 @@ services:
       - "4000"
 
   web:
+    image: ghcr.io/sahadsalmi-alphasights/relay-web:latest
     build:
       context: ./web
       dockerfile: Dockerfile.prod

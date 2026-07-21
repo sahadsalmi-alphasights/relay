@@ -45,7 +45,7 @@ const anglesRoutes: FastifyPluginAsync = async (app) => {
    */
   app.patch<{
     Params: { id: string };
-    Body: { name?: string; callsN?: number; goalTotal?: number; callsSold?: number };
+    Body: { name?: string; callsN?: number; goalTotal?: number; callsSold?: number; expertPool?: string };
   }>("/:id", { preHandler: [app.requireAuth] }, async (request) => {
     const actor = request.actor!;
     const angle = await findAngleById(request.params.id);
@@ -71,6 +71,12 @@ const anglesRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const updated = await updateAngleFields(angle.id, patch);
+
+    // Per-angle expert pool (2026-07-21) — the pool feeds load weighting, so
+    // changing it must refresh the capacity ranking, same as goal changes.
+    if (body.expertPool !== undefined && body.expertPool !== angle.expertPool) {
+      publish({ type: "capacity-ranking" });
+    }
 
     if (suggestedGoalTotal !== undefined && updated.goalTotal < suggestedGoalTotal) {
       await insertAuditLog({

@@ -58,7 +58,7 @@ export async function listAssignmentsWithProjectByDeliverer(delivererId: string)
     `SELECT a.id, p.id AS "projectId", a.angle_id AS "angleId", ang.name AS "angleName",
             a.deliverer_id AS "delivererId", a.goal, a.delivered,
             a.custom_goal AS "customGoal", a.custom_delivered AS "customDelivered",
-            a.stage, a.stage_entered_at AS "stageEnteredAt", p.expert_pool AS "projectExpertPool"
+            a.stage, a.stage_entered_at AS "stageEnteredAt", COALESCE(ang.expert_pool, p.expert_pool) AS "projectExpertPool"
      FROM assignment a JOIN angle ang ON ang.id = a.angle_id JOIN project p ON p.id = ang.project_id
      WHERE a.deliverer_id = $1 AND p.status <> 'archived' AND p.deleted_at IS NULL`,
     [delivererId]

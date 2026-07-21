@@ -18,12 +18,15 @@ export interface AngleRow {
   callsSoldUpdatedAt: string;
   /** "Invisible competition" — per-angle opt-out, defaults true. Only meaningful for Due Diligence/Strategy angles; carried uniformly for schema simplicity. */
   invisibleCompetitionEnabled: boolean;
+  /** Expert pool per ANGLE (2026-07-21) — null inherits the project's pool, live. Consumers read COALESCE(angle, project). */
+  expertPool: string | null;
 }
 
 const SELECT = `
   SELECT id, project_id AS "projectId", name, calls_n AS "callsN", goal_total AS "goalTotal",
          calls_sold AS "callsSold", calls_sold_updated_at AS "callsSoldUpdatedAt",
-         invisible_competition_enabled AS "invisibleCompetitionEnabled"
+         invisible_competition_enabled AS "invisibleCompetitionEnabled",
+         expert_pool AS "expertPool"
   FROM angle`;
 
 export async function findAngleById(id: string, db: Queryable = pool): Promise<AngleRow | null> {
@@ -48,15 +51,26 @@ export async function createAngle(
   callsN: number,
   goalTotal: number,
   invisibleCompetitionEnabled?: boolean,
-  db: Queryable = pool
+  db: Queryable = pool,
+  // Appended last (after db) so every existing positional caller — including
+  // test fixtures — keeps compiling; omitted falls back to the column
+  // default ('Global'). Real routes always pass it explicitly.
+  expertPool?: string
 ): Promise<AngleRow> {
+  const columns = ["project_id", "name", "calls_n", "goal_total"];
+  const values: unknown[] = [projectId, name, callsN, goalTotal];
+  if (invisibleCompetitionEnabled !== undefined) {
+    columns.push("invisible_competition_enabled");
+    values.push(invisibleCompetitionEnabled);
+  }
+  if (expertPool !== undefined) {
+    columns.push("expert_pool");
+    values.push(expertPool);
+  }
+  const placeholders = values.map((_, i) => `$${i + 1}`).join(", ");
   const { rows } = await db.query<{ id: string }>(
-    invisibleCompetitionEnabled === undefined
-      ? `INSERT INTO angle (project_id, name, calls_n, goal_total) VALUES ($1, $2, $3, $4) RETURNING id`
-      : `INSERT INTO angle (project_id, name, calls_n, goal_total, invisible_competition_enabled) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-    invisibleCompetitionEnabled === undefined
-      ? [projectId, name, callsN, goalTotal]
-      : [projectId, name, callsN, goalTotal, invisibleCompetitionEnabled]
+    `INSERT INTO angle (${columns.join(", ")}) VALUES (${placeholders}) RETURNING id`,
+    values
   );
   return (await findAngleById(rows[0].id, db))!;
 }
@@ -67,6 +81,7 @@ const PATCHABLE_COLUMNS: Record<string, string> = {
   goalTotal: "goal_total",
   callsSold: "calls_sold",
   invisibleCompetitionEnabled: "invisible_competition_enabled",
+  expertPool: "expert_pool",
 };
 
 /** Same free-form patch pattern as updateProjectFields -- stamps calls_sold_updated_at whenever callsSold is touched, same as project used to. */

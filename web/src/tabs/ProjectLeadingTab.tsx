@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { applyCardOrder, loadCardOrder, moveBefore, saveCardOrder } from "../lib/cardOrder";
 import { api } from "../api/client";
 import type { Angle, Assignment, CapacityRankRow, GoalChangeRequest, Note, Project, Stage } from "../api/types";
 import { barColor, entityBrand, ghostsLast, initials, overDelivered, paceInfo, stageClass, stageLabel, typeClass } from "../lib/format";
@@ -262,6 +263,9 @@ export default function ProjectLeadingTab({
   const [items, setItems] = useState<ProjectItem[] | null>(null);
   const [archived, setArchived] = useState<Project[]>([]);
   const [archivedOpen, setArchivedOpen] = useState(false);
+  // Drag re-arrange (My view only).
+  const dragIdRef = useRef<string | null>(null);
+  const [orderRev, setOrderRev] = useState(0);
 
   // Notification deep-link: once the board has data, scroll the target card
   // into view and pulse it so the eye lands exactly where the event happened.
@@ -371,6 +375,19 @@ export default function ProjectLeadingTab({
   const foreignView = scope === "team" && !!teamView && teamView !== (actor.teamId ?? "");
   const foreignReadOnly = foreignView && !actor.isManager && !actor.isOwner;
 
+  // My view: drag cards into a personal order (persisted per person in this
+  // browser); cards not yet in the saved order keep the automatic one.
+  const orderKey = `captracker-order-pl-${actor.id}`;
+  void orderRev;
+  const mineOrdered = scope === "mine" ? applyCardOrder(items, (it) => it.project.id, loadCardOrder(orderKey)) : items;
+  const dropOn = (targetId: string) => {
+    const dragged = dragIdRef.current;
+    dragIdRef.current = null;
+    if (!dragged || dragged === targetId) return;
+    saveCardOrder(orderKey, moveBefore(mineOrdered.map((it) => it.project.id), dragged, targetId));
+    setOrderRev((r) => r + 1);
+  };
+
   // Phase D, item 5 — the running-list team roster is always the actor's own
   // team, independent of the My view/Team view scope toggle (which only
   // filters project cards, not this overview strip).
@@ -434,7 +451,19 @@ export default function ProjectLeadingTab({
         const latestNote = notes.length > 0 ? notes[notes.length - 1] : null;
 
         return (
-          <div key={p.id} className="card" data-project-id={p.id} style={{ borderTop: `3px solid ${entityBrand(p.clientEntity)}` }}>
+          <div
+            key={p.id}
+            className="card"
+            data-project-id={p.id}
+            style={{ borderTop: `3px solid ${entityBrand(p.clientEntity)}` }}
+            draggable={scope === "mine"}
+            title={scope === "mine" ? "Drag to re-arrange your board" : undefined}
+            onDragStart={() => (dragIdRef.current = p.id)}
+            onDragOver={(e) => {
+              if (scope === "mine") e.preventDefault();
+            }}
+            onDrop={() => scope === "mine" && dropOn(p.id)}
+          >
             {/* Phase D (v2), item 7 — header block tinted by client_entity
                 (display map only, §format.ts CLIENT_ENTITY_MAP -- the stored
                 clientEntity smallint is untouched). A soft wash, not a full
@@ -505,6 +534,11 @@ export default function ProjectLeadingTab({
                         <span>
                           {ang.callsSold} of {ang.callsN} sold
                         </span>
+                      )}
+                      {/* Per-angle expert pool (2026-07-21) — labelled only when it
+                          differs from the project default, so simple projects stay clean. */}
+                      {ang.expertPool && ang.expertPool !== p.expertPool && (
+                        <span title="This angle's expert pool">🌐 {ang.expertPool}</span>
                       )}
                     </div>
                     {attainment !== null && (
@@ -692,7 +726,7 @@ export default function ProjectLeadingTab({
                 <b>No projects yet</b>Tap "New project" to add one and auto-staff it.
               </div>
             )}
-            {renderCards(items)}
+            {renderCards(mineOrdered)}
           </>
         )}
 

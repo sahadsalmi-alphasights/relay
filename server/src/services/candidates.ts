@@ -60,7 +60,7 @@ export async function listAvailableCandidatesWithAssignments(opts?: {
   const { rows: assignments } = await pool.query(
     `SELECT a.deliverer_id AS "delivererId", a.goal, a.delivered, a.custom_goal AS "customGoal",
             a.custom_delivered AS "customDelivered", a.stage,
-            p.expert_pool AS "projectExpertPool",
+            COALESCE(ang.expert_pool, p.expert_pool) AS "projectExpertPool",
             p.project_type AS "projectType", ang.calls_n AS "projectCallsN"
      FROM assignment a JOIN angle ang ON ang.id = a.angle_id JOIN project p ON p.id = ang.project_id
      WHERE p.status <> 'archived' AND p.deleted_at IS NULL`

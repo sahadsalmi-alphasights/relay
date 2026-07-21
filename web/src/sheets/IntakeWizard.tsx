@@ -100,6 +100,10 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
   const [overridingId, setOverridingId] = useState<string | null>(null);
   const [replaceTarget, setReplaceTarget] = useState("");
   const [justificationText, setJustificationText] = useState("");
+  // Blocked + manager sections fold shut per angle — the eligible list is
+  // the focus; expanding either shows every name, all pickable as overrides.
+  const [blockedOpenFor, setBlockedOpenFor] = useState<Record<number, boolean>>({});
+  const [managersOpenFor, setManagersOpenFor] = useState<Record<number, boolean>>({});
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   // Manager feedback batch, item 5 — the override panel (and its
@@ -614,62 +618,88 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
                       );
                     })}
 
-                  {/* Blocked people used to rank below the eligible and fall off
-                      the top-8 slice — invisible. They're their own section now,
-                      like managers: never auto-picked, always manually pickable
-                      as an override (reason optional, logged). */}
-                  {(a.ranked ?? []).some((r) => !r.eligible) && (
-                    <div className="section-lbl" style={{ marginTop: 10 }}>
-                      Blocked right now — always a manual pick
-                    </div>
-                  )}
-                  {(a.ranked ?? [])
-                    .filter((r) => !r.eligible)
-                    .map((r) => (
-                      <div key={r.personId} className="match-line blocked">
-                        <div className="avatar">{initials(nameOf(r.personId))}</div>
-                        <div>
-                          <div className="assignee-name">
-                            {nameOf(r.personId)} <span style={{ color: "var(--soft)", fontWeight: 500 }}>· {practiceOf(r.personId)}</span>
-                          </div>
-                          <div className="assignee-sub">
-                            {r.ineligibleReason === "not_on_sunday_rota"
-                              ? "Not on today's Sunday rota"
-                              : r.ineligibleReason === "first_deliverable_conflict"
-                              ? "Busy — first deliverable elsewhere"
-                              : "Evening coverage off — applies from 7pm"}
-                          </div>
-                        </div>
-                        <div className="load-score">
-                          <b>{r.load.toFixed(1)}</b>
-                          <small>Load</small>
-                        </div>
-                        <button className="btn-sm btn-ghost" style={{ marginLeft: 8 }} onClick={() => startOverride(angleIndex, r.personId)}>
-                          Pick instead
+                  {/* Blocked people: their own collapsible section (folded by
+                      default), never auto-picked, every name pickable as an
+                      override when expanded (reason optional, logged). */}
+                  {(() => {
+                    const blockedRanked = (a.ranked ?? []).filter((r) => !r.eligible);
+                    if (blockedRanked.length === 0) return null;
+                    const open = !!blockedOpenFor[angleIndex];
+                    return (
+                      <>
+                        <button
+                          className="archive-toggle"
+                          style={{ marginTop: 10 }}
+                          onClick={() => setBlockedOpenFor((prev) => ({ ...prev, [angleIndex]: !open }))}
+                        >
+                          {open ? "▾" : "▸"} Blocked right now — always a manual pick · {blockedRanked.length}
                         </button>
-                      </div>
-                    ))}
+                        {open &&
+                          blockedRanked.map((r) => (
+                            <div key={r.personId} className="match-line blocked">
+                              <div className="avatar">{initials(nameOf(r.personId))}</div>
+                              <div>
+                                <div className="assignee-name">
+                                  {nameOf(r.personId)} <span style={{ color: "var(--soft)", fontWeight: 500 }}>· {practiceOf(r.personId)}</span>
+                                </div>
+                                <div className="assignee-sub">
+                                  {r.ineligibleReason === "not_on_sunday_rota"
+                                    ? "Not on today's Sunday rota"
+                                    : r.ineligibleReason === "first_deliverable_conflict"
+                                    ? "Busy — first deliverable elsewhere"
+                                    : "Evening coverage off — applies from 7pm"}
+                                </div>
+                              </div>
+                              <div className="load-score">
+                                <b>{r.load.toFixed(1)}</b>
+                                <small>Load</small>
+                              </div>
+                              <button className="btn-sm btn-ghost" style={{ marginLeft: 8 }} onClick={() => startOverride(angleIndex, r.personId)}>
+                                Pick instead
+                              </button>
+                            </div>
+                          ))}
+                      </>
+                    );
+                  })()}
 
                   {/* Managers never appear in `a.ranked` (excluded at the
-                      source — never suggested, never auto-picked), so
-                      they're a separate, always-visible add-a-manager
-                      section instead of a row in the ranked list above. */}
-                  {people
-                    .filter((p) => (p.isManager || p.isOwner) && p.status === "Available" && !a.picked.some((pk) => pk.personId === p.id))
-                    .map((m) => (
-                      <div key={m.id} className="match-line">
-                        <div className="avatar">{initials(m.name)}</div>
-                        <div>
-                          <div className="assignee-name">
-                            {m.name} <span style={{ color: "var(--soft)", fontWeight: 500 }}>· {m.practiceArea}</span>
-                          </div>
-                          <div className="assignee-sub">Manager — never suggested, always a manual pick</div>
-                        </div>
-                        <button className="btn-sm btn-ghost" style={{ marginLeft: 8 }} onClick={() => startOverride(angleIndex, m.id)}>
-                          Pick instead
+                      source — never suggested, never auto-picked). Their
+                      section folds shut by default so the full member list
+                      stays the focus; the count shows what's inside. */}
+                  {(() => {
+                    const angleManagers = people.filter(
+                      (p) => (p.isManager || p.isOwner) && p.status === "Available" && !p.deactivatedAt && !a.picked.some((pk) => pk.personId === p.id)
+                    );
+                    if (angleManagers.length === 0) return null;
+                    const open = !!managersOpenFor[angleIndex];
+                    return (
+                      <>
+                        <button
+                          className="archive-toggle"
+                          style={{ marginTop: 10 }}
+                          onClick={() => setManagersOpenFor((prev) => ({ ...prev, [angleIndex]: !open }))}
+                        >
+                          {open ? "▾" : "▸"} Or add a manager (never suggested — always a manual pick) · {angleManagers.length}
                         </button>
-                      </div>
-                    ))}
+                        {open &&
+                          angleManagers.map((m) => (
+                            <div key={m.id} className="match-line">
+                              <div className="avatar">{initials(m.name)}</div>
+                              <div>
+                                <div className="assignee-name">
+                                  {m.name} <span style={{ color: "var(--soft)", fontWeight: 500 }}>· {m.practiceArea}</span>
+                                </div>
+                                <div className="assignee-sub">Manager — never suggested, always a manual pick</div>
+                              </div>
+                              <button className="btn-sm btn-ghost" style={{ marginLeft: 8 }} onClick={() => startOverride(angleIndex, m.id)}>
+                                Pick instead
+                              </button>
+                            </div>
+                          ))}
+                      </>
+                    );
+                  })()}
 
                   {overridingAngle === angleIndex && overridingId && (
                     <div className="suggest" style={{ marginTop: 10 }}>

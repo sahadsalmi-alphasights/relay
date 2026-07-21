@@ -42,7 +42,9 @@ export async function listAvailableCandidatesWithAssignments(opts?: {
 }): Promise<CandidateWithAssignments[]> {
   const { rows: people } = await pool.query(
     `SELECT id, status, evening_coverage AS "eveningCoverage", practice_area AS "practiceArea"
-     FROM person WHERE status = 'Available' AND is_manager = false AND is_owner = false AND is_ghost = $1`,
+     FROM person
+     WHERE status = 'Available' AND is_manager = false AND is_owner = false AND is_ghost = $1
+       AND deactivated_at IS NULL`,
     [opts?.ghost ?? false]
   );
 

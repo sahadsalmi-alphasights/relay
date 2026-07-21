@@ -377,6 +377,8 @@ a.client:hover { text-decoration:underline; }
 .perm-check { width:15px; height:15px; accent-color:#FC8300; cursor:pointer; }
 .perm-lock { font-weight:800; color:#FC8300; cursor:default; }
 .perm-never { color:var(--soft); cursor:default; }
+.btn-del-user { color:#D14343; }
+[data-theme="dark"] .btn-del-user { color:#FF6B60; }
 
 /* Notification deep-link — the targeted card pulses so the eye lands on it. */
 @keyframes cardflash { 0% { box-shadow:0 0 0 3px var(--pl), 0 8px 24px rgba(252,131,0,.35); } 70% { box-shadow:0 0 0 3px var(--pl), 0 4px 14px rgba(252,131,0,.18); } 100% { box-shadow:0 0 0 0 rgba(252,131,0,0); } }

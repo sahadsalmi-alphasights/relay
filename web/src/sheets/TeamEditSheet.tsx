@@ -86,7 +86,9 @@ export default function TeamEditSheet({
   // a separate section below, sourced from the plain people list already
   // loaded client-side, always resolving to an override (a manager can never
   // equal `suggestedId`, since they were never in `ranked` to begin with).
-  const managers = people.filter((p) => (p.isManager || p.isOwner) && p.status === "Available" && !alreadyOnProject.has(p.id));
+  const managers = people.filter(
+    (p) => (p.isManager || p.isOwner) && p.status === "Available" && !p.deactivatedAt && !alreadyOnProject.has(p.id)
+  );
 
   const startSwap = (a: Assignment) => {
     setAction({ mode: "swap", assignmentId: a.id, currentDelivererId: a.delivererId });

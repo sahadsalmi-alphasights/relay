@@ -204,6 +204,19 @@ export async function countOutstandingProfiles(personId: string): Promise<number
  */
 export async function listBroadcastRecipients(afterHours: boolean): Promise<PersonRow[]> {
   const excludedStatuses = afterHours ? ["Sick", "On vacation"] : ["Sick", "On vacation", "Offline"];
-  const { rows } = await pool.query(`${SELECT} WHERE status <> ALL($1) ORDER BY name`, [excludedStatuses]);
+  const { rows } = await pool.query(
+    `${SELECT} WHERE status <> ALL($1) AND deactivated_at IS NULL ORDER BY name`,
+    [excludedStatuses]
+  );
   return rows;
+}
+
+/**
+ * Hard delete — only possible for people with no history: any FK reference
+ * (assignments, audit entries, notifications, rota rows, …) makes Postgres
+ * refuse, and the route translates that into "deactivate instead". This is
+ * for pre-provisioned mistakes and test accounts, not for leavers.
+ */
+export async function deletePerson(id: string): Promise<void> {
+  await pool.query(`DELETE FROM person WHERE id = $1`, [id]);
 }

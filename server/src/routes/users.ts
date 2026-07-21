@@ -1,9 +1,10 @@
 import type { FastifyPluginAsync } from "fastify";
 import { config } from "../config";
-import { badRequest, forbidden, notFound } from "../errors";
+import { badRequest, conflict, forbidden, notFound } from "../errors";
 import { insertAuditLog } from "../repositories/auditLog";
 import {
   createUser,
+  deletePerson,
   findPersonById,
   listPeopleAdmin,
   roleOf,
@@ -193,6 +194,39 @@ const usersRoutes: FastifyPluginAsync = async (app) => {
       return updated;
     }
   );
+
+  /**
+   * Hard delete — pre-provisioned mistakes and test accounts only. Anyone
+   * with history (assignments, audit entries, notifications, …) is protected
+   * by FK constraints: Postgres refuses and we answer 409 "deactivate
+   * instead", so no delivery data can ever be orphaned. The deletion itself
+   * is audit-logged with a snapshot of who was removed.
+   */
+  app.delete<{ Params: { id: string } }>("/:id", { preHandler: [app.requireOwner] }, async (request) => {
+    const actor = request.actor!;
+    const target = await findPersonById(request.params.id);
+    if (!target) throw notFound("unknown person");
+    if (target.id === actor.id) throw badRequest("you cannot delete yourself");
+    if (isAllowlistedOwner(target.email)) throw forbidden("a permanent owner (allowlist) cannot be deleted");
+
+    try {
+      await deletePerson(target.id);
+    } catch (err) {
+      if ((err as { code?: string }).code === "23503") {
+        throw conflict(`${target.name} has project or audit history and cannot be deleted — deactivate instead`);
+      }
+      throw err;
+    }
+    await insertAuditLog({
+      entityType: "person",
+      entityId: target.id,
+      actorId: actor.id,
+      action: "delete_user",
+      oldValue: { email: target.email, name: target.name, role: roleOf(target) },
+      newValue: null,
+    });
+    return { ok: true };
+  });
 
   app.post<{ Params: { id: string } }>(
     "/:id/reactivate",

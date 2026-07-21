@@ -107,6 +107,15 @@ export default function UserManagementTab({ reloadTick }: { reloadTick: number }
     run(u.id, () => api.patch(`/users/${u.id}`, patch));
   const toggleActive = (u: AdminUser) =>
     run(u.id, () => api.post(`/users/${u.id}/${u.deactivatedAt ? "reactivate" : "deactivate"}`));
+  const deleteUser = (u: AdminUser) => {
+    if (
+      !window.confirm(
+        `Permanently delete ${u.name}? Only possible for accounts with no project or audit history — otherwise deactivate them.`
+      )
+    )
+      return;
+    void run(u.id, () => api.del(`/users/${u.id}`));
+  };
 
   const addUser = async () => {
     if (!form.email.trim() || !form.name.trim()) {
@@ -210,14 +219,24 @@ export default function UserManagementTab({ reloadTick }: { reloadTick: number }
   const accessBtn = (u: AdminUser) => {
     const isSelf = u.id === actor.id;
     return (
-      <button
-        className={"btn-sm " + (u.deactivatedAt ? "btn-dl" : "btn-ghost")}
-        disabled={busyId === u.id || isSelf}
-        title={isSelf ? "You cannot deactivate yourself" : ""}
-        onClick={() => toggleActive(u)}
-      >
-        {u.deactivatedAt ? "Reactivate" : "Deactivate"}
-      </button>
+      <span style={{ display: "inline-flex", gap: 6 }}>
+        <button
+          className={"btn-sm " + (u.deactivatedAt ? "btn-dl" : "btn-ghost")}
+          disabled={busyId === u.id || isSelf}
+          title={isSelf ? "You cannot deactivate yourself" : ""}
+          onClick={() => toggleActive(u)}
+        >
+          {u.deactivatedAt ? "Reactivate" : "Deactivate"}
+        </button>
+        <button
+          className="btn-sm btn-ghost btn-del-user"
+          disabled={busyId === u.id || isSelf}
+          title={isSelf ? "You cannot delete yourself" : "Permanently delete (only accounts without history)"}
+          onClick={() => deleteUser(u)}
+        >
+          Delete
+        </button>
+      </span>
     );
   };
 

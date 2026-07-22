@@ -537,7 +537,12 @@ a.client:hover { text-decoration:underline; }
    (sidebar + padding leave ~1144px) that's 3; a 1920px monitor (capped by
    .content-wide's max-width above) fits 4; a smaller laptop (~1280px and
    below) drops back to 2 on its own. */
-.card-grid { display:grid; grid-template-columns:1fr; gap:12px; }
+/* minmax(0,1fr), not 1fr: a plain 1fr track is minmax(auto,1fr), whose `auto`
+   floor is the widest non-wrapping child — one nowrap row (a stage select, a
+   chip) then forces the whole card past the phone's width and clips every
+   right-edge element (the STRATEGY tag, "Goal", "Behind"). minmax(0,…) lets
+   the track shrink so children wrap/truncate inside instead. */
+.card-grid { display:grid; grid-template-columns:minmax(0, 1fr); gap:12px; }
 @media (min-width:768px) {
   .card-grid { grid-template-columns:repeat(auto-fill, minmax(340px, 1fr)); align-items:start; }
 }
@@ -579,6 +584,32 @@ a.client:hover { text-decoration:underline; }
   display:flex; align-items:center; justify-content:center; box-shadow:0 6px 20px rgba(0,0,0,.3); }
 /* Room for the fixed bar (and FAB) at the end of the scroll. */
 .relay { padding-bottom:calc(120px + env(safe-area-inset-bottom)); }
+
+/* ---- Mobile overflow hardening (2026-07-21) ----
+   Nothing on a phone should be able to push horizontal scroll or clip a
+   card's right edge. Applies below the desktop breakpoint only. */
+@media (max-width:767px) {
+  /* Final guard: the page itself never scrolls sideways. */
+  .relay, .body { overflow-x:hidden; }
+  /* A card clips its own overflow so a stray wide child can't bleed off-screen. */
+  .card { overflow:hidden; }
+  /* The card header: logo + name shrink and truncate; the type tag keeps its
+     size but can't shove the row wider than the card. */
+  .card-top { gap:8px; }
+  .card-top > div:first-child { min-width:0; }
+  .client { display:block; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .topic { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .tag { flex-shrink:0; }
+  /* The N/pool/sold chip row wraps instead of being clipped on one line. */
+  .meta, .meta.single-line { flex-wrap:wrap; overflow:visible; }
+  .meta.single-line .chip { overflow:visible; }
+  /* Progress header + per-angle summary lines wrap rather than run off. */
+  .progress-top { gap:8px; }
+  .angle-progress-stats { min-width:0; }
+  /* Admin/dense tables (Teams, Audit, User groups matrix) scroll sideways
+     within their own box instead of stretching the page. */
+  .data-table { display:block; overflow-x:auto; -webkit-overflow-scrolling:touch; white-space:nowrap; }
+}
 /* "More" sheet rows — 48px touch targets, deck icons via .ico. */
 .more-item { display:flex; align-items:center; gap:12px; width:100%; min-height:48px; padding:6px 4px; border-bottom:1px solid var(--line); font-size:14px; font-weight:600; color:var(--ink); text-align:left; }
 .more-item:last-of-type { border-bottom:none; }

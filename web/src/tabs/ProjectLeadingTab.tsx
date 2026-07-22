@@ -288,35 +288,24 @@ export default function ProjectLeadingTab({
 
   const teamParam = scope === "team" && teamView ? `&teamId=${teamView}` : "";
   const load = async () => {
-    const active = await api.get<Project[]>(`/projects?role=leading&scope=${scope}${teamParam}&archived=false`);
-    const archivedList = await api.get<Project[]>(`/projects?role=leading&scope=${scope}${teamParam}&archived=true`);
-    const details = await Promise.all(
-      active.map((p) =>
-        api.get<{ project: Project; assignments: Assignment[]; angles: Angle[]; notes: Note[] }>(`/projects/${p.id}`)
-      )
+    // ONE request for the whole board (projects + angles + assignments +
+    // notes) — the old list-then-detail-per-project fan-out crawled once
+    // Team view went BU-wide. See GET /projects/board.
+    const board = await api.get<{ project: Project; assignments: Assignment[]; angles: Angle[]; notes: Note[] }[]>(
+      `/projects/board?role=leading&scope=${scope}${teamParam}&archived=false`
     );
+    const archivedList = await api.get<Project[]>(`/projects?role=leading&scope=${scope}${teamParam}&archived=true`);
     // §5e — only a project's own PL may view its pending goal-change requests
-    // (GET .../goal-change-requests 403s for anyone else). Under Team view,
-    // `active` includes teammates' projects the actor doesn't lead; fetching
-    // this indiscriminately for every project rejected inside Promise.all,
-    // which silently aborted the whole load() and froze the tab on stale
-    // (often empty) state — the actual cause of "Team view shows nothing."
+    // (GET .../goal-change-requests 403s for anyone else), so this stays a
+    // per-own-project fetch — a handful of requests at most.
     const pending = await Promise.all(
-      active.map((p) =>
-        p.plId === actor.id
-          ? api.get<GoalChangeRequest[]>(`/projects/${p.id}/goal-change-requests`)
+      board.map((it) =>
+        it.project.plId === actor.id
+          ? api.get<GoalChangeRequest[]>(`/projects/${it.project.id}/goal-change-requests`)
           : Promise.resolve<GoalChangeRequest[]>([])
       )
     );
-    setItems(
-      active.map((p, i) => ({
-        project: details[i].project,
-        assignments: details[i].assignments,
-        angles: details[i].angles,
-        pending: pending[i],
-        notes: details[i].notes,
-      }))
-    );
+    setItems(board.map((it, i) => ({ ...it, pending: pending[i] })));
     setArchived(archivedList);
     onPendingCount(pending.reduce((sum, arr) => sum + arr.length, 0));
   };

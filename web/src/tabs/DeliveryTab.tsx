@@ -168,14 +168,11 @@ export default function DeliveryTab({
 
   const load = async () => {
     const teamParam = scope === "team" && teamView ? `&teamId=${teamView}` : "";
-    const list = await api.get<Project[]>(`/projects?role=delivering&scope=${scope}${teamParam}&status=active`);
-    const details = await Promise.all(
-      list.map((p) =>
-        api.get<{ project: Project; assignments: Assignment[]; angles: { id: string; expertPool?: string }[] }>(
-          `/projects/${p.id}`
-        )
-      )
-    );
+    // ONE request for the whole board — see GET /projects/board (the old
+    // detail-per-project fan-out is what made everything load slowly).
+    const details = await api.get<
+      { project: Project; assignments: Assignment[]; angles: { id: string; expertPool?: string | null }[] }[]
+    >(`/projects/board?role=delivering&scope=${scope}${teamParam}&status=active`);
     // §8 scope toggle — "team" means every member of the VIEWED team's
     // assignments (own team by default, any team via the picker, or the
     // whole BU), broken out per person, not just the actor's own.
@@ -193,7 +190,7 @@ export default function DeliveryTab({
             project: d.project,
             assignment: a,
             multiAngle: d.angles.length > 1,
-            anglePool: poolByAngle.get(a.angleId),
+            anglePool: poolByAngle.get(a.angleId) ?? undefined,
           });
       }
     }

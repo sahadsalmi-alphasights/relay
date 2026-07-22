@@ -18,6 +18,9 @@ interface DeliveryItem {
   anglePool?: string;
 }
 
+// Stale-while-revalidate cache (survives tab switches; cleared on page reload).
+const dlBoardCache = new Map<string, DeliveryItem[]>();
+
 /**
  * CHANGE 3 — one row per angle still needing seats, not one card per
  * project: a multi-angle project can have some angles fully staffed and
@@ -141,7 +144,8 @@ export default function DeliveryTab({
   focusProject?: { id: string; tick: number } | null;
 }) {
   const { actor, people, nameOf, nowMs, demoHour, effectiveHour, effectiveAfterHours } = useApp();
-  const [items, setItems] = useState<DeliveryItem[] | null>(null);
+  const dlCacheKey = `${scope}:${teamView}`;
+  const [items, setItems] = useState<DeliveryItem[] | null>(dlBoardCache.get(dlCacheKey) ?? null);
   const [broadcasts, setBroadcasts] = useState<BroadcastRow[]>([]);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   // Drag re-arrange (My view only).
@@ -205,6 +209,7 @@ export default function DeliveryTab({
         b.assignment.goal - a.assignment.goal ||
         new Date(b.assignment.stageEnteredAt).getTime() - new Date(a.assignment.stageEnteredAt).getTime()
     );
+    dlBoardCache.set(dlCacheKey, rows);
     setItems(rows);
     // CHANGE 3 — broadcast fallback: one row per angle still needing seats
     // (org-wide, same visibility the old whole-project open pool always

@@ -20,6 +20,9 @@ interface Row {
   elapsed: number;
 }
 
+// Stale-while-revalidate: paint the last BU snapshot instantly on tab switch.
+let fdCache: Row[] | null = null;
+
 type SortKey = "deliverer" | "client" | "pl" | "elapsed" | "progress";
 
 function SortHeader({
@@ -55,7 +58,7 @@ export default function FirstDeliverablesTab({
 }) {
   const { actor, people, nameOf, nowMs } = useApp();
   const { isDesktop } = useViewport();
-  const [rows, setRows] = useState<Row[] | null>(null);
+  const [rows, setRows] = useState<Row[] | null>(fdCache);
 
   useEffect(() => {
     const load = async () => {
@@ -84,6 +87,7 @@ export default function FirstDeliverablesTab({
         }
       }
       built.sort((a, b) => b.elapsed - a.elapsed);
+      fdCache = built;
       setRows(built);
       onCount(built.length);
     };

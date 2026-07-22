@@ -132,7 +132,15 @@ export default function EditProjectSheet({
     }
   };
 
-  const removeAngle = async (angleId: string) => {
+  const removeAngle = async (angleId: string, name: string, staffed: number) => {
+    if (
+      !window.confirm(
+        staffed > 0
+          ? `Delete angle "${name}"? Its ${staffed} deliverer${staffed === 1 ? "" : "s"} and their delivery history on it are removed. The rest of the project is untouched.`
+          : `Delete angle "${name}"?`
+      )
+    )
+      return;
     setError(null);
     try {
       await api.del(`/angles/${angleId}`);
@@ -140,6 +148,19 @@ export default function EditProjectSheet({
       await reload();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not remove the angle");
+    }
+  };
+
+  // Per-angle archive/resurface (2026-07-22) — pause one workstream; its goal
+  // and its deliverers' load stop counting until resurfaced.
+  const archiveAngle = async (angleId: string, archived: boolean) => {
+    setError(null);
+    try {
+      await api.post(`/angles/${angleId}/${archived ? "archive" : "resurface"}`);
+      onChanged();
+      await reload();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : `Could not ${archived ? "archive" : "resurface"} the angle`);
     }
   };
 
@@ -220,17 +241,22 @@ export default function EditProjectSheet({
       </p>
       {angles.map((ang) => {
         const staffed = assignmentCounts[ang.id] ?? 0;
+        const archived = !!ang.archivedAt;
+        const activeCount = angles.filter((a) => !a.archivedAt).length;
         return (
-          <div key={ang.id} className="member">
-            <div className="field" style={{ marginBottom: 8 }}>
+          <div key={ang.id} className="member" style={archived ? { opacity: 0.6 } : undefined}>
+            <div className="field" style={{ marginBottom: 8, display: "flex", gap: 8, alignItems: "center" }}>
               <input
+                style={{ flex: 1 }}
                 defaultValue={ang.name}
+                disabled={archived}
                 onBlur={(e) => {
                   if (e.target.value.trim() && e.target.value.trim() !== ang.name) {
                     patchAngle(ang.id, { name: e.target.value.trim() });
                   }
                 }}
               />
+              {archived && <span className="tag" style={{ flexShrink: 0 }}>Archived</span>}
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <span style={{ fontSize: 12, fontWeight: 600, color: "var(--ink)" }}>N</span>
@@ -263,15 +289,32 @@ export default function EditProjectSheet({
                   </option>
                 ))}
               </select>
-              <button
-                className="btn-sm btn-ghost"
-                style={{ marginLeft: "auto", color: "#A82F2F" }}
-                disabled={staffed > 0 || angles.length <= 1}
-                title={staffed > 0 ? "Remove this angle's assignments first" : angles.length <= 1 ? "A project needs at least one angle" : "Remove this angle"}
-                onClick={() => removeAngle(ang.id)}
-              >
-                Remove
-              </button>
+              <span style={{ marginLeft: "auto", display: "inline-flex", gap: 6 }}>
+                {/* Archive (pause) or resurface this one angle. Can't archive
+                    the last active angle — archive the project instead. */}
+                <button
+                  className="btn-sm btn-ghost"
+                  disabled={!archived && activeCount <= 1}
+                  title={
+                    archived
+                      ? "Resurface this angle"
+                      : activeCount <= 1
+                      ? "This is the only active angle — archive the project instead"
+                      : "Archive (pause) this angle — its goal and load stop counting"
+                  }
+                  onClick={() => archiveAngle(ang.id, !archived)}
+                >
+                  {archived ? "Resurface" : "Archive"}
+                </button>
+                <button
+                  className="btn-sm btn-ghost btn-del-user"
+                  disabled={angles.length <= 1}
+                  title={angles.length <= 1 ? "A project needs at least one angle" : "Delete this angle and its deliverers"}
+                  onClick={() => removeAngle(ang.id, ang.name, staffed)}
+                >
+                  Delete
+                </button>
+              </span>
             </div>
           </div>
         );

@@ -1,4 +1,4 @@
-import { pool, type Queryable } from "../db";
+import { pool, withTransaction, type Queryable } from "../db";
 import { computeCustomGoal } from "../rules/suggestedGoal";
 import type { ExpertPool, Stage } from "../rules/types";
 
@@ -67,7 +67,7 @@ export async function listAssignmentsWithProjectByDeliverer(delivererId: string)
             a.custom_goal AS "customGoal", a.custom_delivered AS "customDelivered",
             a.stage, a.stage_entered_at AS "stageEnteredAt", COALESCE(ang.expert_pool, p.expert_pool) AS "projectExpertPool"
      FROM assignment a JOIN angle ang ON ang.id = a.angle_id JOIN project p ON p.id = ang.project_id
-     WHERE a.deliverer_id = $1 AND p.status <> 'archived' AND p.deleted_at IS NULL`,
+     WHERE a.deliverer_id = $1 AND p.status <> 'archived' AND p.deleted_at IS NULL AND ang.archived_at IS NULL`,
     [delivererId]
   );
   return rows;
@@ -163,13 +163,18 @@ export async function updateAssignmentGoal(id: string, patch: { goal: number }):
 
 /**
  * Removes an assignment and its child rows (rounds, goal-change requests).
- * Only ghost assignments are removable via the API — a real deliverer's
- * history is never deleted, only swapped or archived with the project.
+ * As of 2026-07-22 the PL/manager can remove ANY deliverer from an angle
+ * (not just a ghost) — DELETE /assignments/:id — dropping that person's
+ * history on the angle while leaving the rest of the project untouched; the
+ * angle simply goes unstaffed if they were the last one. (Swapping a
+ * deliverer still preserves history — that path doesn't call this.)
  */
 export async function deleteAssignmentCascade(id: string): Promise<void> {
-  await pool.query(`DELETE FROM delivery_round WHERE assignment_id = $1`, [id]);
-  await pool.query(`DELETE FROM goal_change_request WHERE assignment_id = $1`, [id]);
-  await pool.query(`DELETE FROM assignment WHERE id = $1`, [id]);
+  await withTransaction(async (tx) => {
+    await tx.query(`DELETE FROM delivery_round WHERE assignment_id = $1`, [id]);
+    await tx.query(`DELETE FROM goal_change_request WHERE assignment_id = $1`, [id]);
+    await tx.query(`DELETE FROM assignment WHERE id = $1`, [id]);
+  });
 }
 
 export async function updateAssignmentDeliverer(id: string, delivererId: string): Promise<AssignmentRow> {
@@ -217,7 +222,7 @@ export async function listFirstDeliverableAssignments(): Promise<StaleCandidate[
      -- Project lifecycle — archived projects go quiet too (see rules/project.ts
      -- isProjectLifecycleQuiet, which this mirrors), and soft-deleted ones are
      -- excluded unconditionally, same as every other project query (Batch S).
-     WHERE a.stage = 'First Deliverable' AND p.status <> 'archived' AND p.deleted_at IS NULL`
+     WHERE a.stage = 'First Deliverable' AND p.status <> 'archived' AND p.deleted_at IS NULL AND ang.archived_at IS NULL`
   );
   return rows;
 }

@@ -83,6 +83,10 @@ export default function FirstDeliverablesTab({
       for (const d of byId.values()) {
         for (const a of d.assignments) {
           if (a.stage !== "First Deliverable") continue;
+          // "Invisible competition" — a ghost never appears on this board: it's
+          // not a real person to chase, so it must not inflate the count or the
+          // "past 30 min — ping due" tally (same roll-up exclusion as the cards).
+          if (a.isGhost) continue;
           built.push({ project: d.project, assignment: a, elapsed: now - new Date(a.stageEnteredAt).getTime() });
         }
       }

@@ -42,6 +42,10 @@ export default function TeamEditSheet({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [justification, setJustification] = useState("");
   const [addGoal, setAddGoal] = useState(1);
+  // "Invisible competition" — when adding, whether to add a GHOST (from the
+  // ghost pool) instead of a real deliverer. Only offered on Due Diligence /
+  // Strategy projects; never a Pitch.
+  const [addAsGhost, setAddAsGhost] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   // Managers and blocked people are the exception picks, so both sections
@@ -106,8 +110,10 @@ export default function TeamEditSheet({
       : null;
   const onTargetAngle = new Set(assignments.filter((x) => x.angleId === targetAngleId).map((x) => x.delivererId));
   const onOtherAngles = new Set(assignments.filter((x) => x.angleId !== targetAngleId).map((x) => x.delivererId));
-  // Ghost swaps draw from the ghost pool; everything else from the normal one.
-  const ghostAction = action?.mode === "swap" && action.ghost === true;
+  // Ghost swaps AND ghost adds draw from the ghost pool; everything else from
+  // the normal one.
+  const ghostAction =
+    (action?.mode === "swap" && action.ghost === true) || (action?.mode === "add" && addAsGhost);
   const pool = ghostAction ? ghostRanked : ranked;
   const candidates = pool.filter((r) => !onTargetAngle.has(r.personId));
   const suggestedId = candidates.find((r) => r.eligible)?.personId;
@@ -127,17 +133,20 @@ export default function TeamEditSheet({
     setJustification("");
     setError(null);
   };
-  // "Invisible competition" — remove the angle's ghost entirely (ghost-only
-  // server-side; a real deliverer can only be swapped, never deleted).
-  const removeGhost = async (a: Assignment) => {
-    if (!window.confirm(`Remove ghost ${nameOf(a.delivererId)} from this angle?`)) return;
+  // Remove a deliverer (or ghost) from this angle entirely (2026-07-22). If
+  // they were the only one, the angle simply goes unstaffed; either way the
+  // rest of the project is untouched. A swap keeps their history; a remove
+  // drops it, so confirm.
+  const removeAssignment = async (a: Assignment) => {
+    const label = a.isGhost ? `ghost ${nameOf(a.delivererId)}` : nameOf(a.delivererId);
+    if (!window.confirm(`Remove ${label} from this angle? Their delivery history on it is removed and the rest of the project is untouched.`)) return;
     setBusy(true);
     setError(null);
     try {
       await api.del(`/assignments/${a.id}`);
       onChanged();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not remove the ghost");
+      setError(err instanceof ApiError ? err.message : "Could not remove the deliverer");
       setBusy(false);
     }
   };
@@ -155,19 +164,32 @@ export default function TeamEditSheet({
     }
     setSelectedId(null);
     setJustification("");
+    setAddAsGhost(false);
     setError(null);
   };
   const pickAngleForAdd = (angleId: string) => {
     setAction({ mode: "add", angleId });
     setAddGoal(goalForAngle(angleId));
+    setSelectedId(null);
+    setAddAsGhost(false);
   };
   const cancelAction = () => {
     setAction(null);
     setSelectedId(null);
     setJustification("");
+    setAddAsGhost(false);
+  };
+  // Toggling real<->ghost swaps the candidate pool, so any current pick is
+  // no longer valid — clear it.
+  const toggleAddAsGhost = (next: boolean) => {
+    setAddAsGhost(next);
+    setSelectedId(null);
+    setJustification("");
   };
 
-  const isOverride = selectedId != null && selectedId !== suggestedId;
+  // A ghost is always a manual pick, never an "override" — no justification
+  // prompt, no override audit entry (the server logs it as a ghost_assign).
+  const isOverride = !ghostAction && selectedId != null && selectedId !== suggestedId;
 
   const confirm = async () => {
     if (!action || !selectedId) return;
@@ -186,7 +208,10 @@ export default function TeamEditSheet({
           angleId: action.angleId,
           delivererId: selectedId,
           goal: addGoal,
-          override,
+          // "Invisible competition" — a ghost is always a manual pick, so no
+          // override is ever sent with it (the server logs a ghost_assign).
+          ghost: addAsGhost || undefined,
+          override: addAsGhost ? undefined : override,
         });
       }
       onChanged();
@@ -224,11 +249,9 @@ export default function TeamEditSheet({
                 <button className="btn-sm btn-pl" onClick={() => startSwap(a)}>
                   Change
                 </button>
-                {a.isGhost && (
-                  <button className="btn-sm btn-ghost btn-del-user" disabled={busy} onClick={() => removeGhost(a)}>
-                    Remove
-                  </button>
-                )}
+                <button className="btn-sm btn-ghost btn-del-user" disabled={busy} onClick={() => removeAssignment(a)}>
+                  Remove
+                </button>
               </span>
             </div>
           ))}
@@ -296,12 +319,21 @@ export default function TeamEditSheet({
           <div className="section-lbl spaced">
             {action.mode === "swap"
               ? `Replace ${nameOf(action.currentDelivererId)}${action.ghost ? " (ghost — picking from the ghost pool)" : ""}`
-              : `Add a deliverer — ${angleName(action.angleId!)}`}
+              : `${addAsGhost ? "Add a ghost" : "Add a deliverer"} — ${angleName(action.angleId!)}`}
           </div>
+          {/* "Invisible competition" — add a GHOST instead of a real deliverer.
+              Due Diligence / Strategy only (a Pitch never has one). Toggling it
+              swaps the candidate list below to the ghost pool. */}
+          {action.mode === "add" && project.projectType !== "Pitch" && (
+            <label className="ghost-add-toggle">
+              <input type="checkbox" checked={addAsGhost} onChange={(e) => toggleAddAsGhost(e.target.checked)} />
+              👻 Add as ghost (invisible competition)
+            </label>
+          )}
           {action.mode === "add" && (
             <div className="suggest" style={{ marginBottom: 12 }}>
               <div className="suggest-edit">
-                <span style={{ fontSize: 12, fontWeight: 600 }}>Goal for this deliverer</span>
+                <span style={{ fontSize: 12, fontWeight: 600 }}>{addAsGhost ? "Goal for this ghost" : "Goal for this deliverer"}</span>
                 <div className="step" style={{ marginLeft: "auto" }}>
                   <button onClick={() => setAddGoal((g) => Math.max(1, g - 1))}>−</button>
                   <span className="val">{addGoal}</span>
@@ -353,7 +385,11 @@ export default function TeamEditSheet({
               <>
                 {eligibleCandidates.map(candidateRow)}
                 {eligibleCandidates.length === 0 && blockedCandidates.length === 0 && (
-                  <div className="empty">No other candidates.</div>
+                  <div className="empty">
+                    {ghostAction
+                      ? "No ghost deliverers available. Flag someone as a ghost in User management first."
+                      : "No other candidates."}
+                  </div>
                 )}
                 {blockedCandidates.length > 0 && (
                   <>
@@ -416,7 +452,7 @@ export default function TeamEditSheet({
               title={!selectedId ? "Pick a person first" : undefined}
               onClick={confirm}
             >
-              {isOverride ? "Confirm override" : "Confirm"}
+              {action.mode === "add" && addAsGhost ? "Add ghost" : isOverride ? "Confirm override" : "Confirm"}
             </button>
             <button className="close" onClick={cancelAction}>
               ← Back

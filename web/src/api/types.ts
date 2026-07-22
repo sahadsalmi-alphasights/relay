@@ -80,6 +80,8 @@ export interface Angle {
   invisibleCompetitionEnabled: boolean;
   /** Expert pool per ANGLE (2026-07-21) — null inherits the project's pool, live. */
   expertPool: ExpertPool | null;
+  /** Per-angle archive (2026-07-22) — non-null = archived (paused). */
+  archivedAt: string | null;
 }
 
 export interface Assignment {

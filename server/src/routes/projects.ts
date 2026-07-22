@@ -71,7 +71,9 @@ async function withProjectFlags(project: ProjectRow, now: Date) {
   if (isProjectLifecycleQuiet(project.status)) {
     return { ...project, needsCallsSoldUpdate: false, chaseClient: false };
   }
-  const angles = await listAnglesByProject(project.id);
+  // Archived angles are paused — they never drive the calls-sold nag or the
+  // chase-client flag (2026-07-22), same as an archived project goes quiet.
+  const angles = (await listAnglesByProject(project.id)).filter((a) => !a.archivedAt);
   let needsCallsSoldUpdate = false;
   let chaseClient = false;
   for (const angle of angles) {
@@ -231,7 +233,9 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
       let needsCallsSoldUpdate = false;
       let chaseClient = false;
       if (!isProjectLifecycleQuiet(p.status)) {
+        // Archived angles are paused — skip them for the flags (2026-07-22).
         for (const angle of angles) {
+          if (angle.archivedAt) continue;
           if (needsCallsSoldUpdateToday(angle.callsSoldUpdatedAt, now)) needsCallsSoldUpdate = true;
           const totalDelivered = assignments
             .filter((a) => a.angleId === angle.id && !a.isGhost)
@@ -608,10 +612,17 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
    * only required in the body when the project has more than one angle; the
    * common (one-angle) case defaults to it automatically so adding someone
    * to a simple project doesn't get heavier.
+   *
+   * "Invisible competition" (2026-07-22) — `ghost: true` adds a GHOST to this
+   * angle instead of a real deliverer, the manual counterpart to the wizard's
+   * creation-time ghost pick: the person must be flagged is_ghost, it's
+   * audit-logged as a ghost_assign (never an override), and the notification
+   * is the same disguised "assigned" one so the ghost never learns they're the
+   * competition. Never allowed on a Pitch, and never on an archived angle.
    */
   app.post<{
     Params: { id: string };
-    Body: { angleId?: string; delivererId?: string; goal?: number; override?: { justification?: string } };
+    Body: { angleId?: string; delivererId?: string; goal?: number; ghost?: boolean; override?: { justification?: string } };
   }>("/:id/assignments", { preHandler: [app.requireAuth] }, async (request) => {
     const actor = request.actor!;
     const project = await findProjectById(request.params.id);
@@ -620,6 +631,7 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
     if (!request.body?.delivererId || typeof request.body.goal !== "number") {
       throw badRequest("delivererId and goal are required");
     }
+    const asGhost = request.body.ghost === true;
 
     const angles = await listAnglesByProject(project.id);
     let angleId = request.body.angleId;
@@ -629,21 +641,36 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
     } else if (!angles.some((ang) => ang.id === angleId)) {
       throw badRequest("unknown angle for this project");
     }
+    // Can't staff a paused angle — resurface it first (2026-07-22).
+    const targetAngle = angles.find((ang) => ang.id === angleId)!;
+    if (targetAngle.archivedAt) throw badRequest("cannot staff an archived angle — resurface it first");
+
+    if (asGhost) {
+      // A ghost is complementary competition, only ever a real associate's
+      // shadow — Due Diligence / Strategy only, never a Pitch.
+      if (project.projectType === "Pitch") throw badRequest("a Pitch never has a ghost deliverer");
+      const person = await findPersonById(request.body.delivererId);
+      if (!person) throw badRequest("unknown deliverer");
+      if (!person.isGhost) throw badRequest(`${person.name} is not flagged as a ghost deliverer`);
+      if (person.deactivatedAt) throw badRequest(`${person.name} is deactivated`);
+    }
 
     const angleAssignments = await listAssignmentsByAngle(angleId);
     if (angleAssignments.some((a) => a.delivererId === request.body.delivererId)) {
       throw badRequest("that person already has an assignment on this angle");
     }
 
-    const created = await createAssignment(angleId, request.body.delivererId, request.body.goal);
+    const created = await createAssignment(angleId, request.body.delivererId, request.body.goal, asGhost);
     await insertAuditLog({
       entityType: "assignment",
       entityId: created.id,
       actorId: actor.id,
-      action: "add_to_team",
-      newValue: { delivererId: request.body.delivererId, goal: request.body.goal, angleId },
+      // A ghost is always a manual pick — logged as a ghost_assign, never as
+      // an add_to_team + override pair (which is the real-deliverer path).
+      action: asGhost ? "ghost_assign" : "add_to_team",
+      newValue: { delivererId: request.body.delivererId, goal: request.body.goal, angleId, manualPick: asGhost || undefined },
     });
-    if (request.body.override) {
+    if (!asGhost && request.body.override) {
       await insertAuditLog({
         entityType: "assignment",
         entityId: created.id,
@@ -654,6 +681,8 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
     }
     await publishProjectChanged(project.id, [project.plId, request.body.delivererId]);
     publish({ type: "capacity-ranking" });
+    // Same wording for a ghost as a real assignment — the disguise the wizard
+    // already uses, so a ghost never learns they're the invisible competition.
     await notify({
       personId: request.body.delivererId,
       type: "assigned",
@@ -880,6 +909,7 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
     for (const project of openProjects) {
       const angles = await listAnglesByProject(project.id);
       for (const angle of angles) {
+        if (angle.archivedAt) continue; // archived angles don't broadcast for seats
         const target = seatTargetForAngle(angle.callsN, project.projectType as ProjectType);
         const filled = await countAssignmentsForAngle(angle.id);
         const remaining = target - filled;

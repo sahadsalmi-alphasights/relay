@@ -294,10 +294,12 @@ const assignmentsRoutes: FastifyPluginAsync = async (app) => {
   );
 
   /**
-   * "Invisible competition" — remove an angle's ghost entirely. Ghost-only:
-   * a real deliverer is swapped, never deleted (their delivery history must
-   * survive). PL / manager / owner; cascade removes the ghost's rounds and
-   * goal-change requests; audit-logged.
+   * Remove a deliverer from an angle entirely — the angle goes unstaffed, the
+   * rest of the project is untouched (2026-07-22). Works for a real deliverer
+   * or a ghost (PL / manager / owner). Cascade removes their rounds and
+   * goal-change requests; audit-logged. Note this drops that deliverer's
+   * delivery history on this angle — a swap keeps it, so use swap to replace,
+   * remove to genuinely unstaff.
    */
   app.delete<{ Params: { id: string } }>("/:id", { preHandler: [app.requireAuth] }, async (request) => {
     const actor = request.actor!;
@@ -305,15 +307,14 @@ const assignmentsRoutes: FastifyPluginAsync = async (app) => {
     if (!assignment) throw notFound("assignment not found");
     const project = await findProjectById(assignment.projectId);
     if (!project) throw notFound("project not found");
-    if (!canEditProjectFields(actor, project)) throw forbidden("only the PL or a manager may remove a ghost");
-    if (!assignment.isGhost) throw badRequest("only ghost assignments can be removed");
+    if (!canEditProjectFields(actor, project)) throw forbidden("only the PL or a manager may remove a deliverer");
 
     await deleteAssignmentCascade(assignment.id);
     await insertAuditLog({
       entityType: "assignment",
       entityId: assignment.id,
       actorId: actor.id,
-      action: "ghost_remove",
+      action: assignment.isGhost ? "ghost_remove" : "remove_deliverer",
       oldValue: { personId: assignment.delivererId, angleId: assignment.angleId, goal: assignment.goal },
     });
     await publishProjectChanged(project.id, [project.plId, assignment.delivererId]);

@@ -2,12 +2,14 @@ import type { FastifyPluginAsync } from "fastify";
 import {
   activateProjectIfFullyStaffed,
   claimAngleSeat,
+  countActiveAnglesForProject,
   countAnglesForProject,
   countAssignmentsForAngle,
-  deleteAngle,
+  deleteAngleCascade,
   findAngleById,
   listAnglesByProject,
   seatTargetForAngle,
+  setAngleArchived,
   updateAngleFields,
 } from "../repositories/angles";
 import { listAssignmentsByAngle, updateAssignmentGoal } from "../repositories/assignments";
@@ -114,7 +116,12 @@ const anglesRoutes: FastifyPluginAsync = async (app) => {
     return findAngleById(angle.id);
   });
 
-  /** PL-only. Refuses to delete an angle that still has assignments, or the project's last angle -- a project always needs >=1. */
+  /**
+   * PL/manager. Deletes the angle outright, cascading its assignments (and
+   * their rounds/goal-change requests) — a staffed angle can now be removed
+   * in one action (2026-07-22), without touching the rest of the project.
+   * Still refuses the project's last angle: a project always needs >=1.
+   */
   app.delete<{ Params: { id: string } }>("/:id", { preHandler: [app.requireAuth] }, async (request) => {
     const actor = request.actor!;
     const angle = await findAngleById(request.params.id);
@@ -123,16 +130,52 @@ const anglesRoutes: FastifyPluginAsync = async (app) => {
     if (!project) throw notFound("project not found");
     if (!canEditProjectFields(actor, project)) throw forbidden("only the PL or a manager may remove angles");
 
-    const assignmentCount = await countAssignmentsForAngle(angle.id);
-    if (assignmentCount > 0) throw badRequest("remove this angle's assignments before deleting it");
-
     const angleCount = await countAnglesForProject(project.id);
-    if (angleCount <= 1) throw badRequest("a project must have at least one angle");
+    if (angleCount <= 1) throw badRequest("a project must have at least one angle — delete the project instead");
 
-    await deleteAngle(angle.id);
+    await deleteAngleCascade(angle.id);
     await insertAuditLog({ entityType: "angle", entityId: angle.id, actorId: actor.id, action: "delete", oldValue: angle });
     await publishProjectChanged(project.id, [project.plId]);
+    publish({ type: "capacity-ranking" });
     return { ok: true };
+  });
+
+  /**
+   * Per-angle archive / resurface (2026-07-22) — pause one workstream without
+   * touching the rest of the project. Archived angles drop out of the card's
+   * active roll-up and their deliverers' load (see the load query). Can't
+   * archive the project's last active angle — archive the project instead.
+   */
+  app.post<{ Params: { id: string } }>("/:id/archive", { preHandler: [app.requireAuth] }, async (request) => {
+    const actor = request.actor!;
+    const angle = await findAngleById(request.params.id);
+    if (!angle) throw notFound("angle not found");
+    const project = await findProjectById(angle.projectId);
+    if (!project) throw notFound("project not found");
+    if (!canEditProjectFields(actor, project)) throw forbidden("only the PL or a manager may archive angles");
+    if (angle.archivedAt) return angle; // already archived — idempotent
+    if ((await countActiveAnglesForProject(project.id)) <= 1) {
+      throw badRequest("this is the project's only active angle — archive the project instead");
+    }
+    const updated = await setAngleArchived(angle.id, true);
+    await insertAuditLog({ entityType: "angle", entityId: angle.id, actorId: actor.id, action: "archive" });
+    await publishProjectChanged(project.id, [project.plId]);
+    publish({ type: "capacity-ranking" });
+    return updated;
+  });
+
+  app.post<{ Params: { id: string } }>("/:id/resurface", { preHandler: [app.requireAuth] }, async (request) => {
+    const actor = request.actor!;
+    const angle = await findAngleById(request.params.id);
+    if (!angle) throw notFound("angle not found");
+    const project = await findProjectById(angle.projectId);
+    if (!project) throw notFound("project not found");
+    if (!canEditProjectFields(actor, project)) throw forbidden("only the PL or a manager may resurface angles");
+    const updated = await setAngleArchived(angle.id, false);
+    await insertAuditLog({ entityType: "angle", entityId: angle.id, actorId: actor.id, action: "resurface" });
+    await publishProjectChanged(project.id, [project.plId]);
+    publish({ type: "capacity-ranking" });
+    return updated;
   });
 
   /**

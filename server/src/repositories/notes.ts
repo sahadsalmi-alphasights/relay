@@ -39,3 +39,13 @@ export async function listNotesForProject(projectId: string, actorId: string): P
   );
   return rows;
 }
+
+/** Board endpoint (2026-07-21) — same privacy filter, one query for every project on a board. */
+export async function listNotesByProjectIds(projectIds: string[], actorId: string): Promise<NoteRow[]> {
+  if (projectIds.length === 0) return [];
+  const { rows } = await pool.query(
+    `${SELECT} WHERE project_id = ANY($1) AND (is_public = true OR author_id = $2) ORDER BY created_at`,
+    [projectIds, actorId]
+  );
+  return rows;
+}

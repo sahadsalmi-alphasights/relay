@@ -39,6 +39,13 @@ export async function listAnglesByProject(projectId: string): Promise<AngleRow[]
   return rows;
 }
 
+/** Board endpoint (2026-07-21) — ONE query for every project on a board. */
+export async function listAnglesByProjectIds(projectIds: string[]): Promise<AngleRow[]> {
+  if (projectIds.length === 0) return [];
+  const { rows } = await pool.query(`${SELECT} WHERE project_id = ANY($1) ORDER BY created_at ASC`, [projectIds]);
+  return rows;
+}
+
 /**
  * `invisibleCompetitionEnabled` defaults to the column's own DB default
  * (true) when omitted -- the common case, since the toggle only matters as

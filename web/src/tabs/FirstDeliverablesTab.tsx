@@ -61,22 +61,23 @@ export default function FirstDeliverablesTab({
     const load = async () => {
       // BU-wide by design (2026-07-21): this board is the org's first-
       // deliverable pulse — EVERY individual currently in First Deliverable
-      // across all teams, regardless of the sidebar scope toggle.
+      // across all teams, regardless of the sidebar scope toggle. TWO
+      // requests total via GET /projects/board (the old per-project detail
+      // fan-out over the whole BU is what crawled).
       const [leading, delivering] = await Promise.all([
-        api.get<Project[]>(`/projects?role=leading&scope=team&teamId=all&status=active`),
-        api.get<Project[]>(`/projects?role=delivering&scope=team&teamId=all&status=active`),
+        api.get<{ project: Project; assignments: Assignment[] }[]>(
+          `/projects/board?role=leading&scope=team&teamId=all&status=active`
+        ),
+        api.get<{ project: Project; assignments: Assignment[] }[]>(
+          `/projects/board?role=delivering&scope=team&teamId=all&status=active`
+        ),
       ]);
-      const byId = new Map<string, Project>();
-      for (const p of [...leading, ...delivering]) byId.set(p.id, p);
-      const projects = [...byId.values()];
-
-      const details = await Promise.all(
-        projects.map((p) => api.get<{ project: Project; assignments: Assignment[] }>(`/projects/${p.id}`))
-      );
+      const byId = new Map<string, { project: Project; assignments: Assignment[] }>();
+      for (const it of [...leading, ...delivering]) byId.set(it.project.id, it);
 
       const now = Date.now();
       const built: Row[] = [];
-      for (const d of details) {
+      for (const d of byId.values()) {
         for (const a of d.assignments) {
           if (a.stage !== "First Deliverable") continue;
           built.push({ project: d.project, assignment: a, elapsed: now - new Date(a.stageEnteredAt).getTime() });

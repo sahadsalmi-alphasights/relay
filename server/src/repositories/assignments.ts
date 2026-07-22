@@ -44,6 +44,13 @@ export async function listAssignmentsByProject(projectId: string): Promise<Assig
   return rows;
 }
 
+/** Board endpoint (2026-07-21) — ONE query for every project on a board, instead of one per project. */
+export async function listAssignmentsByProjectIds(projectIds: string[]): Promise<AssignmentRow[]> {
+  if (projectIds.length === 0) return [];
+  const { rows } = await pool.query(`${SELECT} WHERE ang.project_id = ANY($1)`, [projectIds]);
+  return rows;
+}
+
 export async function listAssignmentsByAngle(angleId: string): Promise<AssignmentRow[]> {
   const { rows } = await pool.query(`${SELECT} WHERE a.angle_id = $1`, [angleId]);
   return rows;

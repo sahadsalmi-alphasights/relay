@@ -1,14 +1,21 @@
 import type { FastifyPluginAsync } from "fastify";
 import { withTransaction } from "../db";
 import { insertAuditLog } from "../repositories/auditLog";
-import { activateProjectIfFullyStaffed, claimAngleSeat, createAngle, listAnglesByProject } from "../repositories/angles";
+import {
+  activateProjectIfFullyStaffed,
+  claimAngleSeat,
+  createAngle,
+  listAnglesByProject,
+  listAnglesByProjectIds,
+} from "../repositories/angles";
 import {
   createAssignment,
   listAssignmentsByAngle,
   listAssignmentsByProject,
+  listAssignmentsByProjectIds,
 } from "../repositories/assignments";
 import { listUnresolvedForProject } from "../repositories/goalChangeRequests";
-import { createNote, listNotesForProject } from "../repositories/notes";
+import { createNote, listNotesByProjectIds, listNotesForProject } from "../repositories/notes";
 import {
   archiveProject,
   createProject,
@@ -160,6 +167,85 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
     }
 
     return { due };
+  });
+
+  /**
+   * The board endpoint (2026-07-21): everything a board needs in ONE
+   * request. The PL/Delivery/First-Deliverables boards used to fetch the
+   * project list and then one detail request PER project — and the list
+   * itself ran per-project flag queries. Fine at three projects; a crawl
+   * once Team view and First Deliverables went BU-wide. This is four bulk
+   * queries total (projects, angles, assignments, notes), flags computed
+   * in memory from the same rows — identical semantics to withProjectFlags
+   * and the per-project detail route, including note privacy.
+   */
+  app.get("/board", { preHandler: [app.requireAuth] }, async (request) => {
+    const q = request.query as { role?: string; scope?: string; status?: string; archived?: string; teamId?: string };
+    const actor = request.actor!;
+    const filter: ProjectFilter = {
+      status: q.status as ProjectFilter["status"],
+      archived: q.archived === "true" ? true : q.archived === "false" ? false : undefined,
+    };
+    let teamIds: string[] | null = null;
+    let wholeBu = false;
+    if (q.scope === "team") {
+      if (q.teamId === "all") {
+        wholeBu = true;
+      } else {
+        const targetTeamId = q.teamId || actor.teamId;
+        if (targetTeamId) teamIds = (await listPeopleByTeam(targetTeamId)).map((p) => p.id);
+      }
+    }
+    if (q.role === "leading") {
+      if (!wholeBu) {
+        if (teamIds) filter.plIdIn = teamIds;
+        else filter.plId = actor.id;
+      }
+    } else if (q.role === "delivering") {
+      if (!wholeBu) {
+        if (teamIds) filter.delivererIdIn = teamIds;
+        else filter.delivererId = actor.id;
+      }
+    }
+
+    const rows = await listProjects(filter);
+    const now = resolveNow(request);
+    const ids = rows.map((p) => p.id);
+    const [allAngles, allAssignments, allNotes] = await Promise.all([
+      listAnglesByProjectIds(ids),
+      listAssignmentsByProjectIds(ids),
+      listNotesByProjectIds(ids, actor.id),
+    ]);
+
+    const anglesBy = new Map<string, typeof allAngles>();
+    for (const a of allAngles) (anglesBy.get(a.projectId) ?? anglesBy.set(a.projectId, []).get(a.projectId)!).push(a);
+    const assignmentsBy = new Map<string, typeof allAssignments>();
+    for (const a of allAssignments)
+      (assignmentsBy.get(a.projectId) ?? assignmentsBy.set(a.projectId, []).get(a.projectId)!).push(a);
+    const notesBy = new Map<string, typeof allNotes>();
+    for (const n of allNotes) (notesBy.get(n.projectId) ?? notesBy.set(n.projectId, []).get(n.projectId)!).push(n);
+
+    return rows.map((p) => {
+      const angles = anglesBy.get(p.id) ?? [];
+      const assignments = assignmentsBy.get(p.id) ?? [];
+      let needsCallsSoldUpdate = false;
+      let chaseClient = false;
+      if (!isProjectLifecycleQuiet(p.status)) {
+        for (const angle of angles) {
+          if (needsCallsSoldUpdateToday(angle.callsSoldUpdatedAt, now)) needsCallsSoldUpdate = true;
+          const totalDelivered = assignments
+            .filter((a) => a.angleId === angle.id && !a.isGhost)
+            .reduce((sum, a) => sum + a.delivered + a.customDelivered, 0);
+          if (needsChaseClient(totalDelivered, angle.callsSold, angle.callsN)) chaseClient = true;
+        }
+      }
+      return {
+        project: { ...p, needsCallsSoldUpdate, chaseClient },
+        angles,
+        assignments,
+        notes: notesBy.get(p.id) ?? [],
+      };
+    });
   });
 
   app.get<{ Params: { id: string } }>("/:id", { preHandler: [app.requireAuth] }, async (request) => {

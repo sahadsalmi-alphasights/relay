@@ -301,6 +301,13 @@ export default function ProjectLeadingTab({
   // Team-view person groups: per-person expand overrides + an expand/collapse-all.
   const [groupOpen, setGroupOpen] = useState<Record<string, boolean>>({});
   const [allGroupsOpen, setAllGroupsOpen] = useState(false);
+  // Which assignee row to scroll to + open the goal editor for. Driven by
+  // either a goal-change notification (focusAssignment prop) or a click on a
+  // pending-request strip below — both funnel through this one state.
+  const [assignFocus, setAssignFocus] = useState<{ id: string; tick: number } | null>(focusAssignment ?? null);
+  useEffect(() => {
+    if (focusAssignment) setAssignFocus(focusAssignment);
+  }, [focusAssignment?.tick]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Notification deep-link: once the board has data, scroll the target card
   // into view and pulse it so the eye lands exactly where the event happened.
@@ -319,9 +326,9 @@ export default function ProjectLeadingTab({
   // goal editor auto-opens via the openGoals prop below). Runs slightly after
   // the card scroll so the row lands centered.
   useEffect(() => {
-    if (!focusAssignment || !items) return;
+    if (!assignFocus || !items) return;
     const t = setTimeout(() => {
-      const el = document.querySelector(`[data-assignment-id="${focusAssignment.id}"]`);
+      const el = document.querySelector(`[data-assignment-id="${assignFocus.id}"]`);
       if (!el) return;
       el.scrollIntoView({ behavior: "smooth", block: "center" });
       el.classList.add("card-flash");
@@ -329,7 +336,7 @@ export default function ProjectLeadingTab({
     }, 120);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusAssignment?.tick, items]);
+  }, [assignFocus?.tick, items]);
   // Phase D, item 5 — team-overview running list. Reuses the existing,
   // already-tested GET /capacity-ranking computation (personLoad + the
   // rawRemaining<=median "free" rule, rules/load.ts) rather than inventing a
@@ -451,7 +458,7 @@ export default function ProjectLeadingTab({
   // renderings below, so there's exactly one place this markup lives.
   const renderAssigneeRow = (a: Assignment, readOnly = false) => {
     const elapsed = nowMs - new Date(a.stageEnteredAt).getTime();
-    const focused = focusAssignment?.id === a.id;
+    const focused = assignFocus?.id === a.id;
     return (
       <div key={a.id} className="assignee-block" data-assignment-id={a.id}>
         <div className="assignee">
@@ -464,7 +471,7 @@ export default function ProjectLeadingTab({
             </div>
             <div className="assignee-sub">{a.customDelivered > 0 ? `Incl. ${a.customDelivered} custom` : "No custom"}</div>
           </div>
-          {!readOnly && <AssigneeGoalEditor assignment={a} onSave={onReload} openGoals={focused} openTick={focused ? focusAssignment?.tick : undefined} />}
+          {!readOnly && <AssigneeGoalEditor assignment={a} onSave={onReload} openGoals={focused} openTick={focused ? assignFocus?.tick : undefined} />}
         </div>
         {/* §6/§8 — this assignee's own stage, timer, and the phase dropdown (per-deliverer, domain change 8). */}
         <div className="assignee-actions-row">
@@ -713,10 +720,18 @@ export default function ProjectLeadingTab({
           .flatMap((it) =>
             it.pending.map((r) => (
               <div key={r.id} className="review-strip">
-                <span>↩</span>
+                {/* Clickable: names the project and jumps to that deliverer's
+                    goal editor, so the PL knows what this request is even for. */}
+                <button
+                  className="review-jump"
+                  title={`Go to ${nameOf(r.requestedBy)} on ${it.project.client}`}
+                  onClick={() => setAssignFocus({ id: r.assignmentId, tick: Date.now() })}
+                >
+                  ↩
+                </button>
                 <div style={{ flex: 1 }}>
-                  <b>{nameOf(r.requestedBy)}</b> requests goal <b>{r.requestedGoal}</b>, status{" "}
-                  <b>{r.requestedStatus}</b>
+                  <b>{nameOf(r.requestedBy)}</b> on <b>{it.project.client}</b> requests goal{" "}
+                  <b>{r.requestedGoal}</b>, status <b>{r.requestedStatus}</b>
                   {r.body ? ` — "${r.body}"` : ""}
                 </div>
                 {/* Batch S, item 4 — explicit accept/decline (tick/X), not one

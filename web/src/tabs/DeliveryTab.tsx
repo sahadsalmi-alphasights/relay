@@ -178,7 +178,11 @@ export default function DeliveryTab({
     // ONE request for the whole board — see GET /projects/board (the old
     // detail-per-project fan-out is what made everything load slowly).
     const details = await api.get<
-      { project: Project; assignments: Assignment[]; angles: { id: string; expertPool?: string | null }[] }[]
+      {
+        project: Project;
+        assignments: Assignment[];
+        angles: { id: string; expertPool?: string | null; archivedAt?: string | null }[];
+      }[]
     >(`/projects/board?role=delivering&scope=${scope}${teamParam}&status=active`);
     // §8 scope toggle — "team" means every member of the VIEWED team's
     // assignments (own team by default, any team via the picker, or the
@@ -191,7 +195,13 @@ export default function DeliveryTab({
     const rows: DeliveryItem[] = [];
     for (const d of details) {
       const poolByAngle = new Map(d.angles.map((ang) => [ang.id, ang.expertPool]));
+      // Archived angles (2026-07-22) are paused — their assignments drop off
+      // the delivery board entirely, so a deliverer isn't shown work on an
+      // angle that's been shelved. (The server also excludes them from load
+      // and the "my work" queries; this covers the board's own fan-out.)
+      const archivedAngleIds = new Set(d.angles.filter((ang) => ang.archivedAt).map((ang) => ang.id));
       for (const a of d.assignments) {
+        if (archivedAngleIds.has(a.angleId)) continue;
         if (relevantIds.has(a.delivererId))
           rows.push({
             project: d.project,

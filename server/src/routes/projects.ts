@@ -71,7 +71,9 @@ async function withProjectFlags(project: ProjectRow, now: Date) {
   if (isProjectLifecycleQuiet(project.status)) {
     return { ...project, needsCallsSoldUpdate: false, chaseClient: false };
   }
-  const angles = await listAnglesByProject(project.id);
+  // Archived angles are paused — they never drive the calls-sold nag or the
+  // chase-client flag (2026-07-22), same as an archived project goes quiet.
+  const angles = (await listAnglesByProject(project.id)).filter((a) => !a.archivedAt);
   let needsCallsSoldUpdate = false;
   let chaseClient = false;
   for (const angle of angles) {
@@ -231,7 +233,9 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
       let needsCallsSoldUpdate = false;
       let chaseClient = false;
       if (!isProjectLifecycleQuiet(p.status)) {
+        // Archived angles are paused — skip them for the flags (2026-07-22).
         for (const angle of angles) {
+          if (angle.archivedAt) continue;
           if (needsCallsSoldUpdateToday(angle.callsSoldUpdatedAt, now)) needsCallsSoldUpdate = true;
           const totalDelivered = assignments
             .filter((a) => a.angleId === angle.id && !a.isGhost)
@@ -880,6 +884,7 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
     for (const project of openProjects) {
       const angles = await listAnglesByProject(project.id);
       for (const angle of angles) {
+        if (angle.archivedAt) continue; // archived angles don't broadcast for seats
         const target = seatTargetForAngle(angle.callsN, project.projectType as ProjectType);
         const filled = await countAssignmentsForAngle(angle.id);
         const remaining = target - filled;

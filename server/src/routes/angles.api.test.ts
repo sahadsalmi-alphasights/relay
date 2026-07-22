@@ -314,14 +314,37 @@ describe("Big structural change — angle add/remove", () => {
     expect(detail.json().angles).toHaveLength(2);
   });
 
-  it("refuses to delete an angle that still has assignments", async () => {
+  it("deletes a staffed angle, cascading its assignments, when it isn't the project's last angle (2026-07-22)", async () => {
     const cookie = await loginAs(app, fx.plAlpha);
+    // Give the project a second angle so fx.angle isn't the last one.
+    await app.inject({
+      method: "POST",
+      url: `/projects/${fx.project}/angles`,
+      cookies: { relay_session: cookie.split("=")[1] },
+      payload: { name: "Extra", callsN: 1, goalTotal: 3 },
+    });
+    // fx.angle is staffed (fx.assignment) — deleting it now cascades that
+    // assignment away in one action (used to be refused with a 400).
     const res = await app.inject({
       method: "DELETE",
       url: `/angles/${fx.angle}`,
       cookies: { relay_session: cookie.split("=")[1] },
     });
-    expect(res.statusCode).toBe(400);
+    expect(res.statusCode).toBe(200);
+    // The staffed angle's assignment is gone with it.
+    const gone = await app.inject({
+      method: "GET",
+      url: `/assignments/${fx.assignment}`,
+      cookies: { relay_session: cookie.split("=")[1] },
+    });
+    expect(gone.statusCode).toBe(404);
+    // The rest of the project (the Extra angle) is untouched.
+    const detail = await app.inject({
+      method: "GET",
+      url: `/projects/${fx.project}`,
+      cookies: { relay_session: cookie.split("=")[1] },
+    });
+    expect(detail.json().angles).toHaveLength(1);
   });
 
   it("refuses to delete a project's last angle, even if empty", async () => {
@@ -361,5 +384,73 @@ describe("Big structural change — angle add/remove", () => {
       cookies: { relay_session: cookie.split("=")[1] },
     });
     expect(detail.json().angles).toHaveLength(1);
+  });
+});
+
+describe("Per-angle archive / resurface (2026-07-22)", () => {
+  it("archives one angle (paused) and resurfaces it, without touching the rest of the project", async () => {
+    const cookie = await loginAs(app, fx.plAlpha);
+    const session = { relay_session: cookie.split("=")[1] };
+    // Add a second angle so fx.angle isn't the project's only active one.
+    const addRes = await app.inject({
+      method: "POST",
+      url: `/projects/${fx.project}/angles`,
+      cookies: session,
+      payload: { name: "Extra", callsN: 1, goalTotal: 3 },
+    });
+    const extraAngleId = addRes.json().id;
+
+    const archived = await app.inject({ method: "POST", url: `/angles/${fx.angle}/archive`, cookies: session });
+    expect(archived.statusCode).toBe(200);
+    expect(archived.json().archivedAt).not.toBeNull();
+
+    // The angle still exists (both angles come back on the detail fetch — the
+    // Edit sheet needs the archived one to offer Resurface); it's just paused.
+    const detail = await app.inject({ method: "GET", url: `/projects/${fx.project}`, cookies: session });
+    expect(detail.json().angles).toHaveLength(2);
+    expect(detail.json().angles.find((a: { id: string }) => a.id === fx.angle).archivedAt).not.toBeNull();
+    expect(detail.json().angles.find((a: { id: string }) => a.id === extraAngleId).archivedAt).toBeNull();
+
+    const resurfaced = await app.inject({ method: "POST", url: `/angles/${fx.angle}/resurface`, cookies: session });
+    expect(resurfaced.statusCode).toBe(200);
+    expect(resurfaced.json().archivedAt).toBeNull();
+  });
+
+  it("refuses to archive the project's only active angle (archive the project instead)", async () => {
+    const cookie = await loginAs(app, fx.plAlpha);
+    const res = await app.inject({
+      method: "POST",
+      url: `/angles/${fx.angle}/archive`,
+      cookies: { relay_session: cookie.split("=")[1] },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("is PL/manager-only", async () => {
+    const cookie = await loginAs(app, fx.delivererAlpha);
+    const res = await app.inject({
+      method: "POST",
+      url: `/angles/${fx.angle}/archive`,
+      cookies: { relay_session: cookie.split("=")[1] },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+});
+
+describe("Remove a real deliverer from an angle (2026-07-22)", () => {
+  it("lets the PL delete a non-ghost assignment, leaving the angle unstaffed", async () => {
+    const cookie = await loginAs(app, fx.plAlpha);
+    const session = { relay_session: cookie.split("=")[1] };
+    // fx.assignment is a real (non-ghost) deliverer on fx.angle.
+    const res = await app.inject({ method: "DELETE", url: `/assignments/${fx.assignment}`, cookies: session });
+    expect(res.statusCode).toBe(200);
+
+    const gone = await app.inject({ method: "GET", url: `/assignments/${fx.assignment}`, cookies: session });
+    expect(gone.statusCode).toBe(404);
+
+    // The angle itself survives — it's simply unstaffed now.
+    const detail = await app.inject({ method: "GET", url: `/projects/${fx.project}`, cookies: session });
+    expect(detail.json().angles).toHaveLength(1);
+    expect(detail.json().assignments).toHaveLength(0);
   });
 });

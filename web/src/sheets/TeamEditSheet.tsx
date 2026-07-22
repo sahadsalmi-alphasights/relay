@@ -127,17 +127,20 @@ export default function TeamEditSheet({
     setJustification("");
     setError(null);
   };
-  // "Invisible competition" — remove the angle's ghost entirely (ghost-only
-  // server-side; a real deliverer can only be swapped, never deleted).
-  const removeGhost = async (a: Assignment) => {
-    if (!window.confirm(`Remove ghost ${nameOf(a.delivererId)} from this angle?`)) return;
+  // Remove a deliverer (or ghost) from this angle entirely (2026-07-22). If
+  // they were the only one, the angle simply goes unstaffed; either way the
+  // rest of the project is untouched. A swap keeps their history; a remove
+  // drops it, so confirm.
+  const removeAssignment = async (a: Assignment) => {
+    const label = a.isGhost ? `ghost ${nameOf(a.delivererId)}` : nameOf(a.delivererId);
+    if (!window.confirm(`Remove ${label} from this angle? Their delivery history on it is removed and the rest of the project is untouched.`)) return;
     setBusy(true);
     setError(null);
     try {
       await api.del(`/assignments/${a.id}`);
       onChanged();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not remove the ghost");
+      setError(err instanceof ApiError ? err.message : "Could not remove the deliverer");
       setBusy(false);
     }
   };
@@ -224,11 +227,9 @@ export default function TeamEditSheet({
                 <button className="btn-sm btn-pl" onClick={() => startSwap(a)}>
                   Change
                 </button>
-                {a.isGhost && (
-                  <button className="btn-sm btn-ghost btn-del-user" disabled={busy} onClick={() => removeGhost(a)}>
-                    Remove
-                  </button>
-                )}
+                <button className="btn-sm btn-ghost btn-del-user" disabled={busy} onClick={() => removeAssignment(a)}>
+                  Remove
+                </button>
               </span>
             </div>
           ))}

@@ -1,4 +1,4 @@
-import { pool, type Queryable } from "../db";
+import { pool, withTransaction, type Queryable } from "../db";
 import { computeCustomGoal, suggestStaffing } from "../rules/suggestedGoal";
 import type { ProjectType } from "../rules/types";
 
@@ -20,13 +20,15 @@ export interface AngleRow {
   invisibleCompetitionEnabled: boolean;
   /** Expert pool per ANGLE (2026-07-21) — null inherits the project's pool, live. Consumers read COALESCE(angle, project). */
   expertPool: string | null;
+  /** Per-angle archive (2026-07-22) — non-null = archived (paused); excluded from active roll-ups and load. */
+  archivedAt: string | null;
 }
 
 const SELECT = `
   SELECT id, project_id AS "projectId", name, calls_n AS "callsN", goal_total AS "goalTotal",
          calls_sold AS "callsSold", calls_sold_updated_at AS "callsSoldUpdatedAt",
          invisible_competition_enabled AS "invisibleCompetitionEnabled",
-         expert_pool AS "expertPool"
+         expert_pool AS "expertPool", archived_at AS "archivedAt"
   FROM angle`;
 
 export async function findAngleById(id: string, db: Queryable = pool): Promise<AngleRow | null> {
@@ -113,6 +115,42 @@ export async function updateAngleFields(id: string, patch: Record<string, unknow
 
 export async function deleteAngle(id: string): Promise<void> {
   await pool.query(`DELETE FROM angle WHERE id = $1`, [id]);
+}
+
+/** Per-angle archive (2026-07-22) — pause/resume one workstream. */
+export async function setAngleArchived(id: string, archived: boolean): Promise<AngleRow> {
+  await pool.query(`UPDATE angle SET archived_at = ${archived ? "now()" : "NULL"} WHERE id = $1`, [id]);
+  return (await findAngleById(id))!;
+}
+
+/** Count only the ACTIVE (non-archived) angles — the guard for "a project needs one" and "can't archive the last one". */
+export async function countActiveAnglesForProject(projectId: string): Promise<number> {
+  const { rows } = await pool.query<{ count: string }>(
+    `SELECT COUNT(*) FROM angle WHERE project_id = $1 AND archived_at IS NULL`,
+    [projectId]
+  );
+  return Number(rows[0].count);
+}
+
+/**
+ * Delete an angle and everything hanging off it in one transaction — its
+ * assignments and their delivery rounds + goal-change requests. Lets a
+ * staffed angle be removed outright (the assignments go with it) without
+ * orphaning rows or touching the rest of the project.
+ */
+export async function deleteAngleCascade(id: string): Promise<void> {
+  await withTransaction(async (tx) => {
+    await tx.query(
+      `DELETE FROM delivery_round WHERE assignment_id IN (SELECT id FROM assignment WHERE angle_id = $1)`,
+      [id]
+    );
+    await tx.query(
+      `DELETE FROM goal_change_request WHERE assignment_id IN (SELECT id FROM assignment WHERE angle_id = $1)`,
+      [id]
+    );
+    await tx.query(`DELETE FROM assignment WHERE angle_id = $1`, [id]);
+    await tx.query(`DELETE FROM angle WHERE id = $1`, [id]);
+  });
 }
 
 export async function countAssignmentsForAngle(angleId: string): Promise<number> {

@@ -249,6 +249,9 @@ a.client:hover { text-decoration:underline; }
 .angle-progress-row:first-child { margin-top:0; }
 .angle-progress-stats { display:flex; flex-wrap:wrap; gap:8px; font-size:11px; font-weight:600; color:var(--soft); }
 .angle-progress-name { color:var(--ink); font-weight:700; }
+/* Per-angle archive (2026-07-22) — a quiet marker that this project has one or
+   more paused angles; resurface/delete lives in Edit project, not on the card. */
+.angle-archived-note { margin-top:6px; font-size:11px; font-weight:600; color:var(--soft); opacity:.8; }
 .sold-pulse-bar { height:4px; background:var(--bg); border-radius:4px; overflow:hidden; margin-top:4px; }
 .sold-pulse-bar span { display:block; height:100%; border-radius:4px; transition:width .4s ease; }
 /* Phase D, item 5 (revised) — Team-view-only capacity panel, a thin side

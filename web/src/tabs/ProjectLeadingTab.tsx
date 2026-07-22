@@ -486,7 +486,15 @@ export default function ProjectLeadingTab({
     );
   };
 
-  const renderCard = ({ project: p, assignments, angles, notes }: ProjectItem) => {
+  const renderCard = ({ project: p, assignments: allAssignments, angles: allAngles, notes }: ProjectItem) => {
+        // Archived angles (2026-07-22) are paused: they and their deliverers
+        // drop out of the card's active roll-up, progress bars and assignee
+        // list entirely. They still exist (resurface/delete from Edit project),
+        // just never counted while archived — same spirit as an archived project.
+        const angles = allAngles.filter((a) => !a.archivedAt);
+        const archivedAngleIds = new Set(allAngles.filter((a) => a.archivedAt).map((a) => a.id));
+        const assignments = allAssignments.filter((a) => !archivedAngleIds.has(a.angleId));
+        const archivedCount = allAngles.length - angles.length;
         const { goal, done, pct } = projStats(assignments);
         // Beating the target is a win, not a scolding: over-sold (5 of 2) or
         // over-delivered used to still render "Behind" (stage-forced or the
@@ -602,6 +610,11 @@ export default function ProjectLeadingTab({
                 );
               })}
             </div>
+            {archivedCount > 0 && (
+              <div className="angle-archived-note" title="Archived angles are paused — resurface them from Edit project">
+                {archivedCount} angle{archivedCount === 1 ? "" : "s"} archived
+              </div>
+            )}
             <div className="stage-row">
               {/* BUG 2 (fixed) — stage is per-deliverer now (§3/§8); the
                   rolled-up "Earliest: X" project-level label doesn't need

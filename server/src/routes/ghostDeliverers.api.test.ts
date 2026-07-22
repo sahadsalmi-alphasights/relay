@@ -376,3 +376,87 @@ describe("invisible competition — Ghost Ranking dashboard", () => {
     expect(afterLoad).toBeGreaterThan(beforeLoad);
   });
 });
+
+describe("invisible competition — add a ghost to an angle via Edit team (2026-07-22)", () => {
+  // Create a Due Diligence project with a real deliverer but NO ghost, then
+  // add one manually — the counterpart to the wizard's creation-time pick.
+  async function ddProjectWithoutGhost(plCookie: string): Promise<{ projectId: string; angleId: string }> {
+    const res = await app.inject({
+      method: "POST",
+      url: "/projects",
+      cookies: cookieHeader(plCookie),
+      payload: {
+        client: "Client_ManualGhost",
+        projectLink: "https://example.test/proj/manual-ghost",
+        projectType: "Due Diligence",
+        expertPool: "Global",
+        // invisibleCompetitionEnabled off so creation doesn't auto-add a ghost.
+        angles: [
+          {
+            name: "Main",
+            callsN: 3,
+            goalTotal: 9,
+            invisibleCompetitionEnabled: false,
+            assignments: [{ delivererId: fx.delivererAlpha, goal: 9 }],
+          },
+        ],
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const projectId = res.json().id;
+    const detail = await app.inject({ method: "GET", url: `/projects/${projectId}`, cookies: cookieHeader(plCookie) });
+    return { projectId, angleId: detail.json().angles[0].id };
+  }
+
+  it("adds a ghost when the person is flagged is_ghost, logged as a ghost_assign", async () => {
+    const plCookie = await loginAs(app, fx.plAlpha);
+    await setGhost(fx.otherDelivererAlpha, true, plCookie);
+    const { projectId, angleId } = await ddProjectWithoutGhost(plCookie);
+
+    const add = await app.inject({
+      method: "POST",
+      url: `/projects/${projectId}/assignments`,
+      cookies: cookieHeader(plCookie),
+      payload: { angleId, delivererId: fx.otherDelivererAlpha, goal: 9, ghost: true },
+    });
+    expect(add.statusCode).toBe(200);
+    expect(add.json().isGhost).toBe(true);
+
+    const { rows } = await pool.query(
+      `SELECT is_ghost AS "isGhost" FROM assignment WHERE angle_id = $1 AND deliverer_id = $2`,
+      [angleId, fx.otherDelivererAlpha]
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].isGhost).toBe(true);
+
+    const { rows: audit } = await pool.query(
+      `SELECT action FROM audit_log WHERE entity_type = 'assignment' AND action = 'ghost_assign'`
+    );
+    expect(audit.length).toBeGreaterThan(0);
+  });
+
+  it("refuses to add a non-ghost person as a ghost", async () => {
+    const plCookie = await loginAs(app, fx.plAlpha);
+    const { projectId, angleId } = await ddProjectWithoutGhost(plCookie);
+    // otherDelivererAlpha is NOT flagged as a ghost here.
+    const add = await app.inject({
+      method: "POST",
+      url: `/projects/${projectId}/assignments`,
+      cookies: cookieHeader(plCookie),
+      payload: { angleId, delivererId: fx.otherDelivererAlpha, goal: 9, ghost: true },
+    });
+    expect(add.statusCode).toBe(400);
+  });
+
+  it("never allows a ghost on a Pitch (fx.project is a Pitch)", async () => {
+    const plCookie = await loginAs(app, fx.plAlpha);
+    await setGhost(fx.otherDelivererAlpha, true, plCookie);
+    const add = await app.inject({
+      method: "POST",
+      url: `/projects/${fx.project}/assignments`,
+      cookies: cookieHeader(plCookie),
+      payload: { angleId: fx.angle, delivererId: fx.otherDelivererAlpha, goal: 4, ghost: true },
+    });
+    expect(add.statusCode).toBe(400);
+  });
+});

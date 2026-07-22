@@ -179,6 +179,21 @@ a.client:hover { text-decoration:underline; }
 /* Batch S, item 4 — the latest note surfaced directly on the card face; full history/add stays behind the existing "Notes" button. */
 .note-preview { margin-top:8px; padding:8px 10px; border-radius:9px; background:var(--bg); font-size:12px; color:var(--soft); line-height:1.4; }
 .note-preview b { color:var(--ink); }
+/* Notes on the card: collapsed = the same one-line preview (plus count + caret);
+   expanded = full history inline. Nothing else on the card moves. */
+.card-notes-head { display:flex; align-items:center; gap:8px; width:100%; text-align:left; cursor:pointer; }
+.card-notes-head .cn-line { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cn-count { flex-shrink:0; font-size:10px; font-weight:800; color:var(--pl, #FC8300); background:#FFF1E0; border-radius:999px; padding:1px 7px; }
+[data-theme="dark"] .cn-count { background:#33230E; }
+.cn-caret { flex-shrink:0; font-size:10px; color:var(--soft); }
+.cn-list { margin-top:4px; padding:4px 10px 8px; border-radius:9px; background:var(--bg); display:flex; flex-direction:column; gap:8px; }
+.cn-item { border-top:1px dashed var(--line); padding-top:8px; }
+.cn-item:first-child { border-top:none; padding-top:4px; }
+.cn-meta { display:flex; align-items:baseline; gap:8px; font-size:11px; color:var(--ink); }
+.cn-role { font-size:9.5px; font-weight:700; letter-spacing:.3px; text-transform:uppercase; color:var(--soft); }
+.cn-time { margin-left:auto; font-size:10px; color:var(--soft); }
+.cn-body { font-size:12px; color:var(--ink); line-height:1.45; margin-top:2px; white-space:pre-wrap; }
+.cn-add { align-self:flex-start; }
 .stage-pill { font-size:11px; font-weight:700; padding:3px 8px; border-radius:7px; white-space:nowrap; }
 .stage-first { background:var(--green-bg); color:#1F7D4C; } .stage-second { background:var(--amber-bg); color:#9A5F0C; } .stage-hail { background:var(--red-bg); color:#A82F2F; } .stage-selling { background:var(--pl-soft); color:var(--pl); }
 .pace { margin-left:auto; font-size:11px; font-weight:700; font-family:'Space Grotesk'; display:flex; align-items:center; gap:5px; }

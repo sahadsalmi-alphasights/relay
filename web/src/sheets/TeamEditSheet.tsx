@@ -232,6 +232,28 @@ export default function TeamEditSheet({
               </span>
             </div>
           ))}
+          {/* Unstaffed angles were invisible here (no assignment row), so a
+              newly-added angle had no obvious way to get staffed — you had to
+              guess "+ Add deliverer" → the angle picker. Surface each empty
+              angle with a direct Staff button. */}
+          {angles
+            .filter((ang) => !assignments.some((a) => a.angleId === ang.id))
+            .map((ang) => (
+              <div key={ang.id} className="match-line" style={{ opacity: 0.9 }}>
+                <div className="avatar" style={{ background: "var(--bg)", color: "var(--soft)" }}>—</div>
+                <div>
+                  <div className="assignee-name">{ang.name}</div>
+                  <div className="assignee-sub">N {ang.callsN} · goal {ang.goalTotal} · unstaffed</div>
+                </div>
+                <button
+                  className="btn-sm btn-pl"
+                  style={{ marginLeft: "auto" }}
+                  onClick={() => pickAngleForAdd(ang.id)}
+                >
+                  Staff
+                </button>
+              </div>
+            ))}
           <div className="sheet-footer">
             <button className="btn btn-pl" style={{ width: "100%" }} onClick={startAdd}>
               + Add deliverer

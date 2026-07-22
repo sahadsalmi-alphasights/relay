@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { applyCardOrder, loadCardOrder, moveBefore, saveCardOrder } from "../lib/cardOrder";
+import CardNotes from "../components/CardNotes";
 import { api } from "../api/client";
 import type { Angle, Assignment, CapacityRankRow, GoalChangeRequest, Note, Project, Stage } from "../api/types";
 import { barColor, entityBrand, ghostsLast, initials, overDelivered, paceInfo, stageClass, stageLabel, typeClass } from "../lib/format";
@@ -448,7 +449,6 @@ export default function ProjectLeadingTab({
         // re-derived here from summed totals (see rules/project.ts for why).
         const chase = p.chaseClient;
         const multiAngle = angles.length > 1;
-        const latestNote = notes.length > 0 ? notes[notes.length - 1] : null;
 
         return (
           <div
@@ -573,11 +573,9 @@ export default function ProjectLeadingTab({
                 via the Notes sheet; this puts the latest one directly on the
                 card face instead of leaving it a click away. Full history/add
                 is still the "📝 Notes" button below. */}
-            {latestNote && (
-              <div className="note-preview">
-                📝 <b>{nameOf(latestNote.authorId)}</b>: {latestNote.body.length > 80 ? `${latestNote.body.slice(0, 80)}…` : latestNote.body}
-              </div>
-            )}
+            {/* Notes live on the card now: same single line when collapsed,
+                full history inline when tapped (CardNotes). */}
+            <CardNotes notes={notes} onAdd={() => onNotes({ projectId: p.id })} />
             <div className="assignees">
               {/* Big structural change — group assignees under their angle
                   only when there's more than one; a single-angle ("simple")

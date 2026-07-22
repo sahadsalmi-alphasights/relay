@@ -292,6 +292,8 @@ a.client:hover { text-decoration:underline; }
 .step .val { font-family:'Space Grotesk'; font-weight:700; font-size:16px; min-width:30px; text-align:center; color:var(--ink); }
 .badge { background:var(--red); color:#fff; font-size:10px; font-weight:800; border-radius:999px; padding:1px 6px; margin-left:2px; }
 .review-strip { background:var(--amber-bg); border:1px solid #F0DCB0; border-radius:12px; padding:10px 12px; margin-bottom:12px; font-size:12px; color:#7A520E; display:flex; align-items:center; gap:8px; }
+.review-jump { color:inherit; font-size:14px; cursor:pointer; flex-shrink:0; }
+.review-jump:hover { transform:translateX(-1px); }
 /* Morning calls-sold dialog — mobile gets a non-blocking reminder banner instead of the desktop dialog. */
 .morning-banner { position:sticky; top:0; z-index:30; background:var(--amber-bg); border-bottom:1px solid #F0DCB0; color:#7A520E; font-size:12px; padding:10px 16px; }
 .morning-dialog { text-align:left; }

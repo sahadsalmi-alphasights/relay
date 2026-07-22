@@ -1,4 +1,5 @@
 import type { FastifyPluginAsync } from "fastify";
+import { config } from "../config";
 import { resolveNow } from "../lib/requestTime";
 import { listAvailableCandidatesWithAssignments, sundayRotaPersonIdsForDate } from "../services/candidates";
 import { isEligible } from "../rules/eligibility";
@@ -63,10 +64,14 @@ async function compute(request: import("fastify").FastifyRequest, ghost: boolean
 const capacityRankingRoutes: FastifyPluginAsync = async (app) => {
   app.get<{ Querystring: { ghost?: string } }>("/", { preHandler: [app.requireAuth] }, async (request) => {
     const ghost = request.query.ghost === "true";
-    // Demo-clock requests (dev only) bypass the cache so previewing an hour is
-    // always live; production (real clock) shares the cached computation.
+    // Cache ONLY in production. The storm that pins the CPU is a prod-scale
+    // problem; dev and the test suite must see fresh numbers immediately
+    // after a mutation (the tests query capacity-ranking right after changing
+    // data, and a 15s stale window would fail them — and mildly confuse a
+    // user, but 15s is an acceptable trade at prod scale). Demo-clock
+    // requests always bypass so previewing an hour stays live.
     const demo = request.headers["x-demo-as-of"];
-    if (demo) return compute(request, ghost);
+    if (config.nodeEnv !== "production" || demo) return compute(request, ghost);
 
     const key = ghost ? "ghost" : "std";
     const hit = cache.get(key);

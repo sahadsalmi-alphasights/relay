@@ -67,6 +67,13 @@ body { margin:0; }
    .btn-pl, .fab — stripping their backgrounds so they only appeared on
    :hover (whose extra pseudo-class won the fight). */
 button { font-family:inherit; cursor:pointer; border:none; background:none; color:var(--ink); }
+/* Dark-mode safety net: any text input without an explicit background used to
+   fall back to the browser's white, which in dark mode is light text on white
+   (invisible — the goal-change form bug). :where() keeps specificity at 0 so
+   every classed input style still wins; this only catches the un-themed ones. */
+:where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), textarea, select) {
+  background:var(--surface); color:var(--ink);
+}
 .relay button:focus-visible, .app-shell button:focus-visible { outline:2px solid var(--pl); outline-offset:2px; }
 .relay button:disabled, .app-shell button:disabled { cursor:not-allowed; }
 .hdr { position:sticky; top:0; z-index:20; background:var(--surface); border-bottom:1px solid var(--line); }
@@ -261,6 +268,9 @@ a.client:hover { text-decoration:underline; }
 .team-capacity-row:last-child { border-bottom:none; }
 .team-capacity-row .avatar { width:20px; height:20px; font-size:9px; }
 .team-capacity-name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600; color:var(--ink); }
+/* Collapsible person group header (Team view) — full-width clickable row. */
+.team-group-toggle { width:100%; text-align:left; cursor:pointer; }
+.team-group-toggle .cn-caret { margin-right:2px; }
 .team-capacity-load { font-family:'Space Grotesk'; font-weight:700; color:var(--soft); }
 @media (max-width:1023px) {
   .pl-board-layout { flex-direction:column; }

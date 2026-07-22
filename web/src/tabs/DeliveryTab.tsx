@@ -80,7 +80,7 @@ function RequestChange({
             min={0}
             value={goal}
             onChange={(e) => setGoal(Math.max(0, Number(e.target.value)))}
-            style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid var(--line)", fontSize: 13, color: "var(--ink)" }}
+            style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid var(--line)", fontSize: 13, color: "var(--ink)", background: "var(--surface)" }}
           />
         </label>
         <label style={{ flex: 1, fontSize: 12, color: "var(--soft)" }}>
@@ -88,7 +88,7 @@ function RequestChange({
           <select
             value={status}
             onChange={(e) => setStatus(e.target.value as ProjectStatus)}
-            style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid var(--line)", fontSize: 13, color: "var(--ink)" }}
+            style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid var(--line)", fontSize: 13, color: "var(--ink)", background: "var(--surface)" }}
           >
             <option value="open">Open</option>
             <option value="active">Active</option>
@@ -100,7 +100,7 @@ function RequestChange({
         value={txt}
         onChange={(e) => setTxt(e.target.value)}
         placeholder="Optional — e.g. pool is thin"
-        style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid var(--line)", fontSize: 13, marginBottom: 8, color: "var(--ink)" }}
+        style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid var(--line)", fontSize: 13, marginBottom: 8, color: "var(--ink)", background: "var(--surface)" }}
       />
       <div style={{ display: "flex", gap: 8 }}>
         <button className="btn btn-ghost" onClick={() => setOpen(false)}>
@@ -151,6 +151,9 @@ export default function DeliveryTab({
   // Drag re-arrange (My view only).
   const dragIdRef = useRef<string | null>(null);
   const [orderRev, setOrderRev] = useState(0);
+  // Team-view person groups collapse for large views (see PL tab).
+  const [groupOpen, setGroupOpen] = useState<Record<string, boolean>>({});
+  const [allGroupsOpen, setAllGroupsOpen] = useState(false);
   const [acceptError, setAcceptError] = useState<string | null>(null);
   // Manager feedback batch, item 7 — the actor's own row from the existing,
   // already-tested GET /capacity-ranking (personLoad + rawRemaining<=median
@@ -275,6 +278,7 @@ export default function DeliveryTab({
           .filter((p) => !p.deactivatedAt && (teamView === "all" ? true : p.teamId === (teamView || actor.teamId)))
           .sort((a, b) => a.name.localeCompare(b.name))
       : [];
+  const manyGroups = teamView === "all" || teamView !== "" || teamMembers.length > 8;
 
   const renderCard = ({ project: p, assignment: a, multiAngle, anglePool }: DeliveryItem) => {
     // Per-angle pool (2026-07-21): the live/asleep state and the pool chip
@@ -524,21 +528,32 @@ export default function DeliveryTab({
         <>
           <div className="section-lbl">
             Team — assigned <span className="count">{items.length}</span>
+            {manyGroups && (
+              <button className="link-btn" style={{ marginLeft: 10 }} onClick={() => setAllGroupsOpen((o) => !o)}>
+                {allGroupsOpen ? "Collapse all" : "Expand all"}
+              </button>
+            )}
           </div>
           {teamMembers.map((person) => {
             const personItems = items.filter((it) => it.assignment.delivererId === person.id);
+            const open = groupOpen[person.id] ?? (allGroupsOpen || !manyGroups);
             return (
               <div key={person.id} className="team-group">
-                <div className="team-group-header">
+                <button
+                  className="team-group-header team-group-toggle"
+                  onClick={() => setGroupOpen((m) => ({ ...m, [person.id]: !open }))}
+                >
+                  <span className="cn-caret">{open ? "▾" : "▸"}</span>
                   <div className="avatar dl">{initials(person.name)}</div>
                   {person.name}
                   <span className="count">{personItems.length}</span>
-                </div>
-                {personItems.length === 0 ? (
-                  <div className="empty team-group-empty">Nothing assigned right now.</div>
-                ) : (
-                  <div className="card-grid">{personItems.map(renderCard)}</div>
-                )}
+                </button>
+                {open &&
+                  (personItems.length === 0 ? (
+                    <div className="empty team-group-empty">Nothing assigned right now.</div>
+                  ) : (
+                    <div className="card-grid">{personItems.map(renderCard)}</div>
+                  ))}
               </div>
             );
           })}

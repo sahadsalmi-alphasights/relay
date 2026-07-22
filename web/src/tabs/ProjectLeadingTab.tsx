@@ -594,8 +594,13 @@ export default function ProjectLeadingTab({
                           </span>
                         </div>
                         {angleAssignments.length === 0 ? (
-                          <div className="empty" style={{ padding: "6px 0 10px", fontSize: 12 }}>
+                          <div className="empty" style={{ padding: "6px 0 10px", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
                             Unstaffed
+                            {!readOnly && (
+                              <button className="btn-sm btn-pl" onClick={() => onEditTeam(p.id)}>
+                                Staff this angle
+                              </button>
+                            )}
                           </div>
                         ) : (
                           ghostsLast(angleAssignments).map((x) => renderAssigneeRow(x, readOnly))

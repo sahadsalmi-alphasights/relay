@@ -35,6 +35,11 @@ interface ProjectItem {
   notes: Note[];
 }
 
+// Module-level so it survives tab unmount/remount (stale-while-revalidate):
+// switching back to this tab paints the last board instantly, then the fetch
+// refreshes it. Cleared on a full page reload — never cross-session stale.
+const plBoardCache = new Map<string, ProjectItem[]>();
+
 /**
  * "Invisible competition" — a ghost gets its own goal/delivered (rendered on
  * its own row, same as any deliverer), but is deliberately excluded here:
@@ -261,7 +266,12 @@ export default function ProjectLeadingTab({
   onNotes: (t: NotesTarget) => void;
 }) {
   const { actor, people, nameOf, practiceOf, nowMs, effectiveHour, demoHour } = useApp();
-  const [items, setItems] = useState<ProjectItem[] | null>(null);
+  // Stale-while-revalidate: seed from the last board this session so switching
+  // back to Project Leading paints instantly instead of flashing a full-screen
+  // "Loading…" while the (now single) request is in flight. Keyed by view so
+  // My/Team/other-team don't show each other's cards.
+  const cacheKey = `${scope}:${teamView}`;
+  const [items, setItems] = useState<ProjectItem[] | null>(plBoardCache.get(cacheKey) ?? null);
   const [archived, setArchived] = useState<Project[]>([]);
   const [archivedOpen, setArchivedOpen] = useState(false);
   // Drag re-arrange (My view only).
@@ -305,7 +315,9 @@ export default function ProjectLeadingTab({
           : Promise.resolve<GoalChangeRequest[]>([])
       )
     );
-    setItems(board.map((it, i) => ({ ...it, pending: pending[i] })));
+    const built = board.map((it, i) => ({ ...it, pending: pending[i] }));
+    plBoardCache.set(cacheKey, built);
+    setItems(built);
     setArchived(archivedList);
     onPendingCount(pending.reduce((sum, arr) => sum + arr.length, 0));
   };

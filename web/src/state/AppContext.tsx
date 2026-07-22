@@ -57,7 +57,12 @@ export function AppProvider({
   }, [reloadPeople, reloadTeams]);
 
   useEffect(() => {
-    const t = setInterval(() => setNowMs(Date.now()), 1000);
+    // nowMs lives in the shared context value, so every tick re-renders every
+    // consumer — the whole board. Nothing displays seconds (the clock is
+    // HH:MM; every elapsed chip is minute-granular), so a 1s tick meant ~30×
+    // more full re-renders than the UI can even show. 30s keeps minute
+    // boundaries visually crisp at a fraction of the render cost.
+    const t = setInterval(() => setNowMs(Date.now()), 30000);
     return () => clearInterval(t);
   }, []);
 

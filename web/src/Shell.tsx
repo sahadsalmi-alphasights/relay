@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import Header, { type Scope, type Tab } from "./components/Header";
 import MobileNav from "./components/MobileNav";
 import type { Notification as AppNotification } from "./api/types";
@@ -55,6 +55,17 @@ export default function Shell() {
   const [notesFor, setNotesFor] = useState<NotesTarget | null>(null);
 
   const bumpReload = () => setReloadTick((t) => t + 1);
+  // Live WS events can arrive in bursts (a teammate logging several
+  // deliveries, a fan-out to the whole BU). Reloading the board on each one
+  // repaints every card — on a 58-card BU view that's the flickery
+  // "Loading…" thrash. Coalesce a burst into a single reload ~700ms after it
+  // settles. User-initiated actions still call bumpReload() directly for an
+  // instant refresh; this only debounces the passive live-invalidate path.
+  const liveReloadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const bumpReloadDebounced = () => {
+    if (liveReloadTimer.current) clearTimeout(liveReloadTimer.current);
+    liveReloadTimer.current = setTimeout(() => setReloadTick((t) => t + 1), 700);
+  };
   const notif = useNotifications();
 
   // Sound: pre-unlock the AudioContext on the first user gesture so the
@@ -81,7 +92,7 @@ export default function Shell() {
         void reloadPeople();
         void reloadTeams();
       }
-      bumpReload();
+      bumpReloadDebounced();
     }
   };
   const liveStatus = useLiveSocket(handleLiveEvent);

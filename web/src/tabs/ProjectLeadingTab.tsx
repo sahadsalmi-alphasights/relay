@@ -277,6 +277,9 @@ export default function ProjectLeadingTab({
   // Drag re-arrange (My view only).
   const dragIdRef = useRef<string | null>(null);
   const [orderRev, setOrderRev] = useState(0);
+  // Team-view person groups: per-person expand overrides + an expand/collapse-all.
+  const [groupOpen, setGroupOpen] = useState<Record<string, boolean>>({});
+  const [allGroupsOpen, setAllGroupsOpen] = useState(false);
 
   // Notification deep-link: once the board has data, scroll the target card
   // into view and pulse it so the eye lands exactly where the event happened.
@@ -368,6 +371,9 @@ export default function ProjectLeadingTab({
           .filter((p) => !p.deactivatedAt && (teamView === "all" ? true : p.teamId === viewedTeamId))
           .sort((a, b) => a.name.localeCompare(b.name))
       : [];
+  // Collapse groups by default when the view is large (whole BU or another
+  // team) — that's where painting every card at once hurts.
+  const manyGroups = teamView === "all" || teamView !== "" || teamMembers.length > 8;
 
   // Foreign teams are view-only for plain members: every write route
   // enforces this server-side anyway; hiding the controls just makes the
@@ -701,21 +707,35 @@ export default function ProjectLeadingTab({
           <>
             <div className="section-lbl">
               Team — projects led <span className="count">{items.length}</span>
+              {manyGroups && (
+                <button className="link-btn" style={{ marginLeft: 10 }} onClick={() => setAllGroupsOpen((o) => !o)}>
+                  {allGroupsOpen ? "Collapse all" : "Expand all"}
+                </button>
+              )}
             </div>
             {teamMembers.map((person) => {
               const personItems = items.filter((it) => it.project.plId === person.id);
+              // Big BU (many people / foreign team) starts collapsed so the
+              // browser paints ~15 headers, not ~60 cards; own small team
+              // stays open. Per-person override via the header toggle.
+              const open = groupOpen[person.id] ?? (allGroupsOpen || !manyGroups);
               return (
                 <div key={person.id} className="team-group">
-                  <div className="team-group-header">
+                  <button
+                    className="team-group-header team-group-toggle"
+                    onClick={() => setGroupOpen((m) => ({ ...m, [person.id]: !open }))}
+                  >
+                    <span className="cn-caret">{open ? "▾" : "▸"}</span>
                     <div className="avatar">{initials(person.name)}</div>
                     {person.name}
                     <span className="count">{personItems.length}</span>
-                  </div>
-                  {personItems.length === 0 ? (
-                    <div className="empty team-group-empty">Leading nothing right now.</div>
-                  ) : (
-                    renderCards(personItems)
-                  )}
+                  </button>
+                  {open &&
+                    (personItems.length === 0 ? (
+                      <div className="empty team-group-empty">Leading nothing right now.</div>
+                    ) : (
+                      renderCards(personItems)
+                    ))}
                 </div>
               );
             })}

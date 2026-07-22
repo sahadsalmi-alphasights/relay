@@ -261,6 +261,9 @@ a.client:hover { text-decoration:underline; }
 .team-capacity-row:last-child { border-bottom:none; }
 .team-capacity-row .avatar { width:20px; height:20px; font-size:9px; }
 .team-capacity-name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600; color:var(--ink); }
+/* Collapsible person group header (Team view) — full-width clickable row. */
+.team-group-toggle { width:100%; text-align:left; cursor:pointer; }
+.team-group-toggle .cn-caret { margin-right:2px; }
 .team-capacity-load { font-family:'Space Grotesk'; font-weight:700; color:var(--soft); }
 @media (max-width:1023px) {
   .pl-board-layout { flex-direction:column; }

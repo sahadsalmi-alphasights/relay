@@ -80,7 +80,7 @@ function RequestChange({
             min={0}
             value={goal}
             onChange={(e) => setGoal(Math.max(0, Number(e.target.value)))}
-            style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid var(--line)", fontSize: 13, color: "var(--ink)" }}
+            style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid var(--line)", fontSize: 13, color: "var(--ink)", background: "var(--surface)" }}
           />
         </label>
         <label style={{ flex: 1, fontSize: 12, color: "var(--soft)" }}>
@@ -88,7 +88,7 @@ function RequestChange({
           <select
             value={status}
             onChange={(e) => setStatus(e.target.value as ProjectStatus)}
-            style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid var(--line)", fontSize: 13, color: "var(--ink)" }}
+            style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid var(--line)", fontSize: 13, color: "var(--ink)", background: "var(--surface)" }}
           >
             <option value="open">Open</option>
             <option value="active">Active</option>
@@ -100,7 +100,7 @@ function RequestChange({
         value={txt}
         onChange={(e) => setTxt(e.target.value)}
         placeholder="Optional — e.g. pool is thin"
-        style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid var(--line)", fontSize: 13, marginBottom: 8, color: "var(--ink)" }}
+        style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid var(--line)", fontSize: 13, marginBottom: 8, color: "var(--ink)", background: "var(--surface)" }}
       />
       <div style={{ display: "flex", gap: 8 }}>
         <button className="btn btn-ghost" onClick={() => setOpen(false)}>

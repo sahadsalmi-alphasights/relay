@@ -60,9 +60,27 @@ function projStats(assignments: Assignment[]) {
  * inline stepper right on that assignee's own row — "Edit team" (below)
  * is what changes/adds deliverers now.
  */
-function AssigneeGoalEditor({ assignment, onSave }: { assignment: Assignment; onSave: () => void }) {
+function AssigneeGoalEditor({
+  assignment,
+  onSave,
+  openGoals,
+  openTick,
+}: {
+  assignment: Assignment;
+  onSave: () => void;
+  /** Deep-link from a goal-change notification: auto-open this editor. */
+  openGoals?: boolean;
+  openTick?: number;
+}) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  // Open when a goal-change notification targets this assignee (re-fires on a
+  // new tick so clicking the same notification twice re-opens it).
+  useEffect(() => {
+    if (openGoals) setOpen(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openGoals, openTick]);
 
   const patch = async (goal: number) => {
     setBusy(true);
@@ -253,6 +271,7 @@ export default function ProjectLeadingTab({
   onEditProject,
   onNotes,
   focusProject,
+  focusAssignment,
 }: {
   scope: Scope;
   /** Team view target: "" = own team, "all" = whole BU, else a team id. */
@@ -263,6 +282,8 @@ export default function ProjectLeadingTab({
   onEditTeam: (projectId: string) => void;
   onEditProject: (projectId: string) => void;
   focusProject?: { id: string; tick: number } | null;
+  /** Goal-change deep-link: open this assignment's goal/stage editor and flash its row. */
+  focusAssignment?: { id: string; tick: number } | null;
   onNotes: (t: NotesTarget) => void;
 }) {
   const { actor, people, nameOf, practiceOf, nowMs, effectiveHour, demoHour } = useApp();
@@ -293,6 +314,22 @@ export default function ProjectLeadingTab({
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusProject?.tick, items]);
+
+  // Goal-change deep-link: scroll to and flash the specific assignee row (its
+  // goal editor auto-opens via the openGoals prop below). Runs slightly after
+  // the card scroll so the row lands centered.
+  useEffect(() => {
+    if (!focusAssignment || !items) return;
+    const t = setTimeout(() => {
+      const el = document.querySelector(`[data-assignment-id="${focusAssignment.id}"]`);
+      if (!el) return;
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.classList.add("card-flash");
+      setTimeout(() => el.classList.remove("card-flash"), 2600);
+    }, 120);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusAssignment?.tick, items]);
   // Phase D, item 5 — team-overview running list. Reuses the existing,
   // already-tested GET /capacity-ranking computation (personLoad + the
   // rawRemaining<=median "free" rule, rules/load.ts) rather than inventing a
@@ -414,8 +451,9 @@ export default function ProjectLeadingTab({
   // renderings below, so there's exactly one place this markup lives.
   const renderAssigneeRow = (a: Assignment, readOnly = false) => {
     const elapsed = nowMs - new Date(a.stageEnteredAt).getTime();
+    const focused = focusAssignment?.id === a.id;
     return (
-      <div key={a.id} className="assignee-block">
+      <div key={a.id} className="assignee-block" data-assignment-id={a.id}>
         <div className="assignee">
           <div className="avatar">{initials(nameOf(a.delivererId))}</div>
           <div>
@@ -426,7 +464,7 @@ export default function ProjectLeadingTab({
             </div>
             <div className="assignee-sub">{a.customDelivered > 0 ? `Incl. ${a.customDelivered} custom` : "No custom"}</div>
           </div>
-          {!readOnly && <AssigneeGoalEditor assignment={a} onSave={onReload} />}
+          {!readOnly && <AssigneeGoalEditor assignment={a} onSave={onReload} openGoals={focused} openTick={focused ? focusAssignment?.tick : undefined} />}
         </div>
         {/* §6/§8 — this assignee's own stage, timer, and the phase dropdown (per-deliverer, domain change 8). */}
         <div className="assignee-actions-row">

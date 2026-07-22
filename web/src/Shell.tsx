@@ -50,6 +50,9 @@ export default function Shell() {
   // Deep-link target when a notification is clicked: the tab switches AND the
   // project card scrolls into view with a highlight pulse.
   const [focusProject, setFocusProject] = useState<{ id: string; tick: number } | null>(null);
+  // A goal-change notification deep-links to the specific deliverer's goal +
+  // stage editor, not just the project card.
+  const [focusAssignment, setFocusAssignment] = useState<{ id: string; tick: number } | null>(null);
   const [teamEditFor, setTeamEditFor] = useState<string | null>(null);
   const [editProjectFor, setEditProjectFor] = useState<string | null>(null);
   const [notesFor, setNotesFor] = useState<NotesTarget | null>(null);
@@ -131,6 +134,11 @@ export default function Shell() {
         projectId = a.projectId;
       }
       if (projectId) setFocusProject({ id: projectId, tick: Date.now() });
+      // Goal-change requests deep-link to the exact assignment so its goal +
+      // stage editor opens (and the row flashes), not just the card.
+      if (n.type === "goal_change_requested" && n.entityType === "assignment" && n.entityId) {
+        setFocusAssignment({ id: n.entityId, tick: Date.now() });
+      }
     } catch {
       // fine — we still landed on the right board
     }
@@ -204,6 +212,7 @@ export default function Shell() {
           onEditProject={setEditProjectFor}
           onNotes={setNotesFor}
           focusProject={focusProject}
+          focusAssignment={focusAssignment}
         />
       )}
       {tab === "Delivery" && (

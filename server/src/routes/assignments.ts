@@ -363,8 +363,11 @@ const assignmentsRoutes: FastifyPluginAsync = async (app) => {
           type: "goal_change_requested",
           title: "Goal change requested",
           body: `${actor.name} on ${project.client}: goal ${requestedGoal}, status ${requestedStatus}${body ? ` — "${body}"` : ""}.`,
-          entityType: "goal_change_request",
-          entityId: created.id,
+          // Point at the ASSIGNMENT (not the request row) so clicking the
+          // notification can deep-link straight to that deliverer's goal/stage
+          // editor on the PL board, not just the project card.
+          entityType: "assignment",
+          entityId: assignment.id,
         });
       }
       return created;

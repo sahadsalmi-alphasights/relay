@@ -67,6 +67,13 @@ body { margin:0; }
    .btn-pl, .fab — stripping their backgrounds so they only appeared on
    :hover (whose extra pseudo-class won the fight). */
 button { font-family:inherit; cursor:pointer; border:none; background:none; color:var(--ink); }
+/* Dark-mode safety net: any text input without an explicit background used to
+   fall back to the browser's white, which in dark mode is light text on white
+   (invisible — the goal-change form bug). :where() keeps specificity at 0 so
+   every classed input style still wins; this only catches the un-themed ones. */
+:where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), textarea, select) {
+  background:var(--surface); color:var(--ink);
+}
 .relay button:focus-visible, .app-shell button:focus-visible { outline:2px solid var(--pl); outline-offset:2px; }
 .relay button:disabled, .app-shell button:disabled { cursor:not-allowed; }
 .hdr { position:sticky; top:0; z-index:20; background:var(--surface); border-bottom:1px solid var(--line); }

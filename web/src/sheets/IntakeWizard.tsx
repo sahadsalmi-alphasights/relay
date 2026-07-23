@@ -31,6 +31,12 @@ interface FormState {
   clientEntity: (typeof CLIENT_ENTITIES)[number];
 }
 
+// Sentinel for the override panel's target selector — means "don't replace
+// anyone, ADD this person as an extra deliverer" (the "found another
+// deliverer" path when an angle is short of its wanted headcount). Any real
+// person id in the selector means replace that person instead.
+const ADD_TARGET = "__add__";
+
 /**
  * Big structural change — a project always has >=1 angle; a "simple"
  * project is just a project with one. Everything that used to be
@@ -241,9 +247,14 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
   // §6 (eight changes) — override the auto-match: pick anyone currently free
   // instead of one of the auto-picked candidates. Requires a justification.
   const startOverride = (angleIndex: number, candidateId: string) => {
+    const angle = angles[angleIndex];
+    const underTarget = angle.picked.length < angle.staffCount;
     setOverridingAngle(angleIndex);
     setOverridingId(candidateId);
-    setReplaceTarget(angles[angleIndex].picked[0]?.personId ?? "");
+    // Default to ADD when the angle still needs more people (the common reason
+    // you're reaching past the auto-match — "I found another deliverer");
+    // otherwise default to replacing the first current pick.
+    setReplaceTarget(underTarget ? ADD_TARGET : angle.picked[0]?.personId ?? ADD_TARGET);
     setJustificationText("");
   };
   // Managers are excluded from the ranked candidate pool entirely (never
@@ -263,16 +274,24 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
     if (overridingAngle === null || !overridingId) return;
     const angleIndex = overridingAngle;
     const angle = angles[angleIndex];
-    // An angle with zero auto-picked candidates ("No one available now") has
-    // nothing for `replaceTarget` to name — a manager pick there is an
-    // ADD, not a replace. Every other case (including a manager replacing a
-    // real pick) still needs a target.
-    if (angle.picked.length > 0 && !replaceTarget) return;
+    // ADD vs REPLACE. Adding appends an EXTRA deliverer — the "found another
+    // deliverer" path when an angle is short of its wanted headcount, and the
+    // only option when nobody was auto-picked ("No one available now").
+    // Replacing swaps out a named current pick, which still needs a target.
+    const adding = replaceTarget === ADD_TARGET || angle.picked.length === 0;
+    if (!adding && !replaceTarget) return;
+    // Never add the same person twice to one angle.
+    if (adding && angle.picked.some((p) => p.personId === overridingId)) {
+      setOverridingAngle(null);
+      setOverridingId(null);
+      return;
+    }
     const candidate = angle.ranked?.find((r) => r.personId === overridingId) ?? managerAsCandidate(overridingId);
-    const nextPicked =
-      angle.picked.length > 0 ? angle.picked.map((p) => (p.personId === replaceTarget ? candidate : p)) : [candidate];
+    const nextPicked = adding
+      ? [...angle.picked, candidate]
+      : angle.picked.map((p) => (p.personId === replaceTarget ? candidate : p));
     const nextOverrides = { ...angle.overrides };
-    if (replaceTarget) delete nextOverrides[replaceTarget];
+    if (!adding && replaceTarget) delete nextOverrides[replaceTarget];
     nextOverrides[overridingId] = justificationText.trim();
     updateAngle(angleIndex, { picked: nextPicked, overrides: nextOverrides });
     setOverridingAngle(null);
@@ -296,7 +315,7 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
     (blockedByFirstDeliverable.length > 0
       ? ` ${blockedByFirstDeliverable.length} blocked (already on a First Deliverable) — listed below, pickable with an override.`
       : "") +
-    ` Use "Pick instead" for anyone else (reason optional, logged).`;
+    ` Use "Add" or "Pick instead" for anyone else (reason optional, logged).`;
   // CHANGE 4 — partial fill: some (not zero, not all) of an angle's wanted
   // seats got filled. Zero eligible anywhere (totalEligible === 0) is
   // Change 3's broadcast case instead, handled by the existing "No one
@@ -635,7 +654,9 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
                         Only {a.picked.length} of {a.staffCount} available for this angle
                       </div>
                       <p style={{ fontSize: 13, margin: "6px 0 8px", color: "var(--ink)" }}>
-                        Not enough people available — reduce the number of required deliverers?
+                        Not enough people auto-matched. Found someone else? Use <b>Add</b> on anyone
+                        in the lists below (a blocked person or a manager — logged as an override) to
+                        staff up to {a.staffCount}. Or reduce the number of required deliverers.
                       </p>
                       <button className="btn-sm btn-pl" onClick={() => updateAngle(angleIndex, { staffCount: a.picked.length })}>
                         Reduce to {a.picked.length} & continue
@@ -674,7 +695,7 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
                           </div>
                           {!isPicked && a.picked.length > 0 && (
                             <button className="btn-sm btn-ghost" style={{ marginLeft: 8 }} onClick={() => startOverride(angleIndex, r.personId)}>
-                              Pick instead
+                              {a.picked.length < a.staffCount ? "Add" : "Pick instead"}
                             </button>
                           )}
                         </div>
@@ -718,7 +739,7 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
                                 <small>Load</small>
                               </div>
                               <button className="btn-sm btn-ghost" style={{ marginLeft: 8 }} onClick={() => startOverride(angleIndex, r.personId)}>
-                                Pick instead
+                                {a.picked.length < a.staffCount ? "Add" : "Pick instead"}
                               </button>
                             </div>
                           ))}
@@ -785,7 +806,7 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
                                 <div className="assignee-sub">Manager — never suggested, always a manual pick</div>
                               </div>
                               <button className="btn-sm btn-ghost" style={{ marginLeft: 8 }} onClick={() => startOverride(angleIndex, m.id)}>
-                                Pick instead
+                                {a.picked.length < a.staffCount ? "Add" : "Pick instead"}
                               </button>
                             </div>
                           ))}
@@ -793,23 +814,33 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
                     );
                   })()}
 
-                  {overridingAngle === angleIndex && overridingId && (
+                  {overridingAngle === angleIndex && overridingId && (() => {
+                    const underTarget = a.picked.length < a.staffCount;
+                    const adding = replaceTarget === ADD_TARGET || a.picked.length === 0;
+                    return (
                     <div className="suggest" style={{ marginTop: 10 }}>
-                      <div className="suggest-lbl">Override — pick {nameOf(overridingId)} instead of…</div>
-                      {a.picked.length > 1 ? (
+                      <div className="suggest-lbl">
+                        {adding
+                          ? `Add ${nameOf(overridingId)} as an additional deliverer`
+                          : `Override — pick ${nameOf(overridingId)} instead of…`}
+                      </div>
+                      {/* When the angle already has picks, offer the choice:
+                          ADD an extra deliverer (default while short of the
+                          wanted headcount) or REPLACE a named current pick.
+                          With no picks yet it's implicitly an add. */}
+                      {a.picked.length > 0 && (
                         <select
                           value={replaceTarget}
                           onChange={(e) => setReplaceTarget(e.target.value)}
                           style={{ width: "100%", padding: 8, borderRadius: 8, border: "1px solid var(--line)", margin: "8px 0", fontSize: 13, color: "var(--ink)" }}
                         >
+                          {underTarget && <option value={ADD_TARGET}>➕ Add as an additional deliverer</option>}
                           {a.picked.map((p) => (
                             <option key={p.personId} value={p.personId}>
-                              {nameOf(p.personId)}
+                              Replace {nameOf(p.personId)}
                             </option>
                           ))}
                         </select>
-                      ) : (
-                        <p style={{ fontSize: 12, margin: "8px 0", color: "var(--ink)" }}>{nameOf(replaceTarget)}</p>
                       )}
                       <div className="field">
                         <label>Justification — optional, saved to the audit trail if you add one</label>
@@ -817,7 +848,7 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
                           ref={justificationRef}
                           value={justificationText}
                           onChange={(e) => setJustificationText(e.target.value)}
-                          placeholder="e.g. client specifically asked for this person"
+                          placeholder="e.g. found another deliverer / client asked for this person"
                         />
                       </div>
                       <div style={{ display: "flex", gap: 8 }}>
@@ -825,11 +856,12 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
                           Cancel
                         </button>
                         <button className="btn btn-pl" onClick={confirmOverride}>
-                          Confirm override
+                          {adding ? "Add deliverer" : "Confirm override"}
                         </button>
                       </div>
                     </div>
-                  )}
+                    );
+                  })()}
                 </div>
               ))}
 

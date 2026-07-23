@@ -41,15 +41,20 @@ export function buildApp(): FastifyInstance {
 
   // Production only, same gating pattern as the capacity-ranking cache: the
   // integration tests fire hundreds of requests from one address and would
-  // trip any limit worth having. Keyed on the Cloudflare-reported client IP
-  // (falling back to the trustProxy-resolved one) so all users behind the
-  // tunnel don't share a single bucket.
+  // trip any limit worth having. Keyed per authenticated user first — the
+  // whole office shares one egress IP, so an IP bucket would throttle
+  // everyone collectively during busy hours. The auth plugin registers its
+  // onRequest hook before this one, so request.actor is already resolved.
+  // Unauthenticated traffic (login flows) falls back to the
+  // Cloudflare-reported client IP, then the trustProxy-resolved one.
   if (config.nodeEnv === "production") {
     app.register(rateLimit, {
       max: 300,
       timeWindow: "1 minute",
       keyGenerator: (request) =>
-        (request.headers["cf-connecting-ip"] as string | undefined) ?? request.ip,
+        request.actor?.id ??
+        (request.headers["cf-connecting-ip"] as string | undefined) ??
+        request.ip,
     });
   }
 

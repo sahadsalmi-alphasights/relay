@@ -6,6 +6,29 @@ import { findPersonById, type PersonRow } from "../repositories/people";
 
 export const SESSION_COOKIE = "relay_session";
 
+/**
+ * Sessions expire server-side, not just in the browser: the cookie's maxAge
+ * is advisory (a stolen cookie value ignores it), so the expiry is embedded
+ * in the signed payload itself — `<personId>.<expiresAtMs>` — and checked on
+ * every request. UUIDs contain no ".", so the delimiter is unambiguous.
+ * Old-format cookies (bare person id, no expiry) are rejected, which simply
+ * forces one re-login when this ships.
+ */
+export const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+export function encodeSession(personId: string, nowMs = Date.now()): string {
+  return `${personId}.${nowMs + SESSION_TTL_MS}`;
+}
+
+export function decodeSession(value: string, nowMs = Date.now()): string | null {
+  const dot = value.indexOf(".");
+  if (dot === -1) return null;
+  const personId = value.slice(0, dot);
+  const expiresAt = Number(value.slice(dot + 1));
+  if (!personId || !Number.isFinite(expiresAt) || expiresAt <= nowMs) return null;
+  return personId;
+}
+
 declare module "fastify" {
   interface FastifyRequest {
     actor: PersonRow | null;
@@ -39,7 +62,12 @@ export default fp(async function authPlugin(app: FastifyInstance) {
       request.actor = null;
       return;
     }
-    request.actor = await findPersonById(unsigned.value);
+    const personId = decodeSession(unsigned.value);
+    if (!personId) {
+      request.actor = null;
+      return;
+    }
+    request.actor = await findPersonById(personId);
   });
 
   app.decorate("requireAuth", async (request: FastifyRequest, reply: FastifyReply) => {

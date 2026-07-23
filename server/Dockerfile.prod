@@ -1,16 +1,31 @@
-FROM node:20-slim
+# ---- build stage: full dev toolchain, compiles TypeScript ----
+FROM node:20-slim AS build
 # Upgrade system packages to pick up security patches (e.g. libgnutls30)
 RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
 # node:20-slim ships npm 10, whose vendored tar 6.2.1 is flagged CRITICAL
 # (CVE-2026-59873 — gzip-bomb DoS) and blocks the Trivy image scan. npm 11.18+
 # bundles the fixed tar >=7.5.19 and still supports Node 20 (npm 12 needs 22).
-# Upgrading before `npm install` also means package extraction below uses the
+# Upgrading before `npm ci` also means package extraction below uses the
 # patched tar. Our own app dependencies are unaffected (scan shows 0 findings).
 RUN npm install -g npm@^11.18.0
 WORKDIR /app
 COPY package*.json ./
-RUN npm install
+RUN npm ci
 COPY . .
 RUN npm run build
+
+# ---- runtime stage: production deps + compiled output only, non-root ----
+FROM node:20-slim
+RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
+RUN npm install -g npm@^11.18.0
+WORKDIR /app
+ENV NODE_ENV=production
+COPY package*.json ./
+# node-pg-migrate is a production dependency because migrations run at
+# container start (CMD below), not at build time.
+RUN npm ci --omit=dev && npm cache clean --force
+COPY --from=build /app/dist ./dist
+COPY migrations ./migrations
+USER node
 EXPOSE 4000
 CMD ["sh", "-c", "npm run migrate:up && node dist/index.js"]

@@ -56,8 +56,11 @@ services:
     restart: unless-stopped
     depends_on:
       - api
+    # Container port is 8080 now: the image is nginx-unprivileged (non-root
+    # nginx can't bind 80 inside the container). Host side stays 80, so the
+    # Cloudflare tunnel's http://localhost/ origin needs no change.
     ports:
-      - "80:80"
+      - "80:8080"
 
 volumes:
   db_data:

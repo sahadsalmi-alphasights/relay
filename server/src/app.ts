@@ -1,4 +1,5 @@
 import cors from "@fastify/cors";
+import rateLimit from "@fastify/rate-limit";
 import websocketPlugin from "@fastify/websocket";
 import Fastify, { type FastifyInstance } from "fastify";
 import authPlugin from "./auth/plugin";
@@ -26,13 +27,31 @@ import { startStaleScheduler } from "./services/staleScheduler";
 import { startBroadcastRepingScheduler } from "./services/broadcast";
 
 export function buildApp(): FastifyInstance {
-  const app = Fastify({ logger: true });
+  // trustProxy: every production request arrives via nginx (which itself sits
+  // behind the Cloudflare tunnel), so the socket address is always the proxy —
+  // X-Forwarded-For is what carries the real client. The origin is not
+  // directly reachable, so the header can't be spoofed from outside.
+  const app = Fastify({ logger: true, trustProxy: true });
 
   // The web app runs on a different port (different origin); cookies need
   // an exact origin + credentials:true, not a wildcard.
   app.register(cors, { origin: config.webOrigin, credentials: true });
   app.register(authPlugin);
   app.register(websocketPlugin);
+
+  // Production only, same gating pattern as the capacity-ranking cache: the
+  // integration tests fire hundreds of requests from one address and would
+  // trip any limit worth having. Keyed on the Cloudflare-reported client IP
+  // (falling back to the trustProxy-resolved one) so all users behind the
+  // tunnel don't share a single bucket.
+  if (config.nodeEnv === "production") {
+    app.register(rateLimit, {
+      max: 300,
+      timeWindow: "1 minute",
+      keyGenerator: (request) =>
+        (request.headers["cf-connecting-ip"] as string | undefined) ?? request.ip,
+    });
+  }
 
   app.setErrorHandler((err, request, reply) => {
     if (err instanceof HttpError) {

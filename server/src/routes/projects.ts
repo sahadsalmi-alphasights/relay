@@ -29,7 +29,7 @@ import {
 } from "../repositories/projects";
 import { countAssignmentsForAngle, seatTargetForAngle } from "../repositories/angles";
 import { findPersonById, listPeopleByTeam } from "../repositories/people";
-import { sundayRotaPersonIdsForDate, listAvailableCandidatesWithAssignments } from "../services/candidates";
+import { listAvailableCandidatesWithAssignments } from "../services/candidates";
 import { badRequest, conflict, forbidden, notFound } from "../errors";
 import { isEligible } from "../rules/eligibility";
 import { allocateAcrossAngles, applyFirstDeliverableBlock, rankCandidates } from "../rules/matching";
@@ -37,7 +37,7 @@ import { resolveNow } from "../lib/requestTime";
 import { canArchiveProject, canEditProjectFields } from "../rules/permissions";
 import { isProjectLifecycleQuiet, needsCallsSoldUpdateToday, needsChaseClient } from "../rules/project";
 import { suggestGoal, suggestStaffing } from "../rules/suggestedGoal";
-import { dubaiDateKey, dubaiHour } from "../rules/time";
+import { dubaiHour } from "../rules/time";
 import type { ProjectType } from "../rules/types";
 import { isValidHttpUrl } from "../rules/url";
 import { notifyBroadcastRecipients } from "../services/broadcast";
@@ -321,21 +321,22 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
       }
       const now = resolveNow(request);
       const hour = dubaiHour(now);
-      const rotaSet = await sundayRotaPersonIdsForDate(dubaiDateKey(now));
       // `ghost: true` ranks the ghost pool instead — same ranking machinery,
       // different candidates. Used by the wizard's per-angle ghost picker and
       // Edit team's change-ghost flow.
       const candidates = await listAvailableCandidatesWithAssignments({ ghost: request.body?.ghost === true });
       const context = {
         now,
-        sundayRotaPersonIds: rotaSet,
         plPracticeArea: actor.practiceArea ?? "",
       };
       const ranked = rankCandidates(candidates, context);
       const blocked = applyFirstDeliverableBlock(ranked, candidates, hour);
+      // Allocation prefers free people on the PL's own team first (2026-07-23);
+      // ghost allocation stays pure-load (no team preference).
       const { perAngle, totalEligible, projectStatus } = allocateAcrossAngles(
         blocked,
-        angleInputs as { key: string; staffCount: number }[]
+        angleInputs as { key: string; staffCount: number }[],
+        request.body?.ghost === true ? null : actor.teamId
       );
       return { ranked: blocked, perAngle, totalEligible, projectStatus };
     }
@@ -530,10 +531,10 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
         if (autoAngles.length > 0) {
           const now = resolveNow(request);
           const hour = dubaiHour(now);
-          const rotaSet = await sundayRotaPersonIdsForDate(dubaiDateKey(now));
-          const ghostContext = { now, sundayRotaPersonIds: rotaSet, plPracticeArea: actor.practiceArea ?? "" };
+          const ghostContext = { now, plPracticeArea: actor.practiceArea ?? "" };
           const ghostCandidates = await listAvailableCandidatesWithAssignments({ ghost: true });
           const ghostRanked = applyFirstDeliverableBlock(rankCandidates(ghostCandidates, ghostContext), ghostCandidates, hour);
+          // Ghost allocation stays pure lowest-load — team preference is for real deliverers only.
           const { perAngle } = allocateAcrossAngles(
             ghostRanked,
             autoAngles.map((a) => ({ key: a.id, staffCount: 1 }))
@@ -833,10 +834,9 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
       if (project.status !== "open") throw badRequest("project is not open");
 
       const now = resolveNow(request);
-      const rotaSet = await sundayRotaPersonIdsForDate(dubaiDateKey(now));
       const elig = isEligible(
         { id: actor.id, status: actor.status, eveningCoverage: actor.eveningCoverage },
-        { now, sundayRotaPersonIds: rotaSet }
+        { now }
       );
       if (!elig.eligible) throw forbidden(`not eligible right now: ${elig.reason}`);
 

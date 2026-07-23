@@ -15,12 +15,10 @@ import {
 import { listAssignmentsByAngle, updateAssignmentGoal } from "../repositories/assignments";
 import { insertAuditLog } from "../repositories/auditLog";
 import { findProjectById } from "../repositories/projects";
-import { sundayRotaPersonIdsForDate } from "../services/candidates";
 import { badRequest, conflict, forbidden, notFound } from "../errors";
 import { isEligible } from "../rules/eligibility";
 import { canEditProjectFields } from "../rules/permissions";
 import { suggestGoal } from "../rules/suggestedGoal";
-import { dubaiDateKey } from "../rules/time";
 import type { ProjectType } from "../rules/types";
 import { notify } from "../services/notify";
 import { resolveNow } from "../lib/requestTime";
@@ -200,10 +198,9 @@ const anglesRoutes: FastifyPluginAsync = async (app) => {
       if (project.status !== "open") throw badRequest("this angle is not open for claiming");
 
       const now = resolveNow(request);
-      const rotaSet = await sundayRotaPersonIdsForDate(dubaiDateKey(now));
       const elig = isEligible(
         { id: actor.id, status: actor.status, eveningCoverage: actor.eveningCoverage },
-        { now, sundayRotaPersonIds: rotaSet }
+        { now }
       );
       if (!elig.eligible) throw forbidden(`not eligible right now: ${elig.reason}`);
 

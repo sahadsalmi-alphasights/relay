@@ -1,11 +1,11 @@
 import type { FastifyPluginAsync } from "fastify";
 import { config } from "../config";
 import { resolveNow } from "../lib/requestTime";
-import { listAvailableCandidatesWithAssignments, sundayRotaPersonIdsForDate } from "../services/candidates";
+import { listAvailableCandidatesWithAssignments } from "../services/candidates";
 import { isEligible } from "../rules/eligibility";
 import { personLoad, personRawRemaining } from "../rules/load";
 import { median } from "../rules/median";
-import { dubaiDateKey, dubaiHour } from "../rules/time";
+import { dubaiHour } from "../rules/time";
 
 /**
  * This is the single most expensive read in the app — it pulls every open
@@ -32,24 +32,25 @@ async function compute(request: import("fastify").FastifyRequest, ghost: boolean
 > {
   const now = resolveNow(request);
   const hour = dubaiHour(now);
-  const rotaSet = await sundayRotaPersonIdsForDate(dubaiDateKey(now));
   const people = await listAvailableCandidatesWithAssignments({ ghost });
-  const rawRemainders = people.map((p) => personRawRemaining(p.assignments));
-  const med = median(rawRemainders);
-  const ranked = people.map((p) => {
-    const elig = isEligible(
-      { id: p.id, status: p.status, eveningCoverage: p.eveningCoverage },
-      { now, sundayRotaPersonIds: rotaSet }
-    );
-    return {
-      personId: p.id,
-      practiceArea: p.practiceArea,
-      load: personLoad(p.assignments, hour),
-      rawRemaining: personRawRemaining(p.assignments),
-      free: personRawRemaining(p.assignments) <= med,
-      eligible: elig.eligible,
-    };
-  });
+  // Free/Busy is judged on weighted LOAD now (2026-07-23): the median is taken
+  // over ONLINE (eligible) people's load; anyone at/below it is Free, above is
+  // Busy. Offline people (evening coverage off after 7pm) still show as "Off"
+  // and don't move the median.
+  const rows = people.map((p) => ({
+    p,
+    elig: isEligible({ id: p.id, status: p.status, eveningCoverage: p.eveningCoverage }, { now }),
+    load: personLoad(p.assignments, hour),
+  }));
+  const medLoad = median(rows.filter((r) => r.elig.eligible).map((r) => r.load));
+  const ranked = rows.map(({ p, elig, load }) => ({
+    personId: p.id,
+    practiceArea: p.practiceArea,
+    load,
+    rawRemaining: personRawRemaining(p.assignments),
+    free: load <= medLoad,
+    eligible: elig.eligible,
+  }));
   ranked.sort((a, b) => a.load - b.load);
   return ranked;
 }

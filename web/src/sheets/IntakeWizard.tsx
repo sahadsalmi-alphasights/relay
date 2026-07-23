@@ -727,9 +727,7 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
                                   {nameOf(r.personId)} <span style={{ color: "var(--soft)", fontWeight: 500 }}>· {practiceOf(r.personId)}</span>
                                 </div>
                                 <div className="assignee-sub">
-                                  {r.ineligibleReason === "not_on_sunday_rota"
-                                    ? "Not on today's Sunday rota"
-                                    : r.ineligibleReason === "first_deliverable_conflict"
+                                  {r.ineligibleReason === "first_deliverable_conflict"
                                     ? "Busy — first deliverable elsewhere"
                                     : "Evening coverage off — applies from 7pm"}
                                 </div>

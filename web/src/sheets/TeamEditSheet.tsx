@@ -362,9 +362,7 @@ export default function TeamEditSheet({
                   </div>
                   <div className="assignee-sub">
                     {!r.eligible
-                      ? r.ineligibleReason === "not_on_sunday_rota"
-                        ? "Not on today's rota"
-                        : r.ineligibleReason === "first_deliverable_conflict"
+                      ? r.ineligibleReason === "first_deliverable_conflict"
                         ? "Busy — first deliverable elsewhere"
                         : "Evening coverage off — applies from 7pm"
                       : r.free

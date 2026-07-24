@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import { buildAuthorizationUrl, exchangeCallback, type OidcTransaction } from "../auth/oidc";
-import { SESSION_COOKIE } from "../auth/plugin";
+import { encodeSession, SESSION_COOKIE, SESSION_TTL_MS } from "../auth/plugin";
 import { config } from "../config";
 import { badRequest, forbidden, notFound } from "../errors";
 import {
@@ -15,13 +15,13 @@ import {
 const OIDC_TXN_COOKIE = "relay_oidc_txn";
 
 function setSessionCookie(reply: import("fastify").FastifyReply, personId: string) {
-  reply.setCookie(SESSION_COOKIE, personId, {
+  reply.setCookie(SESSION_COOKIE, encodeSession(personId), {
     signed: true,
     httpOnly: true,
     secure: config.nodeEnv === "production",
     sameSite: "lax",
     path: "/",
-    maxAge: 60 * 60 * 24 * 7,
+    maxAge: SESSION_TTL_MS / 1000,
   });
 }
 

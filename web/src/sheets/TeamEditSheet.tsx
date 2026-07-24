@@ -364,6 +364,8 @@ export default function TeamEditSheet({
                     {!r.eligible
                       ? r.ineligibleReason === "first_deliverable_conflict"
                         ? "Busy — first deliverable elsewhere"
+                        : r.ineligibleReason === "out_to_lunch"
+                        ? "Out to lunch — back soon"
                         : "Evening coverage off — applies from 7pm"
                       : r.free
                       ? "Free"

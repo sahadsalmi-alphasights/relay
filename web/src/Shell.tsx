@@ -13,6 +13,7 @@ import UserManagementTab from "./tabs/UserManagementTab";
 import EditProjectSheet from "./sheets/EditProjectSheet";
 import IntakeWizard from "./sheets/IntakeWizard";
 import MorningCallsSoldDialog from "./sheets/MorningCallsSoldDialog";
+import { EveningCoveragePrompt, LunchPrompt } from "./sheets/DayPromptDialogs";
 import MoreSheet from "./sheets/MoreSheet";
 import NotesSheet from "./sheets/NotesSheet";
 import RotaSheet from "./sheets/RotaSheet";
@@ -237,6 +238,8 @@ export default function Shell() {
     return (
       <div className="app-shell">
         <MorningCallsSoldDialog onActioned={bumpReload} />
+        <LunchPrompt />
+        <EveningCoveragePrompt />
         <Sidebar
           tab={tab}
           setTab={setTab}
@@ -275,6 +278,8 @@ export default function Shell() {
   return (
     <div className="relay">
       <MorningCallsSoldDialog onActioned={bumpReload} />
+      <LunchPrompt />
+      <EveningCoveragePrompt />
       <Header
         scope={scope}
         setScope={setScope}

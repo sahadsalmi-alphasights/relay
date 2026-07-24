@@ -26,6 +26,8 @@ type PersonSeed = {
   practiceArea: string;
   status: "Available" | "On vacation" | "Sick" | "Offline";
   eveningCoverage: boolean;
+  /** "Invisible competition" — dummy ghost-pool people so the multi-ghost flows are demoable locally. */
+  isGhost?: boolean;
 };
 
 const PEOPLE: PersonSeed[] = [
@@ -41,6 +43,10 @@ const PEOPLE: PersonSeed[] = [
   { email: "resource.mu@example.test", name: "Resource_Mu", team: "Team_Beta", isManager: false, practiceArea: "Tech", status: "Offline", eveningCoverage: false },
   // No team yet — demonstrates §7a onboarding and the §7b "add existing person to my team" flow.
   { email: "resource.unassigned@example.test", name: "Resource_Unassigned", team: null, isManager: false, practiceArea: "Tech", status: "Available", eveningCoverage: false },
+  // "Invisible competition" — two ghost-flagged people so the ghost pool (and
+  // multiple ghosts on one angle) can be exercised with dummy data.
+  { email: "ghost.omicron@example.test", name: "Ghost_Omicron", team: "Team_Alpha", isManager: false, practiceArea: "Tech", status: "Available", eveningCoverage: true, isGhost: true },
+  { email: "ghost.sigma@example.test", name: "Ghost_Sigma", team: "Team_Beta", isManager: false, practiceArea: "Energy", status: "Available", eveningCoverage: true, isGhost: true },
 ];
 
 async function seed(client: PoolClient) {
@@ -59,9 +65,9 @@ async function seed(client: PoolClient) {
   const personIdByName = new Map<string, string>();
   for (const p of PEOPLE) {
     const { rows } = await client.query<{ id: string }>(
-      `INSERT INTO person (email, name, team_id, is_manager, practice_area, status, evening_coverage)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-      [p.email, p.name, p.team ? teamIdByName.get(p.team) : null, p.isManager, p.practiceArea, p.status, p.eveningCoverage]
+      `INSERT INTO person (email, name, team_id, is_manager, practice_area, status, evening_coverage, is_ghost)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+      [p.email, p.name, p.team ? teamIdByName.get(p.team) : null, p.isManager, p.practiceArea, p.status, p.eveningCoverage, p.isGhost ?? false]
     );
     personIdByName.set(p.name, rows[0].id);
   }

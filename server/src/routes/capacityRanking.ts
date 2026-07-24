@@ -28,7 +28,7 @@ type Ranked = Awaited<ReturnType<typeof compute>>;
 const cache = new Map<string, { at: number; inflight: Promise<Ranked> }>();
 
 async function compute(request: import("fastify").FastifyRequest, ghost: boolean): Promise<
-  { personId: string; practiceArea: string | null; load: number; rawRemaining: number; free: boolean; eligible: boolean }[]
+  { personId: string; practiceArea: string | null; load: number; rawRemaining: number; free: boolean; eligible: boolean; lunch: boolean }[]
 > {
   const now = resolveNow(request);
   const hour = dubaiHour(now);
@@ -39,7 +39,10 @@ async function compute(request: import("fastify").FastifyRequest, ghost: boolean
   // and don't move the median.
   const rows = people.map((p) => ({
     p,
-    elig: isEligible({ id: p.id, status: p.status, eveningCoverage: p.eveningCoverage }, { now }),
+    elig: isEligible(
+      { id: p.id, status: p.status, eveningCoverage: p.eveningCoverage, outToLunch: p.outToLunch },
+      { now }
+    ),
     load: personLoad(p.assignments, hour),
   }));
   const medLoad = median(rows.filter((r) => r.elig.eligible).map((r) => r.load));
@@ -50,6 +53,10 @@ async function compute(request: import("fastify").FastifyRequest, ghost: boolean
     rawRemaining: personRawRemaining(p.assignments),
     free: load <= medLoad,
     eligible: elig.eligible,
+    // "Out to Lunch" — unlike sick/vacation/offline (dropped from the list
+    // entirely), a lunch person stays visible, flagged, so the ranking shows
+    // WHY they're not first up rather than making them vanish for an hour.
+    lunch: p.outToLunch,
   }));
   ranked.sort((a, b) => a.load - b.load);
   return ranked;

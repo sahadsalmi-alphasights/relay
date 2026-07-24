@@ -14,6 +14,8 @@ export interface CandidateWithAssignments {
   id: string;
   status: PersonStatus;
   eveningCoverage: boolean;
+  /** "Out to Lunch" — live self-serve toggle; feeds isEligible() the same way eveningCoverage does. */
+  outToLunch: boolean;
   practiceArea: string | null;
   teamId: string | null;
   assignments: WeightedAssignment[];
@@ -42,8 +44,8 @@ export async function listAvailableCandidatesWithAssignments(opts?: {
   ghost?: boolean;
 }): Promise<CandidateWithAssignments[]> {
   const { rows: people } = await pool.query(
-    `SELECT id, status, evening_coverage AS "eveningCoverage", practice_area AS "practiceArea",
-            team_id AS "teamId"
+    `SELECT id, status, evening_coverage AS "eveningCoverage", out_to_lunch AS "outToLunch",
+            practice_area AS "practiceArea", team_id AS "teamId"
      FROM person
      WHERE status = 'Available' AND is_manager = false AND is_owner = false AND is_ghost = $1
        AND deactivated_at IS NULL`,

@@ -1,4 +1,5 @@
 import cors from "@fastify/cors";
+import rateLimit from "@fastify/rate-limit";
 import websocketPlugin from "@fastify/websocket";
 import Fastify, { type FastifyInstance } from "fastify";
 import authPlugin from "./auth/plugin";
@@ -26,13 +27,43 @@ import { startStaleScheduler } from "./services/staleScheduler";
 import { startBroadcastRepingScheduler } from "./services/broadcast";
 
 export function buildApp(): FastifyInstance {
-  const app = Fastify({ logger: true });
+  // trustProxy: every production request arrives via nginx (which itself sits
+  // behind the Cloudflare tunnel), so the socket address is always the proxy —
+  // X-Forwarded-For is what carries the real client. The origin is not
+  // directly reachable, so the header can't be spoofed from outside.
+  const app = Fastify({ logger: true, trustProxy: true });
 
   // The web app runs on a different port (different origin); cookies need
-  // an exact origin + credentials:true, not a wildcard.
-  app.register(cors, { origin: config.webOrigin, credentials: true });
+  // an exact origin + credentials:true, not a wildcard. Methods are explicit
+  // because @fastify/cors v10+ defaults to the CORS-safelisted set
+  // (GET,HEAD,POST) — which silently breaks the app's PATCH/DELETE routes in
+  // any cross-origin setup (local dev; production is same-origin via nginx).
+  app.register(cors, {
+    origin: config.webOrigin,
+    credentials: true,
+    methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE"],
+  });
   app.register(authPlugin);
   app.register(websocketPlugin);
+
+  // Production only, same gating pattern as the capacity-ranking cache: the
+  // integration tests fire hundreds of requests from one address and would
+  // trip any limit worth having. Keyed per authenticated user first — the
+  // whole office shares one egress IP, so an IP bucket would throttle
+  // everyone collectively during busy hours. The auth plugin registers its
+  // onRequest hook before this one, so request.actor is already resolved.
+  // Unauthenticated traffic (login flows) falls back to the
+  // Cloudflare-reported client IP, then the trustProxy-resolved one.
+  if (config.nodeEnv === "production") {
+    app.register(rateLimit, {
+      max: 300,
+      timeWindow: "1 minute",
+      keyGenerator: (request) =>
+        request.actor?.id ??
+        (request.headers["cf-connecting-ip"] as string | undefined) ??
+        request.ip,
+    });
+  }
 
   app.setErrorHandler((err, request, reply) => {
     if (err instanceof HttpError) {

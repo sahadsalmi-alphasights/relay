@@ -37,6 +37,35 @@ describe("isEligible — Sunday rota rule removed (2026-07-23)", () => {
   });
 });
 
+describe("isEligible — Out to Lunch (a live self-serve toggle)", () => {
+  it("excludes a person whose lunch toggle is on, at any hour", () => {
+    for (const now of [WEEKDAY_DAYTIME, WEEKDAY_EVENING, SUNDAY_DAYTIME]) {
+      const result = isEligible(
+        { id: "p1", status: "Available", eveningCoverage: true, outToLunch: true },
+        { now }
+      );
+      expect(result).toEqual({ eligible: false, reason: "out_to_lunch" });
+    }
+  });
+
+  it("status wins over lunch — a Sick person at lunch reads not_available, not out_to_lunch", () => {
+    const result = isEligible(
+      { id: "p1", status: "Sick", eveningCoverage: true, outToLunch: true },
+      { now: WEEKDAY_DAYTIME }
+    );
+    expect(result).toEqual({ eligible: false, reason: "not_available" });
+  });
+
+  it("toggle off (or omitted, for pre-lunch callers) changes nothing", () => {
+    expect(
+      isEligible({ id: "p1", status: "Available", eveningCoverage: true, outToLunch: false }, { now: WEEKDAY_DAYTIME })
+    ).toEqual({ eligible: true });
+    expect(
+      isEligible({ id: "p1", status: "Available", eveningCoverage: true }, { now: WEEKDAY_DAYTIME })
+    ).toEqual({ eligible: true });
+  });
+});
+
 describe("isEligible — evening coverage (a live self-serve toggle)", () => {
   it("is irrelevant during the working day, even with the toggle off", () => {
     const result = isEligible({ id: "p1", status: "Available", eveningCoverage: false }, { now: WEEKDAY_DAYTIME });

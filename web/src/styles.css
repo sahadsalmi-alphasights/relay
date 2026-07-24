@@ -312,14 +312,14 @@ a.client:hover { text-decoration:underline; }
 /* Daily nudge pop-ups (evening coverage 18:00, lunch 12:30) — small, three stacked choices. */
 .prompt-dialog { text-align:left; max-width:400px; }
 .prompt-actions { display:flex; flex-direction:column; gap:8px; margin-top:16px; }
-/* Delivery cards (2026-07-24, revised) — two-tone so the card stands off the
-   grey board: WHITE body ("everything from the clock/timer down") with a
-   light-grey header ("the above section"). No entity tint on the header —
-   the client logo is the only coloured element. The white body is what makes
-   the card read as distinct from the light-grey board behind it. */
-.card.dl-grey { background:var(--surface); }
-.card.dl-grey .card-top { background:#ECEEF1; }
-[data-theme="dark"] .card.dl-grey .card-top { background:#0F1826; }
+/* Delivery cards (2026-07-24, revised twice) — a clean, uniform surface card
+   (white in light, elevated-dark in dark) with NO entity tint, so the client
+   logo is the only coloured element. The header is transparent so it takes
+   the card's own surface colour rather than a grey close to the board — the
+   earlier grey header sat ~5 shades off the grey board and dissolved into it
+   ("grey card on grey background"). A plain surface card contrasts cleanly on
+   the grey/navy board in both themes, same as the PL cards and the table. */
+.card.dl-grey .card-top { background:transparent; }
 /* PL card (2026-07-24) — Calls Sold is the lead metric: first and slightly larger than the profiles line below it. */
 .sold-primary { margin-top:10px; }
 .sold-primary .progress-num { font-size:18px; }

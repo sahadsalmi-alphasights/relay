@@ -63,8 +63,8 @@ export default function MoreSheet({
       </button>
 
       <button className="more-item" onClick={() => { onClose(); onOpenRota(); }}>
-        <span className="ico" style={ico("first-deliverables.png")} aria-hidden="true" />
-        Sunday rota
+        <span aria-hidden="true" style={{ fontSize: 15, width: 18, textAlign: "center" }}>🗓</span>
+        Sunday Coverage
         <span className="more-chevron">›</span>
       </button>
 

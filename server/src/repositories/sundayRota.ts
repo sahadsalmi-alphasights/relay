@@ -30,6 +30,23 @@ export async function listRotaForTeam(teamId: string, from?: string, to?: string
   return rows;
 }
 
+/** BU-wide rota (2026-07-24) — every team's entries, for the Sunday Coverage page. */
+export async function listAllRota(from?: string, to?: string): Promise<SundayRotaRow[]> {
+  const params: unknown[] = [];
+  const clauses: string[] = [];
+  if (from) {
+    params.push(from);
+    clauses.push(`rota_date >= $${params.length}`);
+  }
+  if (to) {
+    params.push(to);
+    clauses.push(`rota_date <= $${params.length}`);
+  }
+  const where = clauses.length ? ` WHERE ${clauses.join(" AND ")}` : "";
+  const { rows } = await pool.query(`${SELECT}${where} ORDER BY rota_date`, params);
+  return rows;
+}
+
 /** §4 Rule 2 — the set of person ids rostered for one exact Dubai calendar date. */
 export async function findRotaEntry(rotaDate: string, personId: string): Promise<SundayRotaRow | null> {
   const { rows } = await pool.query(`${SELECT} WHERE rota_date = $1 AND person_id = $2`, [rotaDate, personId]);

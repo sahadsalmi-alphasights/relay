@@ -7,7 +7,7 @@ import type { Notification as AppNotification } from "../api/types";
 import type { NotificationsState } from "../lib/useNotifications";
 import NotificationBell from "./NotificationBell";
 
-export type Tab = "PL" | "Delivery" | "Ranking" | "GhostRanking" | "FirstDel" | "AuditLog" | "Users";
+export type Tab = "PL" | "Delivery" | "Ranking" | "GhostRanking" | "FirstDel" | "AuditLog" | "Users" | "SundayRota";
 export type Scope = "mine" | "team";
 
 /**

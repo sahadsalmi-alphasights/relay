@@ -39,6 +39,13 @@ export async function listSwapRequestsForTeam(teamId: string, onlyUnresolved = t
   return rows;
 }
 
+/** BU-wide swap requests (2026-07-24) — every team's, for the Sunday Coverage page. */
+export async function listAllSwapRequests(onlyUnresolved = true): Promise<SundaySwapRequestRow[]> {
+  const sql = `${SELECT}${onlyUnresolved ? " WHERE resolved = false" : ""}`;
+  const { rows } = await pool.query(sql);
+  return rows;
+}
+
 export async function resolveSwapRequest(id: string): Promise<SundaySwapRequestRow> {
   await pool.query(`UPDATE sunday_swap_request SET resolved = true WHERE id = $1`, [id]);
   return (await findSwapRequestById(id))!;

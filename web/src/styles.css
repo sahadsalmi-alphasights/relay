@@ -536,10 +536,11 @@ a.client:hover { text-decoration:underline; }
 /* Scoped under .sidebar so this outranks the global `.app-shell button`
    colour (0,2,1 vs 0,1,1) — an unscoped .eve-toggle-row silently loses that
    specificity fight and renders in dark ink on the navy sidebar. */
-.sidebar .eve-toggle-row { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:10px; font-size:13.5px; font-weight:600; color:var(--navy-ink); text-align:left; width:100%; margin-top:8px; }
-.sidebar .eve-toggle-row:hover { background:var(--navy-hi); color:#fff; }
-.eve-toggle-row .nav-icon { width:18px; text-align:center; flex-shrink:0; }
-.eve-toggle-row .nav-label { flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.sidebar .eve-toggle-row, .sidebar .sunday-link { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:10px; font-size:13.5px; font-weight:600; color:var(--navy-ink); text-align:left; width:100%; margin-top:8px; }
+.sidebar .eve-toggle-row:hover, .sidebar .sunday-link:hover { background:var(--navy-hi); color:#fff; }
+.sidebar .sunday-link.active { background:var(--navy-hi); color:#fff; }
+.eve-toggle-row .nav-icon, .sunday-link .nav-icon { width:18px; text-align:center; flex-shrink:0; }
+.eve-toggle-row .nav-label, .sunday-link .nav-label { flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .toggle-switch { width:36px; height:20px; border-radius:999px; background:var(--navy-hi); position:relative; flex-shrink:0; transition:background .15s; }
 .toggle-switch.on { background:var(--green); }
 /* "Out to Lunch" reads as red everywhere — on means unavailable, not good-to-go. */

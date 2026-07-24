@@ -34,8 +34,15 @@ export function buildApp(): FastifyInstance {
   const app = Fastify({ logger: true, trustProxy: true });
 
   // The web app runs on a different port (different origin); cookies need
-  // an exact origin + credentials:true, not a wildcard.
-  app.register(cors, { origin: config.webOrigin, credentials: true });
+  // an exact origin + credentials:true, not a wildcard. Methods are explicit
+  // because @fastify/cors v10+ defaults to the CORS-safelisted set
+  // (GET,HEAD,POST) — which silently breaks the app's PATCH/DELETE routes in
+  // any cross-origin setup (local dev; production is same-origin via nginx).
+  app.register(cors, {
+    origin: config.webOrigin,
+    credentials: true,
+    methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE"],
+  });
   app.register(authPlugin);
   app.register(websocketPlugin);
 

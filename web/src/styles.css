@@ -312,14 +312,10 @@ a.client:hover { text-decoration:underline; }
 /* Daily nudge pop-ups (evening coverage 18:00, lunch 12:30) — small, three stacked choices. */
 .prompt-dialog { text-align:left; max-width:400px; }
 .prompt-actions { display:flex; flex-direction:column; gap:8px; margin-top:16px; }
-/* Delivery cards (2026-07-24, revised twice) — a clean, uniform surface card
-   (white in light, elevated-dark in dark) with NO entity tint, so the client
-   logo is the only coloured element. The header is transparent so it takes
-   the card's own surface colour rather than a grey close to the board — the
-   earlier grey header sat ~5 shades off the grey board and dissolved into it
-   ("grey card on grey background"). A plain surface card contrasts cleanly on
-   the grey/navy board in both themes, same as the PL cards and the table. */
-.card.dl-grey .card-top { background:transparent; }
+/* Delivery cards are colour-coded by client firm (2026-07-24) — brand top
+   edge + firm-tinted header (the shared entity-tint-N classes, same as the
+   PL board), white body. No dedicated delivery-card rule needed: it's a
+   normal .card now. */
 /* PL card (2026-07-24) — Calls Sold is the lead metric: first and slightly larger than the profiles line below it. */
 .sold-primary { margin-top:10px; }
 .sold-primary .progress-num { font-size:18px; }

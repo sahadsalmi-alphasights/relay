@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, ApiError } from "../api/client";
 import { applyCardOrder, loadCardOrder, moveBefore, saveCardOrder } from "../lib/cardOrder";
 import type { Assignment, CapacityRankRow, Project, ProjectStatus } from "../api/types";
-import { barColor, entityName, initials, overDelivered, stageClass, stageLabel, typeClass } from "../lib/format";
+import { barColor, entityBrand, entityName, initials, overDelivered, stageClass, stageLabel, typeClass } from "../lib/format";
 import EntityLogo from "../components/EntityLogo";
 import { fmtElapsed, poolState, timerClass } from "../lib/time";
 import { useApp } from "../state/AppContext";
@@ -317,8 +317,9 @@ export default function DeliveryTab({
     return (
       <div
         key={a.id}
-        className="card dl-grey"
+        className="card"
         data-project-id={p.id}
+        style={{ borderTop: `3px solid ${entityBrand(p.clientEntity)}` }}
         draggable={scope === "mine"}
         title={scope === "mine" ? "Drag to re-arrange your board" : undefined}
         onDragStart={() => (dragIdRef.current = a.id)}
@@ -327,11 +328,12 @@ export default function DeliveryTab({
         }}
         onDrop={() => scope === "mine" && dropOn(a.id)}
       >
-        {/* Delivery card restyle (2026-07-24) — light grey body, no entity
-            header tint and no brand top edge: the client LOGO is the only
-            coloured element left (per manager feedback round 2, reversing
-            item 2 of the earlier batch). */}
-        <div className="card-top">
+        {/* Card colour-coded by client firm (2026-07-24) — brand top edge +
+            firm-tinted header (BCG green, Bain/B&C red, McKinsey blue, …),
+            the same treatment the PL board uses, with a white body below. The
+            tinted header both signals the firm AND lifts the card off the
+            grey board (fixing the earlier grey-on-grey). */}
+        <div className={"card-top entity-tint-" + p.clientEntity}>
           <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
             <EntityLogo entity={p.clientEntity} />
             <div style={{ minWidth: 0 }}>

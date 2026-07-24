@@ -269,6 +269,7 @@ export default function ProjectLeadingTab({
   onPendingCount,
   onEditTeam,
   onEditProject,
+  onTransfer,
   onNotes,
   focusProject,
   focusAssignment,
@@ -281,6 +282,8 @@ export default function ProjectLeadingTab({
   onPendingCount: (n: number) => void;
   onEditTeam: (projectId: string) => void;
   onEditProject: (projectId: string) => void;
+  /** Transfer to a different PL — opens the BU-wide person picker for this project. */
+  onTransfer: (project: Project) => void;
   focusProject?: { id: string; tick: number } | null;
   /** Goal-change deep-link: open this assignment's goal/stage editor and flash its row. */
   focusAssignment?: { id: string; tick: number } | null;
@@ -543,7 +546,23 @@ export default function ProjectLeadingTab({
                   </div>
                 </div>
               </div>
-              <div className={"tag " + typeClass(p.projectType)}>{p.projectType}</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                {/* Transfer to a different PL — a small arrow the PL (or a
+                    manager) uses when they're going on vacation/sick, etc.
+                    Hidden on a foreign-team read-only view (same gate as
+                    every other project action). */}
+                {!readOnly && (
+                  <button
+                    className="transfer-arrow"
+                    title="Transfer to another PL"
+                    aria-label="Transfer to another PL"
+                    onClick={() => onTransfer(p)}
+                  >
+                    ⤴
+                  </button>
+                )}
+                <div className={"tag " + typeClass(p.projectType)}>{p.projectType}</div>
+              </div>
             </div>
             <div className="meta single-line">
               <div className="chip">

@@ -188,7 +188,8 @@ export interface Notification {
     | "goal_change_requested"
     | "goal_change_resolved"
     | "stale_first_deliverable"
-    | "open_pool";
+    | "open_pool"
+    | "project_transferred";
   title: string;
   body: string;
   entityType: string | null;

@@ -529,7 +529,7 @@ a.client:hover { text-decoration:underline; }
 /* Scoped under .sidebar so this outranks the global `.app-shell button`
    colour (0,2,1 vs 0,1,1) — an unscoped .eve-toggle-row silently loses that
    specificity fight and renders in dark ink on the navy sidebar. */
-.sidebar .eve-toggle-row, .sidebar .sunday-link { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:10px; font-size:13.5px; font-weight:600; color:var(--navy-ink); text-align:left; width:100%; margin-top:8px; }
+.sidebar .eve-toggle-row, .sidebar .sunday-link { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:10px; font-size:13.5px; font-weight:600; color:var(--navy-ink); text-align:left; width:100%; margin-top:8px; text-decoration:none; }
 .sidebar .eve-toggle-row:hover, .sidebar .sunday-link:hover { background:var(--navy-hi); color:#fff; }
 .sidebar .sunday-link.active { background:var(--navy-hi); color:#fff; }
 .eve-toggle-row .nav-icon, .sunday-link .nav-icon { width:18px; text-align:center; flex-shrink:0; }
@@ -652,7 +652,7 @@ a.client:hover { text-decoration:underline; }
   .data-table { display:block; overflow-x:auto; -webkit-overflow-scrolling:touch; white-space:nowrap; }
 }
 /* "More" sheet rows — 48px touch targets, deck icons via .ico. */
-.more-item { display:flex; align-items:center; gap:12px; width:100%; min-height:48px; padding:6px 4px; border-bottom:1px solid var(--line); font-size:14px; font-weight:600; color:var(--ink); text-align:left; }
+.more-item { display:flex; align-items:center; gap:12px; width:100%; min-height:48px; padding:6px 4px; border-bottom:1px solid var(--line); font-size:14px; font-weight:600; color:var(--ink); text-align:left; text-decoration:none; }
 .more-item:last-of-type { border-bottom:none; }
 .more-item .ico { width:20px; height:20px; }
 .more-item .more-gate { margin-left:auto; font-size:10px; font-weight:700; border-radius:5px; padding:2px 6px; background:var(--bg); color:var(--soft); }

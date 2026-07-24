@@ -68,6 +68,19 @@ export default function MoreSheet({
         <span className="more-chevron">›</span>
       </button>
 
+      {/* FAQ — external DeliveryGPT agent, opens in a new tab. */}
+      <a
+        className="more-item"
+        href="https://delivery-gpt.alphasights.com/conversations?config=c54dc25d-3773-4d3d-8cf6-509cf8bfd422&view-config-modal=true"
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={onClose}
+      >
+        <span aria-hidden="true" style={{ fontSize: 15, width: 18, textAlign: "center" }}>❓</span>
+        FAQ
+        <span className="more-chevron" aria-hidden="true">↗</span>
+      </a>
+
       {(actor.isManager || actor.isOwner) && (
         <button className="more-item" onClick={() => go("AuditLog")}>
           <span className="ico" style={ico("audit.png")} aria-hidden="true" />

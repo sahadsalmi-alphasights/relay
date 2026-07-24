@@ -23,6 +23,7 @@ import {
   listProjects,
   resurfaceProject,
   softDeleteProject,
+  transferProjectPl,
   updateProjectFields,
   type ProjectFilter,
   type ProjectRow,
@@ -801,6 +802,67 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
     publish({ type: "capacity-ranking" });
     return updated;
   });
+
+  /**
+   * "Transfer to a different PL" (2026-07-24) — hand a project's ownership to
+   * any PL in the whole BU (a PL going on vacation/sick, or a manager
+   * rebalancing). Same gate as every other project-level edit
+   * (canEditProjectFields = the current PL, or a manager/owner) — so a manager
+   * can transfer someone else's project, exactly as asked. The new PL can be
+   * anyone across the BU (everyone is a potential PL — role is per-project),
+   * excluding ghosts and deactivated accounts. Card visibility follows pl_id,
+   * so the project simply moves boards: it leaves the old PL's "Projects you
+   * lead" and appears on the new PL's.
+   */
+  app.post<{ Params: { id: string }; Body: { newPlId?: string } }>(
+    "/:id/transfer",
+    { preHandler: [app.requireAuth] },
+    async (request) => {
+      const actor = request.actor!;
+      const project = await findProjectById(request.params.id);
+      if (!project) throw notFound("project not found");
+      if (!canEditProjectFields(actor, project)) {
+        throw forbidden("only the PL or a manager may transfer this project");
+      }
+      const newPlId = request.body?.newPlId;
+      if (!newPlId) throw badRequest("newPlId is required");
+      if (newPlId === project.plId) throw badRequest("that person already leads this project");
+      const newPl = await findPersonById(newPlId);
+      if (!newPl) throw badRequest("unknown person");
+      if (newPl.deactivatedAt) throw badRequest(`${newPl.name} is deactivated`);
+      if (newPl.isGhost) throw badRequest("a ghost deliverer cannot lead a project");
+
+      const previousPlId = project.plId;
+      const updated = await transferProjectPl(project.id, newPlId);
+      await insertAuditLog({
+        entityType: "project",
+        entityId: project.id,
+        actorId: actor.id,
+        action: "transfer_pl",
+        oldValue: { plId: previousPlId },
+        newValue: { plId: newPlId },
+      });
+      // Both the old and new PL (and their teammates + the assignees) need the
+      // board to move: the card leaves one "Projects you lead" and joins the
+      // other. publishProjectChanged fans out to exactly that set.
+      const assignments = await listAssignmentsByProject(project.id);
+      await publishProjectChanged(project.id, [
+        previousPlId,
+        newPlId,
+        ...assignments.map((a) => a.delivererId),
+      ]);
+      // Tell the new owner, in the same voice as any other "this is yours now".
+      await notify({
+        personId: newPlId,
+        type: "project_transferred",
+        title: "A project was transferred to you",
+        body: `${project.client} — ${project.topic ?? "project"} is now yours to lead.`,
+        entityType: "project",
+        entityId: project.id,
+      });
+      return updated;
+    }
+  );
 
   /**
    * Batch S — soft delete. PL-only (same rule as archive — canArchiveProject

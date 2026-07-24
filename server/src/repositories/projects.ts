@@ -169,6 +169,16 @@ const PATCHABLE_COLUMNS: Record<string, string> = {
   clientEntity: "client_entity",
 };
 
+/**
+ * Transfer ownership to a different PL (2026-07-24). pl_id is deliberately
+ * NOT in PATCHABLE_COLUMNS — reassigning who owns a project is its own
+ * audited action, never a field edit, so it gets a dedicated writer and route.
+ */
+export async function transferProjectPl(id: string, newPlId: string): Promise<ProjectRow> {
+  await pool.query(`UPDATE project SET pl_id = $2 WHERE id = $1`, [id, newPlId]);
+  return (await findProjectById(id))!;
+}
+
 /** callsN/goalTotal/callsSold are no longer project fields -- edit them via repositories/angles.ts (updateAngleFields) instead. */
 export async function updateProjectFields(id: string, patch: Record<string, unknown>): Promise<ProjectRow> {
   const sets: string[] = [];

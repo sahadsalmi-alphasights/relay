@@ -17,9 +17,10 @@ import MoreSheet from "./sheets/MoreSheet";
 import NotesSheet from "./sheets/NotesSheet";
 import RotaSheet from "./sheets/RotaSheet";
 import TeamEditSheet from "./sheets/TeamEditSheet";
+import TransferPlSheet from "./sheets/TransferPlSheet";
 import TeamSheet from "./sheets/TeamSheet";
 import { api } from "./api/client";
-import type { Assignment } from "./api/types";
+import type { Assignment, Project } from "./api/types";
 import { useApp } from "./state/AppContext";
 import { useViewport } from "./lib/useViewport";
 import { dubaiDateKey, prettyDateKey } from "./lib/time";
@@ -55,6 +56,8 @@ export default function Shell() {
   const [focusAssignment, setFocusAssignment] = useState<{ id: string; tick: number } | null>(null);
   const [teamEditFor, setTeamEditFor] = useState<string | null>(null);
   const [editProjectFor, setEditProjectFor] = useState<string | null>(null);
+  // Transfer-to-another-PL: holds the full project whose card is being handed off.
+  const [transferProject, setTransferProject] = useState<Project | null>(null);
   const [notesFor, setNotesFor] = useState<NotesTarget | null>(null);
 
   const bumpReload = () => setReloadTick((t) => t + 1);
@@ -116,6 +119,7 @@ export default function Shell() {
     if (
       n.type === "delivery_logged" ||
       n.type === "goal_change_requested" ||
+      n.type === "project_transferred" ||
       (n.type === "stale_first_deliverable" && n.title.startsWith("Deliverer stalled")) ||
       (n.type === "assigned" && n.title.startsWith("Seat claimed"))
     ) {
@@ -174,6 +178,16 @@ export default function Shell() {
       {editProjectFor && (
         <EditProjectSheet projectId={editProjectFor} onClose={() => setEditProjectFor(null)} onChanged={bumpReload} />
       )}
+      {transferProject && (
+        <TransferPlSheet
+          project={transferProject}
+          onClose={() => setTransferProject(null)}
+          onTransferred={() => {
+            setTransferProject(null);
+            bumpReload();
+          }}
+        />
+      )}
       {notesFor && <NotesSheet target={notesFor} onClose={() => setNotesFor(null)} />}
       {rotaOpen && <RotaSheet onClose={() => setRotaOpen(false)} />}
       {teamOpen && (
@@ -210,6 +224,7 @@ export default function Shell() {
           onPendingCount={setPlPendingCount}
           onEditTeam={setTeamEditFor}
           onEditProject={setEditProjectFor}
+          onTransfer={setTransferProject}
           onNotes={setNotesFor}
           focusProject={focusProject}
           focusAssignment={focusAssignment}

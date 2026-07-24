@@ -165,6 +165,13 @@ a.client:hover { text-decoration:underline; }
    #E7F0FB against the McKinsey tint #E4F0FB) -- a generic definition
    affordance, not a second colour mapping for entity identity. */
 .tag { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.4px; padding:3px 8px; border-radius:6px; white-space:nowrap; border:1px solid rgba(20,25,34,.06); }
+/* Transfer-to-another-PL arrow — small, quiet, top-right of the card header;
+   brightens to the brand orange on hover so the affordance is discoverable. */
+.transfer-arrow { display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; border-radius:7px; font-size:15px; line-height:1; color:var(--soft); background:transparent; border:1px solid transparent; cursor:pointer; transition:color .12s, background .12s, border-color .12s; }
+.transfer-arrow:hover { color:var(--pl); background:var(--pl-soft); border-color:rgba(252,131,0,.25); }
+/* Transfer-PL picker sheet. */
+.transfer-search { width:100%; padding:10px 12px; border-radius:10px; border:1px solid var(--line); font-size:13px; color:var(--ink); background:var(--surface); margin-bottom:10px; }
+.transfer-list { max-height:52vh; overflow-y:auto; }
 .tag.pitch { background:var(--pl-soft); color:var(--pl); } .tag.dd { background:#F3E8FB; color:#8E3BC9; } .tag.strategy { background:#E7F0FB; color:#2C6FC9; }
 .meta { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
 .chip { font-size:11px; font-weight:600; color:var(--soft); background:var(--bg); border-radius:7px; padding:3px 7px; }

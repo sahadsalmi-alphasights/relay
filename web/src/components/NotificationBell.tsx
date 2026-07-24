@@ -25,6 +25,7 @@ const TYPE_META: Record<string, { icon: string; cls: string }> = {
   goal_change_resolved: { icon: "✅", cls: "green" },
   stale_first_deliverable: { icon: "⏰", cls: "red" },
   open_pool: { icon: "📣", cls: "blue" },
+  project_transferred: { icon: "⤴", cls: "teal" },
 };
 
 export default function NotificationBell({

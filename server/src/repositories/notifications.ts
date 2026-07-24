@@ -6,7 +6,8 @@ export type NotificationType =
   | "goal_change_resolved"
   | "stale_first_deliverable"
   | "open_pool"
-  | "delivery_logged";
+  | "delivery_logged"
+  | "project_transferred";
 
 export interface NotificationRow {
   id: string;

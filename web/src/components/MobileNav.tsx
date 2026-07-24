@@ -46,7 +46,7 @@ export default function MobileNav({
           {badgeFor(item.tab) > 0 && <span className="badge">{badgeFor(item.tab)}</span>}
         </button>
       ))}
-      <button className={tab === "GhostRanking" || tab === "AuditLog" || tab === "Users" ? "active" : ""} onClick={onMore}>
+      <button className={tab === "GhostRanking" || tab === "AuditLog" || tab === "Users" || tab === "SundayRota" ? "active" : ""} onClick={onMore}>
         <span className="menu-ico" aria-hidden="true">
           <span />
           <span />

@@ -106,6 +106,17 @@ export function canResolveSundaySwap(actor: ManagerActor, team: TeamScoped): boo
   return grantedOnOwnTeam(actor, team, "rota.manage");
 }
 
+/**
+ * Sunday coverage is a BU-wide schedule (2026-07-24): any manager (rota.manage
+ * grant) or owner may set it for ANYONE across the whole BU, not just their
+ * own team — deliberately NOT team-scoped, unlike canEditSundayRota above.
+ * The dedicated Sunday Coverage page uses this; the older team-scoped sheet
+ * still uses canEditSundayRota.
+ */
+export function canManageAnySundayRota(actor: RoleFlags): boolean {
+  return roleAllowed(actor, "rota.manage");
+}
+
 /** Audit log — matrix-adjustable per group; owners always. */
 export function canViewAuditLog(actor: RoleFlags): boolean {
   return roleAllowed(actor, "audit.view");

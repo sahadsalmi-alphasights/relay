@@ -116,6 +116,17 @@ export default function Sidebar({
         </span>
       </button>
 
+      {/* Sunday Coverage — the BU-wide rota page. Sits right under the
+          self-serve toggles; a plain nav link (not a toggle) to a full page. */}
+      <button
+        className={"sunday-link" + (tab === "SundayRota" ? " active" : "")}
+        onClick={() => setTab("SundayRota")}
+        title="Sunday coverage — the whole BU's Sunday rota"
+      >
+        <span className="nav-icon" aria-hidden="true" style={{ fontSize: 13, lineHeight: 1 }}>🗓</span>
+        <span className="nav-label">Sunday Coverage</span>
+      </button>
+
       <div className="sidebar-section-lbl">Scope</div>
       <div className="sidebar-scope">
         <button className={scope === "mine" ? "on" : ""} onClick={() => setScope("mine")}>

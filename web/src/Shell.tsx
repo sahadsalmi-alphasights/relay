@@ -16,7 +16,7 @@ import MorningCallsSoldDialog from "./sheets/MorningCallsSoldDialog";
 import { EveningCoveragePrompt, LunchPrompt } from "./sheets/DayPromptDialogs";
 import MoreSheet from "./sheets/MoreSheet";
 import NotesSheet from "./sheets/NotesSheet";
-import RotaSheet from "./sheets/RotaSheet";
+import SundayCoverageTab from "./tabs/SundayCoverageTab";
 import TeamEditSheet from "./sheets/TeamEditSheet";
 import TeamSheet from "./sheets/TeamSheet";
 import { api } from "./api/client";
@@ -46,7 +46,6 @@ export default function Shell() {
 
   const [intakeOpen, setIntakeOpen] = useState(false);
   const [teamOpen, setTeamOpen] = useState(false);
-  const [rotaOpen, setRotaOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   // Deep-link target when a notification is clicked: the tab switches AND the
   // project card scrolls into view with a highlight pulse.
@@ -176,13 +175,12 @@ export default function Shell() {
         <EditProjectSheet projectId={editProjectFor} onClose={() => setEditProjectFor(null)} onChanged={bumpReload} />
       )}
       {notesFor && <NotesSheet target={notesFor} onClose={() => setNotesFor(null)} />}
-      {rotaOpen && <RotaSheet onClose={() => setRotaOpen(false)} />}
       {teamOpen && (
         <TeamSheet
           onClose={() => setTeamOpen(false)}
           onOpenRota={() => {
             setTeamOpen(false);
-            setRotaOpen(true);
+            setTab("SundayRota");
           }}
           reloadTick={reloadTick}
           onReload={bumpReload}
@@ -194,7 +192,7 @@ export default function Shell() {
   const sundayBanner = sunday && (
     <div className="sunday-strip">
       🗓 <b>Sunday</b> — today is {prettyDateKey(dubaiDateKey(nowMs))}.{" "}
-      <button className="link-btn" onClick={() => setRotaOpen(true)}>
+      <button className="link-btn" onClick={() => setTab("SundayRota")}>
         View rota
       </button>
     </div>
@@ -231,6 +229,7 @@ export default function Shell() {
       {tab === "FirstDel" && <FirstDeliverablesTab scope={scope} reloadTick={reloadTick} onCount={setFdCount} />}
       {tab === "AuditLog" && <AuditLogTab reloadTick={reloadTick} />}
       {tab === "Users" && <UserManagementTab reloadTick={reloadTick} />}
+      {tab === "SundayRota" && <SundayCoverageTab reloadTick={reloadTick} />}
     </>
   );
 
@@ -315,7 +314,7 @@ export default function Shell() {
           onClose={() => setMoreOpen(false)}
           setTab={setTab}
           onOpenTeam={() => setTeamOpen(true)}
-          onOpenRota={() => setRotaOpen(true)}
+          onOpenRota={() => setTab("SundayRota")}
         />
       )}
 

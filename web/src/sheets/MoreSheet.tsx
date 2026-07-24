@@ -40,6 +40,11 @@ export default function MoreSheet({
     setActor(updated);
   };
 
+  const toggleLunch = async () => {
+    const updated = await api.patch<Person>("/people/me/lunch", { outToLunch: !actor.outToLunch });
+    setActor(updated);
+  };
+
   return (
     <Sheet onClose={onClose}>
       <h2>More</h2>
@@ -83,6 +88,15 @@ export default function MoreSheet({
         <span className="ico" style={ico("moon.svg")} aria-hidden="true" />
         Evening coverage
         <span className={"toggle-switch " + (actor.eveningCoverage ? "on" : "")} style={{ marginLeft: "auto", background: actor.eveningCoverage ? "var(--green)" : "var(--line)" }}>
+          <span className="thumb" />
+        </span>
+      </button>
+
+      {/* "Out to Lunch" — while on, no new allocations; red "Lunch" on the ranking. */}
+      <button className="more-item" onClick={toggleLunch}>
+        <span aria-hidden="true" style={{ fontSize: 14, width: 16, textAlign: "center" }}>🍴</span>
+        Out to Lunch
+        <span className={"toggle-switch " + (actor.outToLunch ? "on" : "")} style={{ marginLeft: "auto", background: actor.outToLunch ? "var(--red)" : "var(--line)" }}>
           <span className="thumb" />
         </span>
       </button>

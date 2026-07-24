@@ -9,6 +9,8 @@ export interface CandidatePerson {
   id: string;
   status: PersonStatus;
   eveningCoverage: boolean;
+  /** "Out to Lunch" — optional (defaults off) so pure-rule tests stay valid; the candidates service passes the live column. */
+  outToLunch?: boolean;
   practiceArea: string | null;
   /** The candidate's team — used by allocation's "own team first" preference. */
   teamId: string | null;
@@ -64,7 +66,10 @@ export function rankCandidates(
 
   const rows = availableOnly.map((c) => ({
     c,
-    elig: isEligible({ id: c.id, status: c.status, eveningCoverage: c.eveningCoverage }, { now: context.now }),
+    elig: isEligible(
+      { id: c.id, status: c.status, eveningCoverage: c.eveningCoverage, outToLunch: c.outToLunch },
+      { now: context.now }
+    ),
     load: personLoad(c.assignments, hour),
   }));
   const medLoad = median(rows.filter((r) => r.elig.eligible).map((r) => r.load));

@@ -9,6 +9,10 @@ import { useApp } from "../state/AppContext";
 type SortKey = "name" | "practice" | "team" | "load";
 
 function StatusChip({ row }: { row: CapacityRankRow }) {
+  // "Out to Lunch" — named, in red, rather than the generic "Off": the
+  // ranking should say WHY someone isn't first up when the reason is a
+  // self-serve toggle they'll flip back within the hour.
+  if (row.lunch) return <span className="mini off">Lunch</span>;
   if (!row.eligible) return <span className="mini off">Off</span>;
   return row.free ? <span className="mini free">Free</span> : <span className="mini busy">Busy</span>;
 }

@@ -199,7 +199,7 @@ const anglesRoutes: FastifyPluginAsync = async (app) => {
 
       const now = resolveNow(request);
       const elig = isEligible(
-        { id: actor.id, status: actor.status, eveningCoverage: actor.eveningCoverage },
+        { id: actor.id, status: actor.status, eveningCoverage: actor.eveningCoverage, outToLunch: actor.outToLunch },
         { now }
       );
       if (!elig.eligible) throw forbidden(`not eligible right now: ${elig.reason}`);

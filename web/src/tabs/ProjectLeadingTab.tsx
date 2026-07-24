@@ -553,10 +553,30 @@ export default function ProjectLeadingTab({
                 {p.expertPool}
                 {ps === "live" ? " · Live 2×" : ps === "dormant" ? " · Asleep" : ""}
               </div>
-              <div className="chip">
-                Sold <b>{p.callsSold}</b>
-              </div>
             </div>
+            {/* Calls Sold leads (2026-07-24) — it's the metric that matters
+                most, so it renders first and slightly larger; profiles drop
+                to second. Skipped entirely for a no-calls Pitch (N=0):
+                nothing is sellable yet. The old "Sold" meta chip is gone —
+                this line replaced it. */}
+            {p.callsN > 0 && (
+              <div className="progress sold-primary">
+                <div className="progress-top">
+                  <span className="progress-num">
+                    {p.callsSold}
+                    <small> / {p.callsN} calls sold</small>
+                  </span>
+                </div>
+                <div className="sold-pulse-bar">
+                  <span
+                    style={{
+                      width: Math.min(100, (p.callsSold / p.callsN) * 100) + "%",
+                      background: soldBarColor(p.callsSold / p.callsN),
+                    }}
+                  />
+                </div>
+              </div>
+            )}
             <div className="progress">
               <div className="progress-top">
                 <span className="progress-num">
@@ -590,7 +610,10 @@ export default function ProjectLeadingTab({
                     <div className="angle-progress-stats">
                       {multiAngle && <span className="angle-progress-name">{ang.name}</span>}
                       <span>{remainingGoal} to goal</span>
-                      {ang.callsN > 0 && (
+                      {/* Per-angle sold detail only when there IS more than one
+                          angle — the single-angle case is exactly the lead
+                          Calls Sold line above, no need to repeat it. */}
+                      {multiAngle && ang.callsN > 0 && (
                         <span>
                           {ang.callsSold} of {ang.callsN} sold
                         </span>
@@ -601,7 +624,7 @@ export default function ProjectLeadingTab({
                         <span title="This angle's expert pool">🌐 {ang.expertPool}</span>
                       )}
                     </div>
-                    {attainment !== null && (
+                    {multiAngle && attainment !== null && (
                       <div className="sold-pulse-bar">
                         <span style={{ width: Math.min(100, attainment * 100) + "%", background: soldBarColor(attainment) }} />
                       </div>

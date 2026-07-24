@@ -10,6 +10,7 @@ import {
   removeFromTeam,
   setGhostFlag,
   updateEveningCoverage,
+  updateOutToLunch,
   updatePersonStatus,
 } from "../repositories/people";
 import { badRequest, forbidden, notFound } from "../errors";
@@ -152,6 +153,24 @@ const peopleRoutes: FastifyPluginAsync = async (app) => {
         throw badRequest("eveningCoverage must be a boolean");
       }
       const updated = await updateEveningCoverage(actor.id, request.body.eveningCoverage);
+      publish({ type: "people" });
+      publish({ type: "capacity-ranking" });
+      return updated;
+    }
+  );
+
+  // "Out to Lunch" — self-serve only, exactly like evening coverage: while
+  // on, the person is ineligible for new allocations (existing work stays)
+  // and shows as a red "Lunch" chip on the Capacity Ranking.
+  app.patch<{ Body: { outToLunch: boolean } }>(
+    "/me/lunch",
+    { preHandler: [app.requireAuth] },
+    async (request) => {
+      const actor = request.actor!;
+      if (typeof request.body?.outToLunch !== "boolean") {
+        throw badRequest("outToLunch must be a boolean");
+      }
+      const updated = await updateOutToLunch(actor.id, request.body.outToLunch);
       publish({ type: "people" });
       publish({ type: "capacity-ranking" });
       return updated;

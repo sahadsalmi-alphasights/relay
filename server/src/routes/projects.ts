@@ -358,8 +358,10 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
         assignments?: { delivererId: string; goal: number; override?: { justification?: string } }[];
         /** "Invisible competition" — per-angle opt-out for ghost suggestion below; omitted means the column's own default (true). */
         invisibleCompetitionEnabled?: boolean;
-        /** Explicit ghost choice (2026-07-21): a person id uses exactly that ghost; null means "no ghost for this angle"; omitted keeps the auto-allocation. */
+        /** Explicit ghost choice (2026-07-21): a person id uses exactly that ghost; null means "no ghost for this angle"; omitted keeps the auto-allocation. Superseded by ghostDelivererIds; kept for backward compatibility. */
         ghostDelivererId?: string | null;
+        /** Multiple ghosts (2026-07-24): create exactly these ghost assignments on this angle. [] means none; omitted falls back to ghostDelivererId, then to auto-allocation. */
+        ghostDelivererIds?: string[];
         /** Expert pool per ANGLE (2026-07-21); omitted inherits the project-level pool. */
         expertPool?: string;
       }[];
@@ -434,9 +436,11 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
       // Angles that got a real associate AND are eligible for a ghost
       // suggestion (Due Diligence/Strategy only, never Pitch; toggle not
       // explicitly off). Populated in the loop, consumed by the ghost pass.
-      // `explicit` carries the wizard's per-angle choice: a person id, null
-      // ("no ghost here"), or undefined (auto-allocate, the original path).
-      const ghostEligibleAngles: { id: string; realGoal: number; explicit?: string | null }[] = [];
+      // `explicit` carries the wizard's per-angle choice, normalized to an
+      // array (multiple ghosts, 2026-07-24): a list of person ids ("create
+      // exactly these"), [] ("no ghosts here"), or undefined (auto-allocate
+      // one, the original path).
+      const ghostEligibleAngles: { id: string; realGoal: number; explicit?: string[] }[] = [];
 
       for (const ang of angleInputs) {
         // expertPool only when the wizard explicitly diverged this angle;
@@ -491,7 +495,18 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
         // to compete against, so it's never a candidate here.
         const firstRealAssignment = (ang.assignments ?? [])[0];
         if (isDDOrStrategy && firstRealAssignment && createdAngle.invisibleCompetitionEnabled) {
-          ghostEligibleAngles.push({ id: createdAngle.id, realGoal: firstRealAssignment.goal, explicit: ang.ghostDelivererId });
+          // Normalize the two body shapes: ghostDelivererIds wins when
+          // present; the legacy single ghostDelivererId maps to a one-item
+          // list (or [] for its explicit null = "no ghost").
+          const explicit =
+            ang.ghostDelivererIds !== undefined
+              ? ang.ghostDelivererIds
+              : ang.ghostDelivererId === undefined
+              ? undefined
+              : ang.ghostDelivererId === null
+              ? []
+              : [ang.ghostDelivererId];
+          ghostEligibleAngles.push({ id: createdAngle.id, realGoal: firstRealAssignment.goal, explicit });
         }
       }
 
@@ -501,31 +516,38 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
       // people). SILENT FAILURE per angle — no eligible ghost means that angle
       // simply gets none: no warning, no notification, no broadcast.
       if (ghostEligibleAngles.length > 0) {
-        // Explicit picks first (2026-07-21): the wizard now selects the ghost
-        // per angle with the same machinery as real deliverers. A person id
-        // is used verbatim (validated below), null skips the angle entirely,
-        // and undefined keeps the original auto-allocation.
-        const explicitAngles = ghostEligibleAngles.filter((a) => typeof a.explicit === "string");
+        // Explicit picks first (2026-07-21): the wizard now selects ghosts
+        // per angle with the same machinery as real deliverers. Since the
+        // multi-ghost change (2026-07-24) an angle can carry any number of
+        // explicit ghosts — one assignment per listed id, duplicates ignored.
+        // An empty list skips the angle entirely; undefined keeps the
+        // original auto-allocation.
+        const explicitAngles = ghostEligibleAngles.filter((a) => Array.isArray(a.explicit) && a.explicit.length > 0);
         const autoAngles = ghostEligibleAngles.filter((a) => a.explicit === undefined);
 
         for (const angleInfo of explicitAngles) {
-          const ghostPerson = await findPersonById(angleInfo.explicit as string);
-          if (!ghostPerson) throw badRequest("unknown ghost deliverer");
-          if (!ghostPerson.isGhost) throw badRequest(`${ghostPerson.name} is not flagged as a ghost deliverer`);
-          if (ghostPerson.deactivatedAt) throw badRequest(`${ghostPerson.name} is deactivated`);
-          const ghostAssignment = await createAssignment(angleInfo.id, ghostPerson.id, angleInfo.realGoal, true, tx);
-          ghostDelivererIds.push(ghostPerson.id);
-          ghostNotifications.push({ personId: ghostPerson.id, goal: angleInfo.realGoal });
-          await insertAuditLog(
-            {
-              entityType: "assignment",
-              entityId: ghostAssignment.id,
-              actorId: actor.id,
-              action: "ghost_assign",
-              newValue: { personId: ghostPerson.id, angleId: angleInfo.id, goal: angleInfo.realGoal, manualPick: true },
-            },
-            tx
-          );
+          const seen = new Set<string>();
+          for (const ghostId of angleInfo.explicit!) {
+            if (typeof ghostId !== "string" || seen.has(ghostId)) continue;
+            seen.add(ghostId);
+            const ghostPerson = await findPersonById(ghostId);
+            if (!ghostPerson) throw badRequest("unknown ghost deliverer");
+            if (!ghostPerson.isGhost) throw badRequest(`${ghostPerson.name} is not flagged as a ghost deliverer`);
+            if (ghostPerson.deactivatedAt) throw badRequest(`${ghostPerson.name} is deactivated`);
+            const ghostAssignment = await createAssignment(angleInfo.id, ghostPerson.id, angleInfo.realGoal, true, tx);
+            ghostDelivererIds.push(ghostPerson.id);
+            ghostNotifications.push({ personId: ghostPerson.id, goal: angleInfo.realGoal });
+            await insertAuditLog(
+              {
+                entityType: "assignment",
+                entityId: ghostAssignment.id,
+                actorId: actor.id,
+                action: "ghost_assign",
+                newValue: { personId: ghostPerson.id, angleId: angleInfo.id, goal: angleInfo.realGoal, manualPick: true },
+              },
+              tx
+            );
+          }
         }
 
         if (autoAngles.length > 0) {
@@ -835,7 +857,7 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
 
       const now = resolveNow(request);
       const elig = isEligible(
-        { id: actor.id, status: actor.status, eveningCoverage: actor.eveningCoverage },
+        { id: actor.id, status: actor.status, eveningCoverage: actor.eveningCoverage, outToLunch: actor.outToLunch },
         { now }
       );
       if (!elig.eligible) throw forbidden(`not eligible right now: ${elig.reason}`);

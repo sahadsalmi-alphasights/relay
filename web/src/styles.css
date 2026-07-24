@@ -26,10 +26,10 @@ body { margin:0; }
   --overdelivered:#D9B45A; --overdelivered-bg:#2E2712;
 }
 /* Status text on tints — brightened for dark surfaces. */
-[data-theme="dark"] .chip.t-green, [data-theme="dark"] .stage-first, [data-theme="dark"] .mini.free,
+[data-theme="dark"] .chip.t-green, [data-theme="dark"] .stage-selling, [data-theme="dark"] .mini.free,
 [data-theme="dark"] .cov-state.on, [data-theme="dark"] .live-dot.on + .clock-time { color:#52C98D; }
 [data-theme="dark"] .chip.t-amber, [data-theme="dark"] .stage-second, [data-theme="dark"] .chip.live { color:#E5A54E; }
-[data-theme="dark"] .chip.t-red, [data-theme="dark"] .stage-hail, [data-theme="dark"] .mini.off,
+[data-theme="dark"] .chip.t-red, [data-theme="dark"] .stage-hail, [data-theme="dark"] .stage-first, [data-theme="dark"] .mini.off,
 [data-theme="dark"] .warn-line, [data-theme="dark"] .err-line, [data-theme="dark"] .remove-btn { color:#F0716A; }
 [data-theme="dark"] .seg button.on-fd { color:#F0716A; }
 [data-theme="dark"] .seg button.on-al { color:#B98AE0; }
@@ -206,7 +206,10 @@ a.client:hover { text-decoration:underline; }
 .cn-body { font-size:12px; color:var(--ink); line-height:1.45; margin-top:2px; white-space:pre-wrap; }
 .cn-add { align-self:flex-start; }
 .stage-pill { font-size:11px; font-weight:700; padding:3px 8px; border-radius:7px; white-space:nowrap; }
-.stage-first { background:var(--green-bg); color:#1F7D4C; } .stage-second { background:var(--amber-bg); color:#9A5F0C; } .stage-hail { background:var(--red-bg); color:#A82F2F; } .stage-selling { background:var(--pl-soft); color:var(--pl); }
+/* Stage colour-coding (2026-07-24): First Deliverable red (most urgent),
+   Second Deliverable orange, Admin green (done delivering). Hail Mary keeps
+   a deeper red so it reads even more urgent than First. */
+.stage-first { background:var(--red-bg); color:#A82F2F; } .stage-second { background:var(--amber-bg); color:#9A5F0C; } .stage-hail { background:var(--red-bg); color:#7A1D1D; } .stage-selling { background:var(--green-bg); color:#1F7D4C; }
 .pace { margin-left:auto; font-size:11px; font-weight:700; font-family:'Space Grotesk'; display:flex; align-items:center; gap:5px; }
 .dot { width:7px; height:7px; border-radius:50%; }
 /* (bug fix, three-across) tightened for a narrower card: less vertical
@@ -304,6 +307,21 @@ a.client:hover { text-decoration:underline; }
 /* Morning calls-sold dialog — mobile gets a non-blocking reminder banner instead of the desktop dialog. */
 .morning-banner { position:sticky; top:0; z-index:30; background:var(--amber-bg); border-bottom:1px solid #F0DCB0; color:#7A520E; font-size:12px; padding:10px 16px; }
 .morning-dialog { text-align:left; }
+/* Daily nudge pop-ups (evening coverage 18:00, lunch 12:30) — small, three stacked choices. */
+.prompt-dialog { text-align:left; max-width:400px; }
+.prompt-actions { display:flex; flex-direction:column; gap:8px; margin-top:16px; }
+/* Delivery cards (2026-07-24) — light grey body; the client logo is the only
+   coloured element (no entity header tint, no brand top edge). */
+.card.dl-grey { background:#F3F4F6; }
+[data-theme="dark"] .card.dl-grey { background:#0F1826; }
+.card.dl-grey .card-top { background:transparent; }
+/* PL card (2026-07-24) — Calls Sold is the lead metric: first and slightly larger than the profiles line below it. */
+.sold-primary { margin-top:10px; }
+.sold-primary .progress-num { font-size:18px; }
+/* Delivery table view (2026-07-24). */
+.dl-view-switch { display:inline-flex; gap:4px; margin-left:12px; }
+.dl-table td { vertical-align:middle; }
+.dl-table .step { display:inline-flex; }
 .morning-dialog table.data-table td { vertical-align:top; }
 .empty { text-align:center; color:var(--soft); font-size:13px; padding:40px 20px; } .empty b { color:var(--ink); display:block; font-size:14px; margin-bottom:4px; }
 .rank-row { display:flex; align-items:center; gap:11px; background:var(--surface); border:1px solid var(--line); border-radius:13px; padding:11px 13px; margin-bottom:8px; }
@@ -516,6 +534,8 @@ a.client:hover { text-decoration:underline; }
 .eve-toggle-row .nav-label { flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .toggle-switch { width:36px; height:20px; border-radius:999px; background:var(--navy-hi); position:relative; flex-shrink:0; transition:background .15s; }
 .toggle-switch.on { background:var(--green); }
+/* "Out to Lunch" reads as red everywhere — on means unavailable, not good-to-go. */
+.toggle-switch.lunch.on { background:var(--red); }
 .toggle-switch .thumb { position:absolute; top:2px; left:2px; width:16px; height:16px; border-radius:50%; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.25); transition:left .15s; }
 .toggle-switch.on .thumb { left:18px; }
 .sidebar-section-lbl { font-size:10px; font-weight:700; letter-spacing:.6px; text-transform:uppercase; color:var(--navy-ink); margin:20px 0 8px; padding:0 8px; }

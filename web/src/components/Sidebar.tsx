@@ -50,6 +50,11 @@ export default function Sidebar({
     setActor(updated);
   };
 
+  const toggleLunch = async () => {
+    const updated = await api.patch<Person>("/people/me/lunch", { outToLunch: !actor.outToLunch });
+    setActor(updated);
+  };
+
   const badgeFor = (t: Tab): number => {
     if (t === "PL") return plPendingCount;
     if (t === "FirstDel") return fdCount;
@@ -92,6 +97,21 @@ export default function Sidebar({
         <span className="nav-icon ico" style={ico("moon.svg")} aria-hidden="true" />
         <span className="nav-label">Evening coverage</span>
         <span className={"toggle-switch " + (actor.eveningCoverage ? "on" : "")}>
+          <span className="thumb" />
+        </span>
+      </button>
+
+      {/* "Out to Lunch" — same self-serve pattern as evening coverage, one
+          tap: while on, no new projects are allocated (existing work stays)
+          and the ranking shows a red "Lunch" chip. */}
+      <button
+        className="eve-toggle-row"
+        onClick={toggleLunch}
+        title={actor.outToLunch ? "Out to Lunch ON — no new allocations. Tap to come back." : "Out to Lunch OFF — tap when you head out"}
+      >
+        <span className="nav-icon" aria-hidden="true" style={{ fontSize: 13, lineHeight: 1 }}>🍴</span>
+        <span className="nav-label">Out to Lunch</span>
+        <span className={"toggle-switch lunch " + (actor.outToLunch ? "on" : "")}>
           <span className="thumb" />
         </span>
       </button>

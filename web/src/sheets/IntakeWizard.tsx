@@ -53,8 +53,8 @@ interface AngleForm {
   overrides: Record<string, string>;
   /** "Invisible competition" — defaults on; only read for Due Diligence/Strategy angles (never Pitch). */
   invisibleCompetitionEnabled: boolean;
-  /** The ghost picked for this angle (2026-07-21): person id, or null for none. Sent explicitly so the server assigns exactly what the wizard shows. */
-  ghostPick: string | null;
+  /** The ghosts picked for this angle (multi-ghost, 2026-07-24): any number of person ids, [] for none. Sent explicitly so the server assigns exactly what the wizard shows. */
+  ghostPicks: string[];
   /** Expert pool for THIS angle (2026-07-21); "" inherits the project-level pool. */
   expertPool: "" | ExpertPool;
 }
@@ -69,7 +69,7 @@ function newAngle(callsN: string): AngleForm {
     picked: [],
     overrides: {},
     invisibleCompetitionEnabled: true,
-    ghostPick: null,
+    ghostPicks: [],
     expertPool: "",
   };
 }
@@ -224,7 +224,10 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
         prev.map((a, i) => {
           const picked = pickedByKey.get(String(i)) ?? [];
           const ghostEligible = f.projectType !== "Pitch" && a.invisibleCompetitionEnabled && picked.length > 0;
-          return { ...a, ranked: result.ranked, picked, ghostPick: ghostEligible ? defaultGhostFor() : null };
+          // Default: ONE suggested ghost, same as the server's auto pass —
+          // "+ Add another ghost" in the UI is what grows the list.
+          const defaultGhost = ghostEligible ? defaultGhostFor() : null;
+          return { ...a, ranked: result.ranked, picked, ghostPicks: defaultGhost ? [defaultGhost] : [] };
         })
       );
       setTotalEligible(result.totalEligible);
@@ -347,11 +350,11 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
               ...(r.personId in a.overrides ? { override: { justification: a.overrides[r.personId] } } : {}),
             })),
             // "Invisible competition" — only meaningful for Due Diligence/Strategy; omitted for Pitch (server default applies, harmlessly unread there).
-            // ghostDelivererId is sent EXPLICITLY (id or null) so the server
-            // assigns exactly the ghost shown in the wizard — never a silent
-            // auto-pick that differs from what the PL saw.
+            // ghostDelivererIds is sent EXPLICITLY (ids, or [] for none) so
+            // the server assigns exactly the ghosts shown in the wizard —
+            // never a silent auto-pick that differs from what the PL saw.
             ...(f.projectType !== "Pitch"
-              ? { invisibleCompetitionEnabled: a.invisibleCompetitionEnabled, ghostDelivererId: a.ghostPick }
+              ? { invisibleCompetitionEnabled: a.invisibleCompetitionEnabled, ghostDelivererIds: a.ghostPicks }
               : {}),
             // Per-angle pool only when this angle explicitly diverged; omitted
             // = NULL server-side = inherit the project pool, live.
@@ -729,6 +732,8 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
                                 <div className="assignee-sub">
                                   {r.ineligibleReason === "first_deliverable_conflict"
                                     ? "Busy — first deliverable elsewhere"
+                                    : r.ineligibleReason === "out_to_lunch"
+                                    ? "Out to lunch — back soon"
                                     : "Evening coverage off — applies from 7pm"}
                                 </div>
                               </div>
@@ -749,33 +754,80 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
                       source — never suggested, never auto-picked). Their
                       section folds shut by default so the full member list
                       stays the focus; the count shows what's inside. */}
-                  {/* "Invisible competition" — the ghost row sits at the very
-                      BOTTOM of the angle (never above real deliverers). The
-                      select is the full ranked ghost pool; Remove sends null
-                      (no ghost for this angle). Only DD/Strategy angles with
-                      at least one real pick and the toggle on. */}
+                  {/* "Invisible competition" — the ghost rows sit at the very
+                      BOTTOM of the angle (never above real deliverers). Since
+                      the multi-ghost change (2026-07-24) an angle can carry
+                      any number of ghosts: one row per pick, each its own
+                      select over the ranked ghost pool, plus "+ Add another
+                      ghost". Only DD/Strategy angles with at least one real
+                      pick and the toggle on. */}
                   {f.projectType !== "Pitch" && a.invisibleCompetitionEnabled && a.picked.length > 0 && (
-                    <div className="match-line ghost-line">
-                      <div className="avatar">👻</div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div className="assignee-name">Invisible competition</div>
-                        <div className="assignee-sub">
-                          {a.ghostPick ? "Works the same stream in parallel — never counts toward the goal." : "No ghost on this angle."}
+                    <>
+                      {a.ghostPicks.length === 0 && (
+                        <div className="match-line ghost-line">
+                          <div className="avatar">👻</div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div className="assignee-name">Invisible competition</div>
+                            <div className="assignee-sub">No ghosts on this angle.</div>
+                          </div>
                         </div>
-                      </div>
-                      <select
-                        className="stage-select"
-                        value={a.ghostPick ?? ""}
-                        onChange={(e) => updateAngle(angleIndex, { ghostPick: e.target.value || null })}
-                      >
-                        <option value="">— No ghost —</option>
-                        {ghostRanked.map((g) => (
-                          <option key={g.personId} value={g.personId}>
-                            {nameOf(g.personId)} · {g.load.toFixed(1)} load{g.eligible ? "" : " (blocked)"}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                      )}
+                      {a.ghostPicks.map((ghostId, ghostIndex) => (
+                        <div key={ghostIndex} className="match-line ghost-line">
+                          <div className="avatar">👻</div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div className="assignee-name">
+                              Invisible competition{a.ghostPicks.length > 1 ? ` #${ghostIndex + 1}` : ""}
+                            </div>
+                            <div className="assignee-sub">Works the same stream in parallel — never counts toward the goal.</div>
+                          </div>
+                          <select
+                            className="stage-select"
+                            value={ghostId}
+                            onChange={(e) => {
+                              const next = [...a.ghostPicks];
+                              next[ghostIndex] = e.target.value;
+                              updateAngle(angleIndex, { ghostPicks: next.filter(Boolean) });
+                            }}
+                          >
+                            {ghostRanked
+                              // A ghost can hold only one seat per angle — hide ids already picked on this angle's OTHER rows.
+                              .filter((g) => g.personId === ghostId || !a.ghostPicks.includes(g.personId))
+                              .map((g) => (
+                                <option key={g.personId} value={g.personId}>
+                                  {nameOf(g.personId)} · {g.load.toFixed(1)} load{g.eligible ? "" : " (blocked)"}
+                                </option>
+                              ))}
+                          </select>
+                          <button
+                            type="button"
+                            className="btn-sm btn-ghost"
+                            style={{ marginLeft: 6 }}
+                            onClick={() =>
+                              updateAngle(angleIndex, { ghostPicks: a.ghostPicks.filter((_, j) => j !== ghostIndex) })
+                            }
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))}
+                      {(() => {
+                        const unused = ghostRanked.filter((g) => !a.ghostPicks.includes(g.personId));
+                        if (unused.length === 0) return null;
+                        return (
+                          <button
+                            type="button"
+                            className="btn-sm btn-ghost"
+                            style={{ marginTop: 6 }}
+                            onClick={() =>
+                              updateAngle(angleIndex, { ghostPicks: [...a.ghostPicks, unused[0].personId] })
+                            }
+                          >
+                            👻 + Add another ghost
+                          </button>
+                        );
+                      })()}
+                    </>
                   )}
 
                   {(() => {

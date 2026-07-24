@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, ApiError } from "../api/client";
 import { applyCardOrder, loadCardOrder, moveBefore, saveCardOrder } from "../lib/cardOrder";
 import type { Assignment, CapacityRankRow, Project, ProjectStatus } from "../api/types";
-import { barColor, entityBrand, initials, overDelivered, stageClass, stageLabel, typeClass } from "../lib/format";
+import { barColor, initials, overDelivered, stageClass, stageLabel, typeClass } from "../lib/format";
 import EntityLogo from "../components/EntityLogo";
 import { fmtElapsed, poolState, timerClass } from "../lib/time";
 import { useApp } from "../state/AppContext";
@@ -146,6 +146,16 @@ export default function DeliveryTab({
   const { actor, people, nameOf, nowMs, demoHour, effectiveHour, effectiveAfterHours } = useApp();
   const dlCacheKey = `${scope}:${teamView}`;
   const [items, setItems] = useState<DeliveryItem[] | null>(dlBoardCache.get(dlCacheKey) ?? null);
+  // Card/Table view switcher (2026-07-24) — persisted per person in this
+  // browser, same pattern as the drag order.
+  const viewKey = `captracker-dl-view-${actor.id}`;
+  const [view, setViewState] = useState<"cards" | "table">(() =>
+    localStorage.getItem(viewKey) === "table" ? "table" : "cards"
+  );
+  const setView = (v: "cards" | "table") => {
+    localStorage.setItem(viewKey, v);
+    setViewState(v);
+  };
   const [broadcasts, setBroadcasts] = useState<BroadcastRow[]>([]);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   // Drag re-arrange (My view only).
@@ -307,9 +317,8 @@ export default function DeliveryTab({
     return (
       <div
         key={a.id}
-        className="card"
+        className="card dl-grey"
         data-project-id={p.id}
-        style={{ borderTop: `3px solid ${entityBrand(p.clientEntity)}` }}
         draggable={scope === "mine"}
         title={scope === "mine" ? "Drag to re-arrange your board" : undefined}
         onDragStart={() => (dragIdRef.current = a.id)}
@@ -318,11 +327,11 @@ export default function DeliveryTab({
         }}
         onDrop={() => scope === "mine" && dropOn(a.id)}
       >
-        {/* Manager feedback batch, item 2 — same header tint as the project
-            board (§format.ts CLIENT_ENTITY_MAP, one shared config, not
-            duplicated) -- managers reported the delivery board had no
-            colour at all. */}
-        <div className={"card-top entity-tint-" + p.clientEntity}>
+        {/* Delivery card restyle (2026-07-24) — light grey body, no entity
+            header tint and no brand top edge: the client LOGO is the only
+            coloured element left (per manager feedback round 2, reversing
+            item 2 of the earlier batch). */}
+        <div className="card-top">
           <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
             <EntityLogo entity={p.clientEntity} />
             <div style={{ minWidth: 0 }}>
@@ -434,6 +443,100 @@ export default function DeliveryTab({
     );
   };
 
+  // Table view (2026-07-24) — one row per project assignment, wide layout.
+  // The two delivered columns carry the exact same +/- steppers (and the
+  // same ownership-only gate) as the cards; nothing about what a person may
+  // log changes with the view.
+  const renderTable = (rows: DeliveryItem[], showDeliverer: boolean) => (
+    <div style={{ overflowX: "auto" }}>
+      <table className="data-table dl-table">
+        <thead>
+          <tr>
+            {showDeliverer && <th>Deliverer</th>}
+            <th>Client</th>
+            <th>Client User</th>
+            <th>Project Name</th>
+            <th>Project Stage</th>
+            <th>Goal Progress</th>
+            <th>System Delivered</th>
+            <th>Custom Delivered</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(({ project: p, assignment: a, multiAngle }) => {
+            const doneAll = a.delivered + a.customDelivered;
+            const own = a.delivererId === actor.id;
+            return (
+              <tr key={a.id} data-project-id={p.id}>
+                {showDeliverer && (
+                  <td>
+                    {nameOf(a.delivererId)}
+                    {a.isGhost ? " 👻" : ""}
+                  </td>
+                )}
+                <td>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <EntityLogo entity={p.clientEntity} size={20} />
+                    {p.client}
+                  </div>
+                </td>
+                <td>{p.account || "—"}</td>
+                <td>
+                  <a className="client" style={{ fontSize: 13 }} href={p.projectLink} target="_blank" rel="noopener noreferrer">
+                    {p.topic || p.client}
+                  </a>
+                  {multiAngle ? <span style={{ color: "var(--soft)" }}> · {a.angleName}</span> : ""}
+                </td>
+                <td>
+                  <span className={"stage-pill " + stageClass(a.stage)}>{stageLabel(a.stage)}</span>
+                </td>
+                <td className="mono">
+                  {doneAll} of {a.goal}
+                </td>
+                <td>
+                  <div className="step">
+                    <button disabled={!own} onClick={() => patchProgress(a.id, { delivered: Math.max(0, a.delivered - 1) })}>
+                      −
+                    </button>
+                    <span className="val">{a.delivered}</span>
+                    <button disabled={!own} onClick={() => patchProgress(a.id, { delivered: a.delivered + 1 })}>
+                      +
+                    </button>
+                  </div>
+                </td>
+                <td>
+                  <div className="step">
+                    <button
+                      disabled={!own}
+                      onClick={() => patchProgress(a.id, { customDelivered: Math.max(0, a.customDelivered - 1) })}
+                    >
+                      −
+                    </button>
+                    <span className="val">{a.customDelivered}</span>
+                    <button disabled={!own} onClick={() => patchProgress(a.id, { customDelivered: a.customDelivered + 1 })}>
+                      +
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+
+  const viewSwitcher = (
+    <span className="dl-view-switch" role="group" aria-label="Board view">
+      <button className={"btn-sm " + (view === "cards" ? "btn-dl" : "btn-ghost")} onClick={() => setView("cards")}>
+        Cards
+      </button>
+      <button className={"btn-sm " + (view === "table" ? "btn-dl" : "btn-ghost")} onClick={() => setView("table")}>
+        Table
+      </button>
+    </span>
+  );
+
   return (
     <>
       {visibleBroadcasts.length > 0 && (
@@ -538,13 +641,16 @@ export default function DeliveryTab({
         <>
           <div className="section-lbl">
             Team — assigned <span className="count">{items.length}</span>
-            {manyGroups && (
+            {viewSwitcher}
+            {view === "cards" && manyGroups && (
               <button className="link-btn" style={{ marginLeft: 10 }} onClick={() => setAllGroupsOpen((o) => !o)}>
                 {allGroupsOpen ? "Collapse all" : "Expand all"}
               </button>
             )}
           </div>
-          {teamMembers.map((person) => {
+          {view === "table" && renderTable(items, true)}
+          {view === "cards" &&
+          teamMembers.map((person) => {
             const personItems = items.filter((it) => it.assignment.delivererId === person.id);
             const open = groupOpen[person.id] ?? (allGroupsOpen || !manyGroups);
             return (
@@ -572,13 +678,14 @@ export default function DeliveryTab({
         <>
           <div className="section-lbl">
             Assigned to you <span className="count">{items.length}</span>
+            {viewSwitcher}
           </div>
           {items.length === 0 && (
             <div className="empty">
               <b>Nothing assigned</b>When a PL staffs you, it lands here.
             </div>
           )}
-          <div className="card-grid">{mineOrdered.map(renderCard)}</div>
+          {view === "table" ? renderTable(mineOrdered, false) : <div className="card-grid">{mineOrdered.map(renderCard)}</div>}
         </>
       )}
     </>

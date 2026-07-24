@@ -13,6 +13,8 @@ export interface PersonRow {
   practiceArea: string | null;
   status: PersonStatus;
   eveningCoverage: boolean;
+  /** "Out to Lunch" — self-serve live toggle; while on, ineligible for new allocations (shows as red "Lunch" on the ranking). */
+  outToLunch: boolean;
   /** "Invisible competition" — manager-set, team-scoped, reversible. Never defaulted true. */
   isGhost: boolean;
   lastLoginAt: string | null;
@@ -27,7 +29,7 @@ export function roleOf(p: { isOwner: boolean; isManager: boolean }): Role {
 const SELECT = `
   SELECT id, email, name, team_id AS "teamId", is_manager AS "isManager",
          is_owner AS "isOwner", practice_area AS "practiceArea", status,
-         evening_coverage AS "eveningCoverage", is_ghost AS "isGhost",
+         evening_coverage AS "eveningCoverage", out_to_lunch AS "outToLunch", is_ghost AS "isGhost",
          last_login_at AS "lastLoginAt", deactivated_at AS "deactivatedAt"
   FROM person`;
 
@@ -74,6 +76,12 @@ export async function updatePersonStatus(id: string, status: PersonStatus): Prom
 
 export async function updateEveningCoverage(id: string, eveningCoverage: boolean): Promise<PersonRow> {
   await pool.query(`UPDATE person SET evening_coverage = $2 WHERE id = $1`, [id, eveningCoverage]);
+  return (await findPersonById(id))!;
+}
+
+/** "Out to Lunch" — self-serve only, same rule as evening coverage: nobody sets anyone else's. */
+export async function updateOutToLunch(id: string, outToLunch: boolean): Promise<PersonRow> {
+  await pool.query(`UPDATE person SET out_to_lunch = $2 WHERE id = $1`, [id, outToLunch]);
   return (await findPersonById(id))!;
 }
 

@@ -18,6 +18,8 @@ export interface Person {
   practiceArea: string | null;
   status: PersonStatus;
   eveningCoverage: boolean;
+  /** "Out to Lunch" — self-serve live toggle; while on, no new allocations and a red "Lunch" chip on the ranking. */
+  outToLunch: boolean;
   /** "Invisible competition" — manager-set, team-scoped, reversible. */
   isGhost: boolean;
   lastLoginAt: string | null;
@@ -141,7 +143,7 @@ export interface SundaySwapRequest {
 export interface RankedCandidate {
   personId: string;
   eligible: boolean;
-  ineligibleReason?: "no_evening_coverage" | "first_deliverable_conflict";
+  ineligibleReason?: "no_evening_coverage" | "out_to_lunch" | "first_deliverable_conflict";
   load: number;
   rawRemaining: number;
   practiceAreaMatch: boolean;
@@ -155,6 +157,8 @@ export interface CapacityRankRow {
   rawRemaining: number;
   free: boolean;
   eligible: boolean;
+  /** "Out to Lunch" — shown as a red "Lunch" chip instead of the generic "Off". */
+  lunch: boolean;
 }
 
 /** docs/AUDIT_LOG_SPEC.md — GET /audit-log. `actor` is null for a rare system-triggered entry with no acting person. */

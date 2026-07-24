@@ -17,6 +17,10 @@ const NAV_ITEMS: { tab: Tab; icon: string; label: string }[] = [
 /** AlphaSights deck icon as a CSS mask (auto-coloured via currentColor). */
 const ico = (file: string): CSSProperties => ({ ["--ico"]: `url(/icons/${file})` } as CSSProperties);
 
+/** FAQ → the DeliveryGPT agent (external, opens in a new tab). */
+const FAQ_URL =
+  "https://delivery-gpt.alphasights.com/conversations?config=c54dc25d-3773-4d3d-8cf6-509cf8bfd422&view-config-modal=true";
+
 export default function Sidebar({
   tab,
   setTab,
@@ -126,6 +130,19 @@ export default function Sidebar({
         <span className="nav-icon" aria-hidden="true" style={{ fontSize: 13, lineHeight: 1 }}>🗓</span>
         <span className="nav-label">Sunday Coverage</span>
       </button>
+
+      {/* FAQ — external link to the DeliveryGPT agent, opens in a new tab. */}
+      <a
+        className="sunday-link"
+        href={FAQ_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        title="FAQ — opens DeliveryGPT in a new tab"
+      >
+        <span className="nav-icon" aria-hidden="true" style={{ fontSize: 13, lineHeight: 1 }}>❓</span>
+        <span className="nav-label">FAQ</span>
+        <span aria-hidden="true" style={{ marginLeft: "auto", fontSize: 11, opacity: 0.6 }}>↗</span>
+      </a>
 
       <div className="sidebar-section-lbl">Scope</div>
       <div className="sidebar-scope">

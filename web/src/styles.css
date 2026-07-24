@@ -29,7 +29,9 @@ body { margin:0; }
 [data-theme="dark"] .chip.t-green, [data-theme="dark"] .stage-selling, [data-theme="dark"] .mini.free,
 [data-theme="dark"] .cov-state.on, [data-theme="dark"] .live-dot.on + .clock-time { color:#52C98D; }
 [data-theme="dark"] .chip.t-amber, [data-theme="dark"] .stage-second, [data-theme="dark"] .chip.live { color:#E5A54E; }
-[data-theme="dark"] .chip.t-red, [data-theme="dark"] .stage-hail, [data-theme="dark"] .stage-first, [data-theme="dark"] .mini.off,
+/* Hail Mary is blue now (2026-07-24), so it's out of the red group. */
+[data-theme="dark"] .stage-hail { background:#16233F; color:#8FB2F2; }
+[data-theme="dark"] .chip.t-red, [data-theme="dark"] .stage-first, [data-theme="dark"] .mini.off,
 [data-theme="dark"] .warn-line, [data-theme="dark"] .err-line, [data-theme="dark"] .remove-btn { color:#F0716A; }
 [data-theme="dark"] .seg button.on-fd { color:#F0716A; }
 [data-theme="dark"] .seg button.on-al { color:#B98AE0; }
@@ -209,7 +211,7 @@ a.client:hover { text-decoration:underline; }
 /* Stage colour-coding (2026-07-24): First Deliverable red (most urgent),
    Second Deliverable orange, Admin green (done delivering). Hail Mary keeps
    a deeper red so it reads even more urgent than First. */
-.stage-first { background:var(--red-bg); color:#A82F2F; } .stage-second { background:var(--amber-bg); color:#9A5F0C; } .stage-hail { background:var(--red-bg); color:#7A1D1D; } .stage-selling { background:var(--green-bg); color:#1F7D4C; }
+.stage-first { background:var(--red-bg); color:#A82F2F; } .stage-second { background:var(--amber-bg); color:#9A5F0C; } .stage-hail { background:#E1E9FC; color:#2A50C8; } .stage-selling { background:var(--green-bg); color:#1F7D4C; }
 .pace { margin-left:auto; font-size:11px; font-weight:700; font-family:'Space Grotesk'; display:flex; align-items:center; gap:5px; }
 .dot { width:7px; height:7px; border-radius:50%; }
 /* (bug fix, three-across) tightened for a narrower card: less vertical
@@ -310,11 +312,14 @@ a.client:hover { text-decoration:underline; }
 /* Daily nudge pop-ups (evening coverage 18:00, lunch 12:30) — small, three stacked choices. */
 .prompt-dialog { text-align:left; max-width:400px; }
 .prompt-actions { display:flex; flex-direction:column; gap:8px; margin-top:16px; }
-/* Delivery cards (2026-07-24) — light grey body; the client logo is the only
-   coloured element (no entity header tint, no brand top edge). */
-.card.dl-grey { background:#F3F4F6; }
-[data-theme="dark"] .card.dl-grey { background:#0F1826; }
-.card.dl-grey .card-top { background:transparent; }
+/* Delivery cards (2026-07-24, revised) — two-tone so the card stands off the
+   grey board: WHITE body ("everything from the clock/timer down") with a
+   light-grey header ("the above section"). No entity tint on the header —
+   the client logo is the only coloured element. The white body is what makes
+   the card read as distinct from the light-grey board behind it. */
+.card.dl-grey { background:var(--surface); }
+.card.dl-grey .card-top { background:#ECEEF1; }
+[data-theme="dark"] .card.dl-grey .card-top { background:#0F1826; }
 /* PL card (2026-07-24) — Calls Sold is the lead metric: first and slightly larger than the profiles line below it. */
 .sold-primary { margin-top:10px; }
 .sold-primary .progress-num { font-size:18px; }

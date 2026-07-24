@@ -94,7 +94,7 @@ export default function MoreSheet({
 
       {/* "Out to Lunch" — while on, no new allocations; red "Lunch" on the ranking. */}
       <button className="more-item" onClick={toggleLunch}>
-        <span aria-hidden="true" style={{ fontSize: 14, width: 16, textAlign: "center" }}>🍴</span>
+        <span aria-hidden="true" style={{ fontSize: 14, width: 16, textAlign: "center" }}>🍱</span>
         Out to Lunch
         <span className={"toggle-switch " + (actor.outToLunch ? "on" : "")} style={{ marginLeft: "auto", background: actor.outToLunch ? "var(--red)" : "var(--line)" }}>
           <span className="thumb" />

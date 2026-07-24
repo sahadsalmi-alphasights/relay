@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, ApiError } from "../api/client";
 import { applyCardOrder, loadCardOrder, moveBefore, saveCardOrder } from "../lib/cardOrder";
 import type { Assignment, CapacityRankRow, Project, ProjectStatus } from "../api/types";
-import { barColor, initials, overDelivered, stageClass, stageLabel, typeClass } from "../lib/format";
+import { barColor, entityName, initials, overDelivered, stageClass, stageLabel, typeClass } from "../lib/format";
 import EntityLogo from "../components/EntityLogo";
 import { fmtElapsed, poolState, timerClass } from "../lib/time";
 import { useApp } from "../state/AppContext";
@@ -447,12 +447,11 @@ export default function DeliveryTab({
   // The two delivered columns carry the exact same +/- steppers (and the
   // same ownership-only gate) as the cards; nothing about what a person may
   // log changes with the view.
-  const renderTable = (rows: DeliveryItem[], showDeliverer: boolean) => (
+  const renderTable = (rows: DeliveryItem[]) => (
     <div style={{ overflowX: "auto" }}>
       <table className="data-table dl-table">
         <thead>
           <tr>
-            {showDeliverer && <th>Deliverer</th>}
             <th>Client</th>
             <th>Client User</th>
             <th>Project Name</th>
@@ -468,22 +467,16 @@ export default function DeliveryTab({
             const own = a.delivererId === actor.id;
             return (
               <tr key={a.id} data-project-id={p.id}>
-                {showDeliverer && (
-                  <td>
-                    {nameOf(a.delivererId)}
-                    {a.isGhost ? " 👻" : ""}
-                  </td>
-                )}
-                <td>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <EntityLogo entity={p.clientEntity} size={20} />
-                    {p.client}
-                  </div>
+                {/* Client = just the firm logo (BCG / Bain / Growth / …) — the
+                    logo itself carries the identity, title for the name on hover. */}
+                <td title={entityName(p.clientEntity)}>
+                  <EntityLogo entity={p.clientEntity} size={24} />
                 </td>
-                <td>{p.account || "—"}</td>
+                {/* Client User = the client contact name (project.client). */}
+                <td>{p.client}</td>
                 <td>
                   <a className="client" style={{ fontSize: 13 }} href={p.projectLink} target="_blank" rel="noopener noreferrer">
-                    {p.topic || p.client}
+                    {p.topic || "—"}
                   </a>
                   {multiAngle ? <span style={{ color: "var(--soft)" }}> · {a.angleName}</span> : ""}
                 </td>
@@ -642,15 +635,17 @@ export default function DeliveryTab({
           <div className="section-lbl">
             Team — assigned <span className="count">{items.length}</span>
             {viewSwitcher}
-            {view === "cards" && manyGroups && (
+            {manyGroups && (
               <button className="link-btn" style={{ marginLeft: 10 }} onClick={() => setAllGroupsOpen((o) => !o)}>
                 {allGroupsOpen ? "Collapse all" : "Expand all"}
               </button>
             )}
           </div>
-          {view === "table" && renderTable(items, true)}
-          {view === "cards" &&
-          teamMembers.map((person) => {
+          {/* Both views group per deliverer (2026-07-24): Table view renders
+              one table PER person under their header, not one overall table
+              with a Deliverer column — the header names them, so that column
+              is dropped (showDeliverer = false). */}
+          {teamMembers.map((person) => {
             const personItems = items.filter((it) => it.assignment.delivererId === person.id);
             const open = groupOpen[person.id] ?? (allGroupsOpen || !manyGroups);
             return (
@@ -667,6 +662,8 @@ export default function DeliveryTab({
                 {open &&
                   (personItems.length === 0 ? (
                     <div className="empty team-group-empty">Nothing assigned right now.</div>
+                  ) : view === "table" ? (
+                    renderTable(personItems)
                   ) : (
                     <div className="card-grid">{personItems.map(renderCard)}</div>
                   ))}
@@ -685,7 +682,7 @@ export default function DeliveryTab({
               <b>Nothing assigned</b>When a PL staffs you, it lands here.
             </div>
           )}
-          {view === "table" ? renderTable(mineOrdered, false) : <div className="card-grid">{mineOrdered.map(renderCard)}</div>}
+          {view === "table" ? renderTable(mineOrdered) : <div className="card-grid">{mineOrdered.map(renderCard)}</div>}
         </>
       )}
     </>

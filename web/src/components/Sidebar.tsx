@@ -109,7 +109,7 @@ export default function Sidebar({
         onClick={toggleLunch}
         title={actor.outToLunch ? "Out to Lunch ON — no new allocations. Tap to come back." : "Out to Lunch OFF — tap when you head out"}
       >
-        <span className="nav-icon" aria-hidden="true" style={{ fontSize: 13, lineHeight: 1 }}>🍴</span>
+        <span className="nav-icon" aria-hidden="true" style={{ fontSize: 13, lineHeight: 1 }}>🍱</span>
         <span className="nav-label">Out to Lunch</span>
         <span className={"toggle-switch lunch " + (actor.outToLunch ? "on" : "")}>
           <span className="thumb" />

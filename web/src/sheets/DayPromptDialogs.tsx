@@ -145,7 +145,7 @@ export function LunchPrompt() {
   const inWindow = minutes >= 12 * 60 + 30 && minutes < 14 * 60 + 30 && !actor.outToLunch;
   return (
     <PromptDialog
-      icon="🍴"
+      icon="🍱"
       title="Going for lunch?"
       body="Yes sets you Out to Lunch — no new projects will be allocated to you until you toggle it off. Your current work stays yours."
       yesLabel="Yes, I'm off to lunch"

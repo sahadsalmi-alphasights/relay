@@ -18,9 +18,11 @@ import { listUnresolvedForProject } from "../repositories/goalChangeRequests";
 import { createNote, listNotesByProjectIds, listNotesForProject } from "../repositories/notes";
 import {
   archiveProject,
+  closeDeliveryForProject,
   createProject,
   findProjectById,
   listProjects,
+  reopenDeliveryForProject,
   resurfaceProject,
   softDeleteProject,
   updateProjectFields,
@@ -125,6 +127,9 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
         if (teamIds) filter.delivererIdIn = teamIds;
         else filter.delivererId = actor.id;
       }
+      // Delivery-closed projects ("archived for deliverers only") never appear
+      // on a delivering board — only on the PL board.
+      filter.deliveryOpen = true;
     }
 
     const rows = await listProjects(filter);
@@ -208,6 +213,9 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
         if (teamIds) filter.delivererIdIn = teamIds;
         else filter.delivererId = actor.id;
       }
+      // Delivery-closed projects ("archived for deliverers only") never appear
+      // on a delivering board — only on the PL board.
+      filter.deliveryOpen = true;
     }
 
     const rows = await listProjects(filter);
@@ -798,13 +806,40 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
   // §6/§8 — stage advance/back moved to POST /assignments/:id/stage/advance
   // and /back: stage is per-deliverer now, not per-project (domain change 8).
 
-  app.post<{ Params: { id: string } }>("/:id/archive", { preHandler: [app.requireAuth] }, async (request) => {
+  app.post<{ Params: { id: string }; Body: { mode?: "all" | "deliverers" } }>(
+    "/:id/archive",
+    { preHandler: [app.requireAuth] },
+    async (request) => {
+      const actor = request.actor!;
+      const project = await findProjectById(request.params.id);
+      if (!project) throw notFound("project not found");
+      if (!canArchiveProject(actor, project)) throw forbidden("only the PL or a manager may archive this project");
+      // "deliverers" (2026-07-24) — take it off every deliverer's board but
+      // keep it active on the PL board (the PL is still closing/selling).
+      // "all" (default) — archive the whole project, today's behavior.
+      const deliverersOnly = request.body?.mode === "deliverers";
+      const updated = deliverersOnly ? await closeDeliveryForProject(project.id) : await archiveProject(project.id);
+      await insertAuditLog({
+        entityType: "project",
+        entityId: project.id,
+        actorId: actor.id,
+        action: deliverersOnly ? "close_delivery" : "archive",
+      });
+      const assignments = await listAssignmentsByProject(project.id);
+      await publishProjectChanged(project.id, [project.plId, ...assignments.map((a) => a.delivererId)]);
+      publish({ type: "capacity-ranking" });
+      return updated;
+    }
+  );
+
+  // Reopen delivery — the project reappears on its deliverers' boards.
+  app.post<{ Params: { id: string } }>("/:id/reopen-delivery", { preHandler: [app.requireAuth] }, async (request) => {
     const actor = request.actor!;
     const project = await findProjectById(request.params.id);
     if (!project) throw notFound("project not found");
-    if (!canArchiveProject(actor, project)) throw forbidden("only the PL or a manager may archive this project");
-    const updated = await archiveProject(project.id);
-    await insertAuditLog({ entityType: "project", entityId: project.id, actorId: actor.id, action: "archive" });
+    if (!canArchiveProject(actor, project)) throw forbidden("only the PL or a manager may reopen delivery");
+    const updated = await reopenDeliveryForProject(project.id);
+    await insertAuditLog({ entityType: "project", entityId: project.id, actorId: actor.id, action: "reopen_delivery" });
     const assignments = await listAssignmentsByProject(project.id);
     await publishProjectChanged(project.id, [project.plId, ...assignments.map((a) => a.delivererId)]);
     publish({ type: "capacity-ranking" });

@@ -67,6 +67,8 @@ export interface Project {
   status: ProjectStatus;
   /** New set-up field — groups the PL board into rows, 1-5. */
   clientEntity: number;
+  /** "Archive for deliverers only" — non-null = off every deliverer's board, still active on the PL board. */
+  deliveryClosedAt: string | null;
 }
 
 /** Big structural change — a project always has >=1 angle. N/goal/staffing are suggested per angle from that angle's own N; a "simple" project is just one with a single angle. */
@@ -159,6 +161,8 @@ export interface CapacityRankRow {
   eligible: boolean;
   /** "Out to Lunch" — shown as a red "Lunch" chip instead of the generic "Off". */
   lunch: boolean;
+  /** Sunday coverage — true when it's Sunday and this person isn't on today's rota (shown "Off"). */
+  sundayOff: boolean;
 }
 
 /** docs/AUDIT_LOG_SPEC.md — GET /audit-log. `actor` is null for a rare system-triggered entry with no acting person. */

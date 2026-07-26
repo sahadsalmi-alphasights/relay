@@ -5,7 +5,8 @@ import { listAvailableCandidatesWithAssignments } from "../services/candidates";
 import { isEligible } from "../rules/eligibility";
 import { personLoad, personRawRemaining } from "../rules/load";
 import { median } from "../rules/median";
-import { dubaiHour } from "../rules/time";
+import { dubaiDateKey, dubaiHour, isSunday } from "../rules/time";
+import { listAllRota } from "../repositories/sundayRota";
 
 /**
  * This is the single most expensive read in the app — it pulls every open
@@ -28,15 +29,25 @@ type Ranked = Awaited<ReturnType<typeof compute>>;
 const cache = new Map<string, { at: number; inflight: Promise<Ranked> }>();
 
 async function compute(request: import("fastify").FastifyRequest, ghost: boolean): Promise<
-  { personId: string; practiceArea: string | null; load: number; rawRemaining: number; free: boolean; eligible: boolean; lunch: boolean }[]
+  { personId: string; practiceArea: string | null; load: number; rawRemaining: number; free: boolean; eligible: boolean; lunch: boolean; sundayOff: boolean }[]
 > {
   const now = resolveNow(request);
   const hour = dubaiHour(now);
   const people = await listAvailableCandidatesWithAssignments({ ghost });
+  // On Sundays only the people rostered for THAT Sunday are online (§4 Rule 2).
+  // Everyone else is flagged offline in the ranking (sundayOff) — Sunday
+  // coverage is a schedule, not a preference. This is a separate flag from
+  // `eligible` (the §4 status/evening rules) so it only affects the Sunday
+  // display, not the matching/load semantics the rest of the app reads.
+  const sunday = isSunday(now);
+  const rostered = new Set<string>();
+  if (sunday) {
+    const key = dubaiDateKey(now);
+    for (const e of await listAllRota(key, key)) rostered.add(e.personId);
+  }
   // Free/Busy is judged on weighted LOAD now (2026-07-23): the median is taken
   // over ONLINE (eligible) people's load; anyone at/below it is Free, above is
-  // Busy. Offline people (evening coverage off after 7pm) still show as "Off"
-  // and don't move the median.
+  // Busy. Offline people (evening coverage off after 7pm) still show "Off".
   const rows = people.map((p) => ({
     p,
     elig: isEligible(
@@ -57,6 +68,8 @@ async function compute(request: import("fastify").FastifyRequest, ghost: boolean
     // entirely), a lunch person stays visible, flagged, so the ranking shows
     // WHY they're not first up rather than making them vanish for an hour.
     lunch: p.outToLunch,
+    // Sunday coverage — offline unless rostered for today's Sunday.
+    sundayOff: sunday && !rostered.has(p.id),
   }));
   ranked.sort((a, b) => a.load - b.load);
   return ranked;

@@ -90,7 +90,7 @@ function goalCalcText(projectType: FormState["projectType"], callsN: number, goa
 }
 
 export default function IntakeWizard({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
-  const { nameOf, practiceOf, effectiveAfterHours, sunday, people } = useApp();
+  const { nameOf, effectiveAfterHours, sunday, people } = useApp();
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [f, setF] = useState<FormState>({
     client: "",
@@ -680,7 +680,7 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
                           <div className="avatar">{initials(nameOf(r.personId))}</div>
                           <div>
                             <div className="assignee-name">
-                              {nameOf(r.personId)} <span style={{ color: "var(--soft)", fontWeight: 500 }}>· {practiceOf(r.personId)}</span>
+                              {nameOf(r.personId)}
                             </div>
                             <div className="assignee-sub">
                               {isPicked
@@ -727,7 +727,7 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
                               <div className="avatar">{initials(nameOf(r.personId))}</div>
                               <div>
                                 <div className="assignee-name">
-                                  {nameOf(r.personId)} <span style={{ color: "var(--soft)", fontWeight: 500 }}>· {practiceOf(r.personId)}</span>
+                                  {nameOf(r.personId)}
                                 </div>
                                 <div className="assignee-sub">
                                   {r.ineligibleReason === "first_deliverable_conflict"
@@ -851,7 +851,7 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
                               <div className="avatar">{initials(m.name)}</div>
                               <div>
                                 <div className="assignee-name">
-                                  {m.name} <span style={{ color: "var(--soft)", fontWeight: 500 }}>· {m.practiceArea}</span>
+                                  {m.name}
                                 </div>
                                 <div className="assignee-sub">Manager — never suggested, always a manual pick</div>
                               </div>

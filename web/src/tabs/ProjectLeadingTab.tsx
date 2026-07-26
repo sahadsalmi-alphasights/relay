@@ -295,6 +295,8 @@ export default function ProjectLeadingTab({
   const [items, setItems] = useState<ProjectItem[] | null>(plBoardCache.get(cacheKey) ?? null);
   const [archived, setArchived] = useState<Project[]>([]);
   const [archivedOpen, setArchivedOpen] = useState(false);
+  // Archive confirm: which project is being archived (pops the two-option chooser).
+  const [archivePrompt, setArchivePrompt] = useState<{ id: string; client: string } | null>(null);
   // Drag re-arrange (My view only).
   const dragIdRef = useRef<string | null>(null);
   const [orderRev, setOrderRev] = useState(0);
@@ -394,7 +396,9 @@ export default function ProjectLeadingTab({
   // resolves without touching either. Same route, outcome in the body.
   const resolveRequest = (id: string, outcome: "accepted" | "declined") =>
     runAction(() => api.patch(`/goal-change-requests/${id}/resolve`, { outcome }));
-  const archiveProject = (id: string) => runAction(() => api.post(`/projects/${id}/archive`));
+  const archiveProject = (id: string, mode: "all" | "deliverers") =>
+    runAction(() => api.post(`/projects/${id}/archive`, { mode }));
+  const reopenDelivery = (id: string) => runAction(() => api.post(`/projects/${id}/reopen-delivery`));
   const resurface = (id: string) => runAction(() => api.post(`/projects/${id}/resurface`));
   // Batch S, item 3 — soft delete (PL / manager / owner), destructive:
   // confirm before sending. Server never hard-deletes; this flags deleted_at.
@@ -645,6 +649,12 @@ export default function ProjectLeadingTab({
                   the unstaffed case is still worth a pill (that's staffing
                   status, not a stage). */}
               {!p.earliestStage && <span className="stage-pill stage-selling">Not yet staffed</span>}
+              {/* "Archive for deliverers only" — off the team's boards, still yours. */}
+              {p.deliveryClosedAt && (
+                <span className="chip" style={{ color: "#6A4A0C", background: "var(--amber-bg)" }}>
+                  Delivery closed for team
+                </span>
+              )}
               {chase && (
                 <span className="chip" style={{ color: "#A82F2F", background: "var(--red-bg)" }}>
                   Delivered, not sold — chase client
@@ -717,9 +727,15 @@ export default function ProjectLeadingTab({
                   <button className="btn btn-ghost" onClick={() => onNotes({ projectId: p.id })}>
                     📝 Notes
                   </button>
-                  <button className="btn btn-ghost" onClick={() => archiveProject(p.id)}>
-                    Archive
-                  </button>
+                  {p.deliveryClosedAt ? (
+                    <button className="btn btn-ghost" onClick={() => reopenDelivery(p.id)} title="Delivery is closed for the team — reopen it on their boards">
+                      Reopen delivery
+                    </button>
+                  ) : (
+                    <button className="btn btn-ghost" onClick={() => setArchivePrompt({ id: p.id, client: p.client })}>
+                      Archive
+                    </button>
+                  )}
                   {/* Batch S, item 3 — destructive, confirmed in deleteProject() before the request ever goes out. */}
                   <button className="btn btn-ghost" style={{ color: "#A82F2F" }} onClick={() => deleteProject(p.id, p.client)}>
                     🗑 Delete
@@ -741,6 +757,42 @@ export default function ProjectLeadingTab({
 
   return (
     <div className="pl-board-layout">
+      {/* Archive chooser (2026-07-24) — two ways to archive: the whole
+          project, or just take it off every deliverer's board while you keep
+          it active on your board (still closing/selling). */}
+      {archivePrompt && (
+        <div className="scrim scrim-dialog" onClick={() => setArchivePrompt(null)}>
+          <div className="sheet sheet-dialog prompt-dialog" onClick={(e) => e.stopPropagation()}>
+            <h2>Archive {archivePrompt.client}?</h2>
+            <div className="sub">Choose how far this archive goes.</div>
+            <div className="prompt-actions">
+              <button
+                className="btn btn-pl"
+                onClick={() => {
+                  const id = archivePrompt.id;
+                  setArchivePrompt(null);
+                  archiveProject(id, "all");
+                }}
+              >
+                Archive — whole project (off everyone's board)
+              </button>
+              <button
+                className="btn btn-ghost"
+                onClick={() => {
+                  const id = archivePrompt.id;
+                  setArchivePrompt(null);
+                  archiveProject(id, "deliverers");
+                }}
+              >
+                Archive for all deliverers only (stays on your board)
+              </button>
+              <button className="btn btn-ghost" onClick={() => setArchivePrompt(null)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="pl-board-main">
         {myStaleProjects.length > 0 && (
           <div className="review-strip" style={{ borderColor: "#F0DCB0", background: "#FFFDF8" }}>

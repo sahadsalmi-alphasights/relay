@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { api, ApiError } from "../api/client";
 import { useViewport } from "../lib/useViewport";
+import { useApp } from "../state/AppContext";
+import { isDubaiWeekend } from "../lib/time";
 
 interface DueAngle {
   id: string;
@@ -39,6 +41,9 @@ type RowMode = "callsSold" | "archive";
  */
 export default function MorningCallsSoldDialog({ onActioned }: { onActioned: () => void }) {
   const { isDesktop } = useViewport();
+  const { nowMs } = useApp();
+  // Weekdays only (Mon–Fri Dubai) — no calls-sold nag on the Sat/Sun weekend.
+  const weekend = isDubaiWeekend(nowMs);
   const [due, setDue] = useState<DueRow[] | null>(null);
   const [modes, setModes] = useState<Record<string, RowMode>>({});
   const [values, setValues] = useState<Record<string, number>>({});
@@ -46,6 +51,7 @@ export default function MorningCallsSoldDialog({ onActioned }: { onActioned: () 
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (weekend) return;
     api.get<{ due: DueRow[] }>("/projects/calls-sold-due").then((res) => {
       setDue(res.due);
       const initialModes: Record<string, RowMode> = {};
@@ -60,7 +66,7 @@ export default function MorningCallsSoldDialog({ onActioned }: { onActioned: () 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (!due || due.length === 0) return null;
+  if (weekend || !due || due.length === 0) return null;
 
   if (!isDesktop) {
     return (

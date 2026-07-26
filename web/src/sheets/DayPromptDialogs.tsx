@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { api } from "../api/client";
 import type { Person } from "../api/types";
-import { dubaiDateKey, dubaiMinute } from "../lib/time";
+import { dubaiDateKey, dubaiMinute, isDubaiWeekend } from "../lib/time";
 import { useApp } from "../state/AppContext";
 
 /**
@@ -114,11 +114,12 @@ function useEffectiveMinutesOfDay(): number {
 
 /** 18:00 — "free for evening coverage tonight?" Yes toggles the §4 Rule 3 switch on. Remind: 1 hour. */
 export function EveningCoveragePrompt() {
-  const { actor, setActor } = useApp();
+  const { actor, setActor, nowMs } = useApp();
   const minutes = useEffectiveMinutesOfDay();
   // From 18:00 until 22:00 — late enough that an evening ask still makes
-  // sense, without greeting a night-owl login at 1am.
-  const inWindow = minutes >= 18 * 60 && minutes < 22 * 60 && !actor.eveningCoverage;
+  // sense, without greeting a night-owl login at 1am. Weekdays only
+  // (Mon–Fri Dubai) — no nagging on the Sat/Sun weekend.
+  const inWindow = !isDubaiWeekend(nowMs) && minutes >= 18 * 60 && minutes < 22 * 60 && !actor.eveningCoverage;
   return (
     <PromptDialog
       icon="🌙"
@@ -139,10 +140,11 @@ export function EveningCoveragePrompt() {
 
 /** 12:30 — "going for lunch?" Yes toggles Out to Lunch on (no new allocations; red "Lunch" on the ranking). Remind: 30 minutes. */
 export function LunchPrompt() {
-  const { actor, setActor } = useApp();
+  const { actor, setActor, nowMs } = useApp();
   const minutes = useEffectiveMinutesOfDay();
-  // 12:30–14:30 — wide enough that a 30-minute snooze (or two) still lands inside it.
-  const inWindow = minutes >= 12 * 60 + 30 && minutes < 14 * 60 + 30 && !actor.outToLunch;
+  // 12:30–14:30 — wide enough that a 30-minute snooze (or two) still lands
+  // inside it. Weekdays only (Mon–Fri Dubai).
+  const inWindow = !isDubaiWeekend(nowMs) && minutes >= 12 * 60 + 30 && minutes < 14 * 60 + 30 && !actor.outToLunch;
   return (
     <PromptDialog
       icon="🍱"

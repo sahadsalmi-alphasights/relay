@@ -18,6 +18,12 @@ export function isSunday(ms: number): boolean {
   return toDubaiShifted(ms).getUTCDay() === 0;
 }
 
+/** Weekend in Asia/Dubai = Saturday (6) or Sunday (0). Daily pop-ups stay silent on these days. */
+export function isDubaiWeekend(ms: number): boolean {
+  const d = toDubaiShifted(ms).getUTCDay();
+  return d === 0 || d === 6;
+}
+
 /**
  * Today's Dubai calendar date at the given Dubai hour, as a real UTC
  * instant (ms) — used to build the demo-clock override sent to the server,

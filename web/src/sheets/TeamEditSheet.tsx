@@ -31,7 +31,7 @@ export default function TeamEditSheet({
   onClose: () => void;
   onChanged: () => void;
 }) {
-  const { nameOf, practiceOf, people } = useApp();
+  const { nameOf, people } = useApp();
   const [project, setProject] = useState<Project | null>(null);
   const [assignments, setAssignments] = useState<Assignment[] | null>(null);
   const [angles, setAngles] = useState<Angle[] | null>(null);
@@ -167,11 +167,28 @@ export default function TeamEditSheet({
     setAddAsGhost(false);
     setError(null);
   };
+  // "Invisible competition" — a dedicated entry to add a GHOST (from the ghost
+  // pool) rather than a real deliverer. Same flow as startAdd (angle picker
+  // first on a multi-angle project), just pre-set to ghost mode so you can add
+  // different ghosts per angle. Non-Pitch only.
+  const startAddGhost = () => {
+    if (multiAngle) {
+      setAction({ mode: "add", angleId: null });
+    } else {
+      setAction({ mode: "add", angleId: angles[0].id });
+      setAddGoal(goalForAngle(angles[0].id));
+    }
+    setSelectedId(null);
+    setJustification("");
+    setAddAsGhost(true);
+    setError(null);
+  };
   const pickAngleForAdd = (angleId: string) => {
     setAction({ mode: "add", angleId });
     setAddGoal(goalForAngle(angleId));
     setSelectedId(null);
-    setAddAsGhost(false);
+    // Note: addAsGhost is deliberately NOT reset here — the real-vs-ghost
+    // intent set by startAdd/startAddGhost survives picking the angle.
   };
   const cancelAction = () => {
     setAction(null);
@@ -237,7 +254,7 @@ export default function TeamEditSheet({
               <div className="avatar">{a.isGhost ? "👻" : initials(nameOf(a.delivererId))}</div>
               <div>
                 <div className="assignee-name">
-                  {nameOf(a.delivererId)} <span style={{ color: "var(--soft)", fontWeight: 500 }}>· {practiceOf(a.delivererId)}</span>
+                  {nameOf(a.delivererId)}
                   {a.isGhost && <span className="picktag" style={{ marginLeft: 6 }}>👻 Ghost</span>}
                 </div>
                 <div className="assignee-sub">
@@ -281,6 +298,13 @@ export default function TeamEditSheet({
             <button className="btn btn-pl" style={{ width: "100%" }} onClick={startAdd}>
               + Add deliverer
             </button>
+            {/* "Invisible competition" — add a ghost (per angle) alongside real
+                deliverers. Due Diligence / Strategy only; a Pitch never has ghosts. */}
+            {project.projectType !== "Pitch" && (
+              <button className="btn btn-ghost" style={{ width: "100%" }} onClick={startAddGhost}>
+                👻 + Add ghost deliverer
+              </button>
+            )}
             <button className="close" onClick={onClose}>
               Done
             </button>
@@ -357,7 +381,7 @@ export default function TeamEditSheet({
                 <div className="avatar">{initials(nameOf(r.personId))}</div>
                 <div>
                   <div className="assignee-name">
-                    {nameOf(r.personId)} <span style={{ color: "var(--soft)", fontWeight: 500 }}>· {practiceOf(r.personId)}</span>
+                    {nameOf(r.personId)}
                     {r.personId === suggestedId && <span className="picktag" style={{ marginLeft: 6 }}>Suggested</span>}
                   </div>
                   <div className="assignee-sub">
@@ -419,7 +443,7 @@ export default function TeamEditSheet({
                   <div className="avatar">{initials(m.name)}</div>
                   <div>
                     <div className="assignee-name">
-                      {m.name} <span style={{ color: "var(--soft)", fontWeight: 500 }}>· {m.practiceArea}</span>
+                      {m.name}
                     </div>
                     <div className="assignee-sub">Manager</div>
                   </div>

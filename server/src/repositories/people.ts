@@ -85,6 +85,18 @@ export async function updateOutToLunch(id: string, outToLunch: boolean): Promise
   return (await findPersonById(id))!;
 }
 
+/** Daily reset (scheduler) — clear everyone's out-to-lunch (at 16:00 Dubai). Returns rows changed. */
+export async function resetAllOutToLunch(): Promise<number> {
+  const { rowCount } = await pool.query(`UPDATE person SET out_to_lunch = false WHERE out_to_lunch = true`);
+  return rowCount ?? 0;
+}
+
+/** Daily reset (scheduler) — evening coverage returns to its default (off) each morning. Returns rows changed. */
+export async function resetAllEveningCoverage(): Promise<number> {
+  const { rowCount } = await pool.query(`UPDATE person SET evening_coverage = false WHERE evening_coverage = true`);
+  return rowCount ?? 0;
+}
+
 /** Manager-only (enforced at the route), team-scoped, reversible. */
 export async function setGhostFlag(id: string, isGhost: boolean): Promise<PersonRow> {
   await pool.query(`UPDATE person SET is_ghost = $2 WHERE id = $1`, [id, isGhost]);

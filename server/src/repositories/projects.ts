@@ -31,6 +31,8 @@ export interface ProjectRow {
   status: ProjectStatus;
   /** New set-up field — groups the PL board into rows, 1-5, no meaning beyond a label the PL assigns. */
   clientEntity: number;
+  /** "Archive for deliverers only" (2026-07-24) — non-null = off every deliverer's board, but still active on the PL board. */
+  deliveryClosedAt: string | null;
 }
 
 const SELECT = `
@@ -39,7 +41,7 @@ const SELECT = `
          (SELECT COALESCE(SUM(ang.calls_n), 0)::int FROM angle ang WHERE ang.project_id = project.id) AS "callsN",
          (SELECT COALESCE(SUM(ang.goal_total), 0)::int FROM angle ang WHERE ang.project_id = project.id) AS "goalTotal",
          (SELECT COALESCE(SUM(ang.calls_sold), 0)::int FROM angle ang WHERE ang.project_id = project.id) AS "callsSold",
-         status, client_entity AS "clientEntity",
+         status, client_entity AS "clientEntity", delivery_closed_at AS "deliveryClosedAt",
          (SELECT a.stage FROM assignment a JOIN angle ang ON ang.id = a.angle_id WHERE ang.project_id = project.id
           ORDER BY CASE a.stage
             WHEN 'First Deliverable' THEN 0 WHEN 'Second Deliverable' THEN 1
@@ -69,6 +71,8 @@ export interface ProjectFilter {
    * actually mean; 'idle' was the third value here until Batch S removed it).
    */
   archived?: boolean;
+  /** "Archive for deliverers only" — when true, exclude projects whose delivery is closed (the delivering-role boards pass this). */
+  deliveryOpen?: boolean;
 }
 
 export async function listProjects(filter: ProjectFilter): Promise<ProjectRow[]> {
@@ -92,6 +96,9 @@ export async function listProjects(filter: ProjectFilter): Promise<ProjectRow[]>
   }
   if (filter.archived !== undefined) {
     clauses.push(filter.archived ? `status = 'archived'` : `status <> 'archived'`);
+  }
+  if (filter.deliveryOpen) {
+    clauses.push(`delivery_closed_at IS NULL`);
   }
   if (filter.delivererId) {
     params.push(filter.delivererId);
@@ -245,6 +252,18 @@ export async function setProjectStatus(id: string, status: ProjectStatus): Promi
 
 export async function archiveProject(id: string): Promise<ProjectRow> {
   await pool.query(`UPDATE project SET status = 'archived' WHERE id = $1`, [id]);
+  return (await findProjectById(id))!;
+}
+
+/** "Archive for deliverers only" — off every deliverer's board; status stays as-is (active for the PL). */
+export async function closeDeliveryForProject(id: string): Promise<ProjectRow> {
+  await pool.query(`UPDATE project SET delivery_closed_at = now() WHERE id = $1`, [id]);
+  return (await findProjectById(id))!;
+}
+
+/** Reopen delivery — the project reappears on its deliverers' boards. */
+export async function reopenDeliveryForProject(id: string): Promise<ProjectRow> {
+  await pool.query(`UPDATE project SET delivery_closed_at = NULL WHERE id = $1`, [id]);
   return (await findProjectById(id))!;
 }
 

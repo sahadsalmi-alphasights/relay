@@ -6,13 +6,15 @@ import { useSort } from "../lib/useSort";
 import { useViewport } from "../lib/useViewport";
 import { useApp } from "../state/AppContext";
 
-type SortKey = "name" | "practice" | "team" | "load";
+type SortKey = "name" | "team" | "load";
 
 function StatusChip({ row }: { row: CapacityRankRow }) {
   // "Out to Lunch" — named, in red, rather than the generic "Off": the
   // ranking should say WHY someone isn't first up when the reason is a
   // self-serve toggle they'll flip back within the hour.
   if (row.lunch) return <span className="mini off">Lunch</span>;
+  // Sunday: not on today's rota → offline for the day.
+  if (row.sundayOff) return <span className="mini off">Off · Sunday</span>;
   if (!row.eligible) return <span className="mini off">Off</span>;
   return row.free ? <span className="mini free">Free</span> : <span className="mini busy">Busy</span>;
 }
@@ -46,7 +48,7 @@ function SortHeader({
  * fetch URL and a couple of copy strings differ.
  */
 export default function CapacityRankingTab({ reloadTick, ghostOnly }: { reloadTick: number; ghostOnly?: boolean }) {
-  const { nameOf, practiceOf, personById, teamNameOf, demoHour } = useApp();
+  const { nameOf, personById, teamNameOf, demoHour } = useApp();
   const { isDesktop } = useViewport();
   const [rows, setRows] = useState<CapacityRankRow[] | null>(null);
 
@@ -61,7 +63,6 @@ export default function CapacityRankingTab({ reloadTick, ghostOnly }: { reloadTi
     rows ?? [],
     {
       name: (r) => nameOf(r.personId),
-      practice: (r) => practiceOf(r.personId),
       team: (r) => teamNameOf(personById(r.personId)?.teamId ?? null),
       load: (r) => r.load,
     },
@@ -91,7 +92,6 @@ export default function CapacityRankingTab({ reloadTick, ghostOnly }: { reloadTi
               <tr>
                 <th style={{ width: 32 }}>#</th>
                 <SortHeader label="Name" active={sortKey === "name"} dir={sortDir} onClick={() => toggle("name")} />
-                <SortHeader label="Practice" active={sortKey === "practice"} dir={sortDir} onClick={() => toggle("practice")} />
                 <SortHeader label="Team" active={sortKey === "team"} dir={sortDir} onClick={() => toggle("team")} />
                 <th>Status</th>
                 <SortHeader label="Load" active={sortKey === "load"} dir={sortDir} onClick={() => toggle("load")} numeric />
@@ -109,7 +109,6 @@ export default function CapacityRankingTab({ reloadTick, ghostOnly }: { reloadTi
                         {nameOf(r.personId)}
                       </div>
                     </td>
-                    <td>{practiceOf(r.personId) || "—"}</td>
                     <td>{teamNameOf(person?.teamId ?? null).replace("Team_", "") || "—"}</td>
                     <td>
                       <StatusChip row={r} />
@@ -142,7 +141,6 @@ export default function CapacityRankingTab({ reloadTick, ghostOnly }: { reloadTi
             <div className="rank-body">
               <div className="rank-name">{nameOf(r.personId)}</div>
               <div className="rank-sub">
-                <span className="mini prac">{practiceOf(r.personId) || "—"}</span>
                 <span className="mini team">{teamNameOf(person?.teamId ?? null).replace("Team_", "") || "—"}</span>
                 <StatusChip row={r} />
               </div>

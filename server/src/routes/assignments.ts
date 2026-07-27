@@ -26,6 +26,7 @@ import { advanceStage, backStage } from "../rules/stage";
 import { swapDeliverer } from "../rules/swap";
 import type { ProjectStatus, Stage } from "../rules/types";
 import { notify } from "../services/notify";
+import { hasRecentNotification } from "../repositories/notifications";
 import { publish } from "../ws/hub";
 import { projectRecipientIds } from "../ws/recipients";
 
@@ -86,14 +87,24 @@ const assignmentsRoutes: FastifyPluginAsync = async (app) => {
       if (project) {
         await publishProjectChanged(project.id, [project.plId, assignment.delivererId]);
         // §5 (eight changes) — a delivery logged -> notify the PL to review.
-        await notify({
-          personId: project.plId,
-          type: "delivery_logged",
-          title: "Delivery logged — review",
-          body: `${actor.name} logged progress on ${project.client}: ${updated.delivered + updated.customDelivered}/${updated.goal}.`,
-          entityType: "assignment",
-          entityId: assignment.id,
-        });
+        // Anti-spam (2026-07-26): every stepper click is a save, so a raw
+        // notify-per-save flooded the PL. Only notify when the total actually
+        // WENT UP (a decrement/correction isn't "progress logged"), and debounce
+        // repeats for the same assignment into one per 15 min — a burst of
+        // clicks now yields a single "X/Y" notification, not one per tap.
+        const before = assignment.delivered + assignment.customDelivered;
+        const after = updated.delivered + updated.customDelivered;
+        const increased = after > before;
+        if (increased && !(await hasRecentNotification(project.plId, "delivery_logged", assignment.id, 15))) {
+          await notify({
+            personId: project.plId,
+            type: "delivery_logged",
+            title: "Delivery logged — review",
+            body: `${actor.name} logged progress on ${project.client}: ${after}/${updated.goal}.`,
+            entityType: "assignment",
+            entityId: assignment.id,
+          });
+        }
       }
       // Logging profiles changes remaining -> load; capacity ranking is org-wide (bugs 1+2's own fix depends on this staying live).
       publish({ type: "capacity-ranking" });

@@ -48,6 +48,28 @@ export async function findNotificationById(id: string): Promise<NotificationRow 
   return rows[0] ?? null;
 }
 
+/**
+ * Debounce helper — has a notification of this type for this entity already
+ * gone to this person within the last N minutes? Used to collapse a burst of
+ * near-identical events (e.g. a deliverer clicking the progress stepper
+ * repeatedly) into a single notification instead of one per click.
+ */
+export async function hasRecentNotification(
+  personId: string,
+  type: NotificationType,
+  entityId: string,
+  withinMinutes: number
+): Promise<boolean> {
+  const { rows } = await pool.query(
+    `SELECT 1 FROM notification
+     WHERE person_id = $1 AND type = $2 AND entity_id = $3
+       AND created_at > now() - ($4 || ' minutes')::interval
+     LIMIT 1`,
+    [personId, type, entityId, String(withinMinutes)]
+  );
+  return rows.length > 0;
+}
+
 export async function listForPerson(personId: string, limit = 50): Promise<NotificationRow[]> {
   const { rows } = await pool.query(`${SELECT} WHERE person_id = $1 ORDER BY created_at DESC LIMIT $2`, [personId, limit]);
   return rows;

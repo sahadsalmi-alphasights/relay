@@ -448,7 +448,7 @@ describe("invisible competition — add a ghost to an angle via Edit team (2026-
     expect(add.statusCode).toBe(400);
   });
 
-  it("never allows a ghost on a Pitch (fx.project is a Pitch)", async () => {
+  it("ALLOWS a ghost on a Pitch too (2026-07-26 — the DD/Strategy-only restriction was lifted)", async () => {
     const plCookie = await loginAs(app, fx.plAlpha);
     await setGhost(fx.otherDelivererAlpha, true, plCookie);
     const add = await app.inject({
@@ -457,6 +457,7 @@ describe("invisible competition — add a ghost to an angle via Edit team (2026-
       cookies: cookieHeader(plCookie),
       payload: { angleId: fx.angle, delivererId: fx.otherDelivererAlpha, goal: 4, ghost: true },
     });
-    expect(add.statusCode).toBe(400);
+    expect(add.statusCode).toBe(200);
+    expect(add.json().isGhost).toBe(true);
   });
 });

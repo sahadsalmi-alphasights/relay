@@ -677,9 +677,8 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
     if (targetAngle.archivedAt) throw badRequest("cannot staff an archived angle — resurface it first");
 
     if (asGhost) {
-      // A ghost is complementary competition, only ever a real associate's
-      // shadow — Due Diligence / Strategy only, never a Pitch.
-      if (project.projectType === "Pitch") throw badRequest("a Pitch never has a ghost deliverer");
+      // "Invisible competition" — ghosts may be added to any project type,
+      // Pitch included (2026-07-26; the DD/Strategy-only restriction was lifted).
       const person = await findPersonById(request.body.delivererId);
       if (!person) throw badRequest("unknown deliverer");
       if (!person.isGhost) throw badRequest(`${person.name} is not flagged as a ghost deliverer`);

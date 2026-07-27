@@ -299,12 +299,10 @@ export default function TeamEditSheet({
               + Add deliverer
             </button>
             {/* "Invisible competition" — add a ghost (per angle) alongside real
-                deliverers. Due Diligence / Strategy only; a Pitch never has ghosts. */}
-            {project.projectType !== "Pitch" && (
-              <button className="btn btn-ghost" style={{ width: "100%" }} onClick={startAddGhost}>
-                👻 + Add ghost deliverer
-              </button>
-            )}
+                deliverers. Allowed on every project type incl. Pitch (2026-07-26). */}
+            <button className="btn btn-ghost" style={{ width: "100%" }} onClick={startAddGhost}>
+              👻 + Add ghost deliverer
+            </button>
             <button className="close" onClick={onClose}>
               Done
             </button>
@@ -346,9 +344,9 @@ export default function TeamEditSheet({
               : `${addAsGhost ? "Add a ghost" : "Add a deliverer"} — ${angleName(action.angleId!)}`}
           </div>
           {/* "Invisible competition" — add a GHOST instead of a real deliverer.
-              Due Diligence / Strategy only (a Pitch never has one). Toggling it
-              swaps the candidate list below to the ghost pool. */}
-          {action.mode === "add" && project.projectType !== "Pitch" && (
+              Allowed on every project type (2026-07-26). Toggling it swaps the
+              candidate list below to the ghost pool. */}
+          {action.mode === "add" && (
             <label className="ghost-add-toggle">
               <input type="checkbox" checked={addAsGhost} onChange={(e) => toggleAddAsGhost(e.target.checked)} />
               👻 Add as ghost (invisible competition)

@@ -16,6 +16,7 @@ import MorningCallsSoldDialog from "./sheets/MorningCallsSoldDialog";
 import { EveningCoveragePrompt, LunchPrompt } from "./sheets/DayPromptDialogs";
 import MoreSheet from "./sheets/MoreSheet";
 import NotesSheet from "./sheets/NotesSheet";
+import NotesTodoBox from "./components/NotesTodoBox";
 import SundayCoverageTab from "./tabs/SundayCoverageTab";
 import TeamEditSheet from "./sheets/TeamEditSheet";
 import TransferPlSheet from "./sheets/TransferPlSheet";
@@ -203,6 +204,12 @@ export default function Shell() {
     </>
   );
 
+  // To-do mini-box — docked bottom-right on the Delivery and Project Leading
+  // tabs only. Same notes the cards show; onReload keeps both in sync.
+  const todoBox = (tab === "Delivery" || tab === "PL") && (
+    <NotesTodoBox reloadTick={reloadTick} onReload={bumpReload} onOpenProject={setNotesFor} />
+  );
+
   const sundayBanner = sunday && (
     <div className="sunday-strip">
       🗓 <b>Sunday</b> — today is {prettyDateKey(dubaiDateKey(nowMs))}.{" "}
@@ -273,6 +280,7 @@ export default function Shell() {
             {activeTab}
           </div>
         </div>
+        {todoBox}
         {sheets}
       </div>
     );
@@ -333,6 +341,7 @@ export default function Shell() {
         />
       )}
 
+      {todoBox}
       {sheets}
     </div>
   );

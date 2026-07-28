@@ -31,6 +31,23 @@ export async function createNote(input: {
   return full[0];
 }
 
+export async function findNoteById(id: string): Promise<NoteRow | null> {
+  const { rows } = await pool.query(`${SELECT} WHERE id = $1`, [id]);
+  return rows[0] ?? null;
+}
+
+/** Edit a note's body in place (same row the card + to-do box both read — one source). */
+export async function updateNoteBody(id: string, body: string): Promise<NoteRow> {
+  const { rows } = await pool.query(`UPDATE note SET body = $2 WHERE id = $1 RETURNING id`, [id, body]);
+  const { rows: full } = await pool.query(`${SELECT} WHERE id = $1`, [rows[0].id]);
+  return full[0];
+}
+
+/** "Mark as done" / delete — hard-removes the note so it clears from the card and the to-do box at once. */
+export async function deleteNote(id: string): Promise<void> {
+  await pool.query(`DELETE FROM note WHERE id = $1`, [id]);
+}
+
 /** Public notes are visible to anyone on the project; private notes only to their author. */
 export async function listNotesForProject(projectId: string, actorId: string): Promise<NoteRow[]> {
   const { rows } = await pool.query(

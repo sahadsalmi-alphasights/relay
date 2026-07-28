@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { applyCardOrder, loadCardOrder, moveBefore, saveCardOrder } from "../lib/cardOrder";
 import CardNotes from "../components/CardNotes";
 import { api } from "../api/client";
 import type { Angle, Assignment, CapacityRankRow, GoalChangeRequest, Note, Project, Stage } from "../api/types";
-import { barColor, entityBrand, ghostsLast, initials, overDelivered, paceInfo, stageClass, stageLabel, typeClass } from "../lib/format";
+import { barColor, entityBrand, entityName, ghostsLast, initials, overDelivered, paceInfo, stageClass, stageLabel, typeClass } from "../lib/format";
 import EntityLogo from "../components/EntityLogo";
 import { fmtElapsed, poolState, timerClass } from "../lib/time";
 import { useApp } from "../state/AppContext";
@@ -296,6 +296,16 @@ export default function ProjectLeadingTab({
   // My/Team/other-team don't show each other's cards.
   const cacheKey = `${scope}:${teamView}`;
   const [items, setItems] = useState<ProjectItem[] | null>(plBoardCache.get(cacheKey) ?? null);
+  // Card/Table view switcher (2026-07-28) — mirrors the deliverers' switcher,
+  // persisted per person in this browser.
+  const viewKey = `captracker-pl-view-${actor.id}`;
+  const [view, setViewState] = useState<"cards" | "table">(() =>
+    localStorage.getItem(viewKey) === "table" ? "table" : "cards"
+  );
+  const setView = (v: "cards" | "table") => {
+    localStorage.setItem(viewKey, v);
+    setViewState(v);
+  };
   const [archived, setArchived] = useState<Project[]>([]);
   const [archivedOpen, setArchivedOpen] = useState(false);
   // Archive confirm: which project is being archived (pops the two-option chooser).
@@ -692,7 +702,7 @@ export default function ProjectLeadingTab({
                 is still the "📝 Notes" button below. */}
             {/* Notes live on the card now: same single line when collapsed,
                 full history inline when tapped (CardNotes). */}
-            <CardNotes notes={notes} onAdd={() => onNotes({ projectId: p.id })} />
+            <CardNotes notes={notes} onAdd={() => onNotes({ projectId: p.id })} onChanged={onReload} />
             <div className="assignees">
               {/* Big structural change — group assignees under their angle
                   only when there's more than one; a single-angle ("simple")
@@ -773,6 +783,115 @@ export default function ProjectLeadingTab({
   // re-bucketing the list, preserving whatever order `list` already arrives
   // in.
   const renderCards = (list: ProjectItem[]) => <div className="card-grid">{list.map(renderCard)}</div>;
+
+  // Table view (2026-07-28) — one summary row per project, then each angle's
+  // deliverers as sub-rows beneath it. Angle-level N/Calls sold sit on the
+  // first deliverer row of that angle (repeating them per deliverer would just
+  // be noise); Goal + Delivered are per-deliverer. Archived angles are paused,
+  // same as the card view, so they're excluded here too.
+  const renderTable = (list: ProjectItem[]) => (
+    <div style={{ overflowX: "auto" }}>
+      <table className="data-table pl-table">
+        <thead>
+          <tr>
+            <th>Client</th>
+            <th>Client User</th>
+            <th>Project Name</th>
+            <th>Angle</th>
+            <th>Deliverer</th>
+            <th>Stage</th>
+            <th className="num">Total N</th>
+            <th className="num">Calls Sold</th>
+            <th className="num">Goal</th>
+            <th className="num">Delivered</th>
+          </tr>
+        </thead>
+        <tbody>
+          {list.map((it) => {
+            const p = it.project;
+            const archivedAngleIds = new Set(it.angles.filter((a) => a.archivedAt).map((a) => a.id));
+            const angles = it.angles.filter((a) => !a.archivedAt);
+            const assignments = it.assignments.filter((a) => !archivedAngleIds.has(a.angleId));
+            const { goal, done } = projStats(assignments);
+            return (
+              <Fragment key={p.id}>
+                <tr className="pl-row-project" data-project-id={p.id}>
+                  <td title={entityName(p.clientEntity)}>
+                    <EntityLogo entity={p.clientEntity} size={24} />
+                  </td>
+                  <td>{p.client}</td>
+                  <td>
+                    <a className="client" style={{ fontSize: 13 }} href={p.projectLink} target="_blank" rel="noopener noreferrer">
+                      {p.topic || "—"}
+                    </a>
+                  </td>
+                  <td className="dim">—</td>
+                  <td className="dim">—</td>
+                  <td>
+                    {p.earliestStage ? (
+                      <span className={"stage-pill " + stageClass(p.earliestStage)}>{stageLabel(p.earliestStage)}</span>
+                    ) : (
+                      <span className="dim">Not staffed</span>
+                    )}
+                  </td>
+                  <td className="num">{p.callsN}</td>
+                  <td className="num">{p.callsSold}</td>
+                  <td className="num">{goal}</td>
+                  <td className="num">{done}</td>
+                </tr>
+                {angles.map((ang) => {
+                  const angleAssignments = ghostsLast(assignments.filter((a) => a.angleId === ang.id));
+                  if (angleAssignments.length === 0) {
+                    return (
+                      <tr key={ang.id} className="pl-row-angle">
+                        <td colSpan={3} />
+                        <td>{ang.name}</td>
+                        <td className="dim" colSpan={2}>Unstaffed</td>
+                        <td className="num">{ang.callsN}</td>
+                        <td className="num">{ang.callsSold}</td>
+                        <td className="num">{ang.goalTotal}</td>
+                        <td className="num">0</td>
+                      </tr>
+                    );
+                  }
+                  return angleAssignments.map((a, idx) => (
+                    <tr key={a.id} className="pl-row-angle" data-assignment-id={a.id}>
+                      <td colSpan={3} />
+                      <td>{idx === 0 ? ang.name : ""}</td>
+                      <td>
+                        {nameOf(a.delivererId)}
+                        {a.isGhost ? " 👻" : ""}
+                      </td>
+                      <td>
+                        <span className={"stage-pill " + stageClass(a.stage)}>{stageLabel(a.stage)}</span>
+                      </td>
+                      <td className="num">{idx === 0 ? ang.callsN : ""}</td>
+                      <td className="num">{idx === 0 ? ang.callsSold : ""}</td>
+                      <td className="num">{a.goal}</td>
+                      <td className="num">{a.delivered + a.customDelivered}</td>
+                    </tr>
+                  ));
+                })}
+              </Fragment>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+
+  const renderList = (list: ProjectItem[]) => (view === "table" ? renderTable(list) : renderCards(list));
+
+  const viewSwitcher = (
+    <span className="dl-view-switch" role="group" aria-label="Board view">
+      <button className={"btn-sm " + (view === "cards" ? "btn-pl" : "btn-ghost")} onClick={() => setView("cards")}>
+        Cards
+      </button>
+      <button className={"btn-sm " + (view === "table" ? "btn-pl" : "btn-ghost")} onClick={() => setView("table")}>
+        Table
+      </button>
+    </span>
+  );
 
   return (
     <div className="pl-board-layout">
@@ -867,6 +986,7 @@ export default function ProjectLeadingTab({
           <>
             <div className="section-lbl">
               Team — projects led <span className="count">{items.length}</span>
+              {viewSwitcher}
               {manyGroups && (
                 <button className="link-btn" style={{ marginLeft: 10 }} onClick={() => setAllGroupsOpen((o) => !o)}>
                   {allGroupsOpen ? "Collapse all" : "Expand all"}
@@ -894,7 +1014,7 @@ export default function ProjectLeadingTab({
                     (personItems.length === 0 ? (
                       <div className="empty team-group-empty">Leading nothing right now.</div>
                     ) : (
-                      renderCards(personItems)
+                      renderList(personItems)
                     ))}
                 </div>
               );
@@ -904,13 +1024,14 @@ export default function ProjectLeadingTab({
           <>
             <div className="section-lbl">
               Projects you lead <span className="count">{items.length}</span>
+              {viewSwitcher}
             </div>
             {items.length === 0 && (
               <div className="empty">
                 <b>No projects yet</b>Tap "New project" to add one and auto-staff it.
               </div>
             )}
-            {renderCards(mineOrdered)}
+            {renderList(mineOrdered)}
           </>
         )}
 

@@ -1,0 +1,180 @@
+import { useEffect, useState } from "react";
+import { api } from "../api/client";
+import type { Note, Project } from "../api/types";
+import { useApp } from "../state/AppContext";
+import type { NotesTarget } from "../Shell";
+
+interface BoardItem {
+  project: Project;
+  notes: Note[];
+}
+
+/** A single note inside the to-do box: edit inline, or mark done (delete). */
+function TodoNote({ note, onChanged }: { note: Note; onChanged: () => void }) {
+  const { actor } = useApp();
+  const [editing, setEditing] = useState(false);
+  const [txt, setTxt] = useState(note.body);
+  const [busy, setBusy] = useState(false);
+  const mine = note.authorId === actor.id;
+
+  const save = async () => {
+    if (!txt.trim() || txt.trim() === note.body) {
+      setEditing(false);
+      return;
+    }
+    setBusy(true);
+    try {
+      await api.patch(`/projects/notes/${note.id}`, { body: txt.trim() });
+      setEditing(false);
+      onChanged();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const done = async () => {
+    setBusy(true);
+    try {
+      await api.del(`/projects/notes/${note.id}`);
+      onChanged();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (editing) {
+    return (
+      <div className="todo-note-edit">
+        <textarea value={txt} onChange={(e) => setTxt(e.target.value)} rows={2} autoFocus />
+        <div className="todo-note-edit-actions">
+          <button className="btn-sm btn-ghost" onClick={() => { setTxt(note.body); setEditing(false); }}>
+            Cancel
+          </button>
+          <button className="btn-sm btn-pl" disabled={busy} onClick={save}>
+            Save
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="todo-note">
+      <span className="todo-note-body">{note.body}</span>
+      <span className="todo-note-actions">
+        <button className="cn-link" disabled={!mine} title={mine ? "Edit" : "Only the author can edit"} onClick={() => setEditing(true)}>
+          Edit
+        </button>
+        <button className="cn-link cn-done" disabled={busy} title="Mark done — clears it everywhere" onClick={done}>
+          ✓ Done
+        </button>
+      </span>
+    </div>
+  );
+}
+
+function Section({ title, items, onOpenProject, onChanged }: {
+  title: string;
+  items: BoardItem[];
+  onOpenProject: (t: NotesTarget) => void;
+  onChanged: () => void;
+}) {
+  return (
+    <div className="todo-section">
+      <div className="todo-section-head">
+        {title} <span className="count">{items.reduce((s, it) => s + it.notes.length, 0)}</span>
+      </div>
+      {items.length === 0 ? (
+        <div className="todo-empty">Nothing to action.</div>
+      ) : (
+        <table className="todo-table">
+          <tbody>
+            {items.map((it) => (
+              <tr key={it.project.id}>
+                <td className="todo-proj">
+                  <button className="todo-proj-link" onClick={() => onOpenProject({ projectId: it.project.id })} title="Open notes">
+                    {it.project.client}
+                    {it.project.topic ? <span className="todo-proj-topic"> · {it.project.topic}</span> : null}
+                  </button>
+                </td>
+                <td className="todo-notes-cell">
+                  {it.notes.map((n) => (
+                    <TodoNote key={n.id} note={n} onChanged={onChanged} />
+                  ))}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+/**
+ * To-do mini-box (2026-07-28) — a docked, Intercom-style expandable widget in
+ * the bottom-right corner, on both the Personal Delivery and Project Leading
+ * tabs. Two sections: Delivery on top (projects you deliver on that have a
+ * note), PLing below (projects you lead that have a note). Only projects with
+ * a note appear. Board order is preserved verbatim — the same
+ * most-recent-first-deliverable ranking listProjects() gives every board.
+ * The notes are the very same rows the cards show, so editing or marking one
+ * done here (onChanged → onReload) updates the card too — one note, one source.
+ */
+export default function NotesTodoBox({ reloadTick, onReload, onOpenProject }: {
+  reloadTick: number;
+  onReload: () => void;
+  onOpenProject: (t: NotesTarget) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [delivery, setDelivery] = useState<BoardItem[]>([]);
+  const [pling, setPling] = useState<BoardItem[]>([]);
+
+  useEffect(() => {
+    let alive = true;
+    const load = async () => {
+      const [deliverBoard, leadBoard] = await Promise.all([
+        api.get<BoardItem[]>(`/projects/board?role=delivering&scope=mine&status=active`),
+        api.get<BoardItem[]>(`/projects/board?role=leading&scope=mine&archived=false`),
+      ]);
+      if (!alive) return;
+      setDelivery(deliverBoard.filter((it) => (it.notes?.length ?? 0) > 0));
+      setPling(leadBoard.filter((it) => (it.notes?.length ?? 0) > 0));
+    };
+    void load();
+    return () => {
+      alive = false;
+    };
+  }, [reloadTick]);
+
+  const total =
+    delivery.reduce((s, it) => s + it.notes.length, 0) + pling.reduce((s, it) => s + it.notes.length, 0);
+
+  return (
+    <div className="todo-dock">
+      {open && (
+        <div className="todo-panel" role="dialog" aria-label="Notes to-do">
+          <div className="todo-panel-head">
+            <span>📝 Notes to-do</span>
+            <button className="todo-close" onClick={() => setOpen(false)} aria-label="Collapse">
+              ✕
+            </button>
+          </div>
+          <div className="todo-panel-body">
+            <Section title="Delivery" items={delivery} onOpenProject={onOpenProject} onChanged={onReload} />
+            <Section title="PLing" items={pling} onOpenProject={onOpenProject} onChanged={onReload} />
+          </div>
+        </div>
+      )}
+      <button
+        className={"todo-fab " + (open ? "open" : "")}
+        onClick={() => setOpen((o) => !o)}
+        aria-label={open ? "Collapse notes to-do" : "Open notes to-do"}
+        title="Notes to-do"
+      >
+        {open ? "▾" : "📝"}
+        {!open && total > 0 && <span className="todo-fab-badge">{total}</span>}
+      </button>
+    </div>
+  );
+}

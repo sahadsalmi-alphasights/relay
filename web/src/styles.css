@@ -214,6 +214,61 @@ a.client:hover { text-decoration:underline; }
 .cn-time { margin-left:auto; font-size:10px; color:var(--soft); }
 .cn-body { font-size:12px; color:var(--ink); line-height:1.45; margin-top:2px; white-space:pre-wrap; }
 .cn-add { align-self:flex-start; }
+/* Inline note edit/delete (2026-07-28) — author-only controls on each note. */
+.cn-actions { display:inline-flex; gap:8px; align-items:center; }
+.cn-link { background:none; border:none; padding:0; font-size:10.5px; font-weight:600; color:var(--pl); cursor:pointer; }
+.cn-link:hover { text-decoration:underline; }
+.cn-link.cn-done { color:var(--green); }
+.cn-link:disabled { opacity:.5; cursor:default; text-decoration:none; }
+.cn-edit { margin-top:4px; }
+.cn-edit textarea { width:100%; box-sizing:border-box; padding:7px 9px; border-radius:9px; border:1px solid var(--line); font-size:12px; font-family:inherit; color:var(--ink); background:var(--bg); resize:vertical; }
+.cn-edit-actions { display:flex; gap:6px; justify-content:flex-end; margin-top:5px; }
+
+/* Notes to-do mini-box (2026-07-28) — docked bottom-right, Intercom-style. */
+.todo-dock { position:fixed; right:24px; bottom:24px; z-index:60; display:flex; flex-direction:column; align-items:flex-end; gap:12px; }
+.todo-fab { width:56px; height:56px; border-radius:50%; border:none; background:var(--pl); color:#fff; font-size:22px; cursor:pointer; box-shadow:0 6px 20px rgba(0,0,0,.24); display:flex; align-items:center; justify-content:center; position:relative; transition:transform .15s ease; }
+.todo-fab:hover { transform:translateY(-2px); }
+.todo-fab.open { background:var(--surface); color:var(--ink); border:1px solid var(--line); }
+.todo-fab-badge { position:absolute; top:-4px; right:-4px; min-width:20px; height:20px; padding:0 5px; border-radius:10px; background:var(--red); color:#fff; font-size:11px; font-weight:700; display:flex; align-items:center; justify-content:center; box-sizing:border-box; }
+.todo-panel { width:360px; max-width:calc(100vw - 48px); max-height:min(70vh, 560px); background:var(--surface); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 40px rgba(0,0,0,.28); display:flex; flex-direction:column; overflow:hidden; }
+.todo-panel-head { display:flex; align-items:center; justify-content:space-between; padding:13px 15px; font-weight:700; font-size:14px; color:var(--ink); background:var(--pl); color:#fff; }
+.todo-close { background:rgba(255,255,255,.2); border:none; color:#fff; width:24px; height:24px; border-radius:6px; cursor:pointer; font-size:12px; }
+.todo-panel-body { overflow-y:auto; padding:6px 0; }
+.todo-section { padding:8px 14px 12px; }
+.todo-section + .todo-section { border-top:6px solid var(--bg); }
+.todo-section-head { font-size:11px; font-weight:700; letter-spacing:.4px; text-transform:uppercase; color:var(--soft); margin-bottom:6px; }
+.todo-empty { font-size:12px; color:var(--soft); padding:4px 0 2px; }
+.todo-table { width:100%; border-collapse:collapse; }
+.todo-table td { vertical-align:top; padding:6px 0; border-top:1px dashed var(--line); }
+.todo-table tr:first-child td { border-top:none; }
+.todo-proj { width:38%; padding-right:10px; }
+.todo-proj-link { background:none; border:none; padding:0; text-align:left; font-size:12.5px; font-weight:600; color:var(--pl); cursor:pointer; line-height:1.35; }
+.todo-proj-link:hover { text-decoration:underline; }
+.todo-proj-topic { font-weight:500; color:var(--soft); }
+.todo-notes-cell { width:62%; }
+.todo-note { display:flex; align-items:flex-start; gap:8px; margin-bottom:5px; }
+.todo-note:last-child { margin-bottom:0; }
+.todo-note-body { flex:1; font-size:12px; color:var(--ink); line-height:1.4; white-space:pre-wrap; }
+.todo-note-actions { display:inline-flex; gap:7px; flex-shrink:0; }
+.todo-note-edit textarea { width:100%; box-sizing:border-box; padding:6px 8px; border-radius:8px; border:1px solid var(--line); font-size:12px; font-family:inherit; color:var(--ink); background:var(--bg); resize:vertical; }
+.todo-note-edit-actions { display:flex; gap:6px; justify-content:flex-end; margin-top:5px; }
+@media (max-width:860px) {
+  /* Mobile: sit to the LEFT (the ＋ New-project FAB owns bottom-right) and
+     ride above the bottom nav bar. */
+  .todo-dock { right:auto; left:16px; bottom:calc(var(--mobilenav-h, 64px) + 14px); }
+  .todo-panel { width:320px; }
+}
+
+/* Delivery Team Table — per-person live status + load beside the name. */
+.dl-team-status { display:inline-flex; align-items:center; gap:7px; margin-left:8px; }
+.dl-team-load { font-size:11px; font-weight:600; color:var(--soft); font-variant-numeric:tabular-nums; }
+
+/* PL Table view (2026-07-28) — project summary row + angle/deliverer sub-rows. */
+.pl-table .dim { color:var(--soft); }
+.pl-table .pl-row-project td { border-top:2px solid var(--line); background:var(--bg); font-weight:600; }
+.pl-table .pl-row-project td:first-child { border-top-left-radius:8px; }
+.pl-table .pl-row-angle td { font-weight:400; }
+.pl-table .pl-row-angle td:nth-child(4) { color:var(--soft); font-weight:600; }
 .stage-pill { font-size:11px; font-weight:700; padding:3px 8px; border-radius:7px; white-space:nowrap; }
 /* Stage colour-coding (2026-07-24): First Deliverable red (most urgent),
    Second Deliverable orange, Admin green (done delivering). Hail Mary keeps

@@ -1,5 +1,5 @@
 # ---- build stage: full dev toolchain, compiles TypeScript ----
-FROM node:20-slim AS build
+FROM node:26-slim AS build
 # Upgrade system packages to pick up security patches (e.g. libgnutls30)
 RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
 # node:20-slim ships npm 10, whose vendored tar 6.2.1 is flagged CRITICAL
@@ -15,7 +15,7 @@ COPY . .
 RUN npm run build
 
 # ---- runtime stage: production deps + compiled output only, non-root ----
-FROM node:20-slim
+FROM node:26-slim
 RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
 RUN npm install -g npm@^11.18.0
 WORKDIR /app

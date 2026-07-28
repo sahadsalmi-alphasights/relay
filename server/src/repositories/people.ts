@@ -19,6 +19,8 @@ export interface PersonRow {
   isGhost: boolean;
   lastLoginAt: string | null;
   deactivatedAt: string | null;
+  /** Server-side session revocation — bumped to invalidate all of this person's outstanding session cookies at once. */
+  sessionVersion: number;
 }
 
 /** role(person) = owner ? 'owner' : manager ? 'manager' : 'member'. */
@@ -30,7 +32,8 @@ const SELECT = `
   SELECT id, email, name, team_id AS "teamId", is_manager AS "isManager",
          is_owner AS "isOwner", practice_area AS "practiceArea", status,
          evening_coverage AS "eveningCoverage", out_to_lunch AS "outToLunch", is_ghost AS "isGhost",
-         last_login_at AS "lastLoginAt", deactivated_at AS "deactivatedAt"
+         last_login_at AS "lastLoginAt", deactivated_at AS "deactivatedAt",
+         session_version AS "sessionVersion"
   FROM person`;
 
 export async function findPersonById(id: string): Promise<PersonRow | null> {
@@ -148,6 +151,15 @@ export async function setRole(id: string, role: Role): Promise<PersonRow> {
   const isManager = role === "owner" || role === "manager";
   await pool.query(`UPDATE person SET is_owner = $2, is_manager = $3 WHERE id = $1`, [id, isOwner, isManager]);
   return (await findPersonById(id))!;
+}
+
+/**
+ * Server-side session revocation — invalidate every outstanding session cookie
+ * for this person at once (logout-everywhere, deactivation, compromise). The
+ * auth hook rejects any cookie whose embedded version != the current column.
+ */
+export async function bumpSessionVersion(id: string): Promise<void> {
+  await pool.query(`UPDATE person SET session_version = session_version + 1 WHERE id = $1`, [id]);
 }
 
 /** Revoke sign-in access without deleting the person or their history. */

@@ -11,6 +11,10 @@ export function badRequest(message = "bad request"): HttpError {
   return new HttpError(400, message);
 }
 
+export function unauthorized(message = "unauthorized"): HttpError {
+  return new HttpError(401, message);
+}
+
 export function forbidden(message = "forbidden"): HttpError {
   return new HttpError(403, message);
 }

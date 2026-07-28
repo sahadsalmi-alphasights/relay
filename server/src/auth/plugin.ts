@@ -7,26 +7,79 @@ import { findPersonById, type PersonRow } from "../repositories/people";
 export const SESSION_COOKIE = "relay_session";
 
 /**
- * Sessions expire server-side, not just in the browser: the cookie's maxAge
- * is advisory (a stolen cookie value ignores it), so the expiry is embedded
- * in the signed payload itself — `<personId>.<expiresAtMs>` — and checked on
- * every request. UUIDs contain no ".", so the delimiter is unambiguous.
- * Old-format cookies (bare person id, no expiry) are rejected, which simply
- * forces one re-login when this ships.
+ * Sessions expire server-side, not just in the browser, and carry three
+ * defences in one signed payload — `<personId>.<version>.<absExpiresAt>.<idleExpiresAt>`
+ * (UUIDs contain no ".", and every field after it is an integer, so split is
+ * unambiguous):
+ *   - **absolute cap** (`ABSOLUTE_TTL_MS`): a session dies this long after
+ *     login no matter how active — a stolen cookie can't live forever.
+ *   - **idle timeout** (`IDLE_TTL_MS`): a sliding inactivity window,
+ *     re-issued on activity (throttled) up to the absolute cap.
+ *   - **revocation** (`version`): checked against person.session_version on
+ *     every request; bumping the column kills all outstanding cookies at once.
+ * Old-format cookies (fewer fields) are rejected — one forced re-login when
+ * this ships, same as the previous format change.
  */
-export const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+export const ABSOLUTE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+export const IDLE_TTL_MS = 12 * 60 * 60 * 1000;
+// Don't re-sign the cookie on every request — only once the idle window has
+// been consumed by more than this, so a busy session isn't re-issued constantly.
+const REISSUE_THROTTLE_MS = 5 * 60 * 1000;
 
-export function encodeSession(personId: string, nowMs = Date.now()): string {
-  return `${personId}.${nowMs + SESSION_TTL_MS}`;
+export function encodeSession(
+  personId: string,
+  version: number,
+  nowMs = Date.now(),
+  absExpiresAt = nowMs + ABSOLUTE_TTL_MS
+): string {
+  const idleExpiresAt = Math.min(nowMs + IDLE_TTL_MS, absExpiresAt);
+  return `${personId}.${version}.${absExpiresAt}.${idleExpiresAt}`;
 }
 
-export function decodeSession(value: string, nowMs = Date.now()): string | null {
-  const dot = value.indexOf(".");
-  if (dot === -1) return null;
-  const personId = value.slice(0, dot);
-  const expiresAt = Number(value.slice(dot + 1));
-  if (!personId || !Number.isFinite(expiresAt) || expiresAt <= nowMs) return null;
-  return personId;
+export interface DecodedSession {
+  personId: string;
+  version: number;
+  absExpiresAt: number;
+  idleExpiresAt: number;
+}
+
+export function decodeSession(value: string, nowMs = Date.now()): DecodedSession | null {
+  const parts = value.split(".");
+  if (parts.length !== 4) return null;
+  const [personId, versionStr, absStr, idleStr] = parts;
+  const version = Number(versionStr);
+  const absExpiresAt = Number(absStr);
+  const idleExpiresAt = Number(idleStr);
+  if (!personId) return null;
+  if (![version, absExpiresAt, idleExpiresAt].every((n) => Number.isFinite(n))) return null;
+  // Either bound expiring ends the session: the absolute cap OR inactivity.
+  if (absExpiresAt <= nowMs || idleExpiresAt <= nowMs) return null;
+  return { personId, version, absExpiresAt, idleExpiresAt };
+}
+
+/**
+ * Issue (or re-issue) the session cookie. `absExpiresAt` is fixed at first
+ * login and preserved across re-issues, so sliding the idle window never
+ * extends the absolute cap. Shared by the login routes and the sliding
+ * re-issue in the auth hook.
+ */
+export function issueSession(
+  reply: FastifyReply,
+  personId: string,
+  version: number,
+  absExpiresAt?: number,
+  nowMs = Date.now()
+): void {
+  const abs = absExpiresAt ?? nowMs + ABSOLUTE_TTL_MS;
+  reply.setCookie(SESSION_COOKIE, encodeSession(personId, version, nowMs, abs), {
+    signed: true,
+    httpOnly: true,
+    secure: config.nodeEnv === "production",
+    sameSite: "lax",
+    path: "/",
+    // Advisory only (server enforces both bounds); tracks the absolute cap.
+    maxAge: Math.max(1, Math.floor((abs - nowMs) / 1000)),
+  });
 }
 
 declare module "fastify" {
@@ -51,23 +104,28 @@ export default fp(async function authPlugin(app: FastifyInstance) {
 
   app.decorateRequest("actor", null);
 
-  app.addHook("onRequest", async (request) => {
+  app.addHook("onRequest", async (request, reply) => {
+    request.actor = null;
     const raw = request.cookies[SESSION_COOKIE];
-    if (!raw) {
-      request.actor = null;
-      return;
-    }
+    if (!raw) return;
     const unsigned = request.unsignCookie(raw);
-    if (!unsigned.valid || !unsigned.value) {
-      request.actor = null;
-      return;
+    if (!unsigned.valid || !unsigned.value) return;
+    const decoded = decodeSession(unsigned.value);
+    if (!decoded) return;
+    const person = await findPersonById(decoded.personId);
+    if (!person) return;
+    // Server-side revocation: the cookie's embedded version must equal the
+    // person's current session_version. A bump (logout-everywhere,
+    // deactivation, compromise) makes every outstanding cookie fail here.
+    if (person.sessionVersion !== decoded.version) return;
+    request.actor = person;
+    // Sliding idle timeout: activity keeps the session alive up to the fixed
+    // absolute cap. Throttled so we don't re-sign a cookie on every request.
+    const nowMs = Date.now();
+    const lastIssuedMs = decoded.idleExpiresAt - IDLE_TTL_MS;
+    if (nowMs - lastIssuedMs >= REISSUE_THROTTLE_MS) {
+      issueSession(reply, person.id, person.sessionVersion, decoded.absExpiresAt, nowMs);
     }
-    const personId = decodeSession(unsigned.value);
-    if (!personId) {
-      request.actor = null;
-      return;
-    }
-    request.actor = await findPersonById(personId);
   });
 
   app.decorate("requireAuth", async (request: FastifyRequest, reply: FastifyReply) => {

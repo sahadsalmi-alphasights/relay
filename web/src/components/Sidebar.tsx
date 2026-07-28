@@ -45,7 +45,7 @@ export default function Sidebar({
   onOpenTeam: () => void;
   onNewProject: () => void;
 }) {
-  const { actor, setActor, logout, teams } = useApp();
+  const { actor, setActor, logout, logoutAll, teams } = useApp();
 
   const toggleEvening = async () => {
     const updated = await api.patch<Person>("/people/me/evening-coverage", {
@@ -202,6 +202,13 @@ export default function Sidebar({
         <button className="persona" onClick={logout} title="Log out" style={{ width: "100%", justifyContent: "center" }}>
           <span style={{ color: "var(--soft)" }}>as</span> {actor.name}
           {actor.isOwner ? " (owner)" : actor.isManager ? " (mgr)" : ""}
+        </button>
+        <button
+          onClick={logoutAll}
+          title="Sign out of every device — revokes the session everywhere"
+          style={{ width: "100%", marginTop: 6, background: "none", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600, color: "var(--soft)" }}
+        >
+          Log out everywhere
         </button>
       </div>
     </nav>

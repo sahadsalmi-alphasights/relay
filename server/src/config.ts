@@ -15,6 +15,15 @@ export const config = {
   oidcClientId: process.env.OIDC_CLIENT_ID ?? "",
   oidcClientSecret: process.env.OIDC_CLIENT_SECRET ?? "",
   oidcRedirectUri: process.env.OIDC_REDIRECT_URI ?? "",
+  // Cloudflare Access origin validation (defense in depth) — when BOTH are
+  // set, the API re-verifies the Cf-Access-Jwt-Assertion header (signed by
+  // Cloudflare at the edge) on every request, so even a request that somehow
+  // reached the origin without passing Access is rejected. Unset = disabled
+  // (the tunnel already makes the origin unreachable directly; this is a
+  // deliberately opt-in extra layer). teamDomain e.g. "myteam.cloudflareaccess.com";
+  // aud = the Access application's Application Audience (AUD) tag.
+  cfAccessTeamDomain: (process.env.CF_ACCESS_TEAM_DOMAIN ?? "").trim(),
+  cfAccessAud: (process.env.CF_ACCESS_AUD ?? "").trim(),
   // User management — the OWNER allowlist. These emails are always granted
   // Owner on login and can never be locked out (see routes/auth.ts). Kept in
   // env, not source, so real addresses aren't committed to the repo. Comma

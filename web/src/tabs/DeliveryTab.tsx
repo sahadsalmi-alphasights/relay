@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { api, ApiError } from "../api/client";
 import { applyCardOrder, loadCardOrder, moveBefore, saveCardOrder } from "../lib/cardOrder";
-import type { Assignment, CapacityRankRow, Project, ProjectStatus } from "../api/types";
+import type { Assignment, CapacityRankRow, Note, Project, ProjectStatus } from "../api/types";
 import { barColor, entityName, initials, overDelivered, stageClass, stageLabel, typeClass } from "../lib/format";
+import CardNotes from "../components/CardNotes";
 import EntityLogo from "../components/EntityLogo";
 import { fmtElapsed, poolState, timerClass } from "../lib/time";
 import { useApp } from "../state/AppContext";
@@ -16,6 +17,8 @@ interface DeliveryItem {
   multiAngle: boolean;
   /** Per-angle expert pool (2026-07-21) — THIS assignment's angle's pool; the card's live/asleep state reads this, not the project-level default. */
   anglePool?: string;
+  /** Notes (2026-07-28) — the same per-project notes the PL board shows, now on the delivery card too. */
+  notes: Note[];
 }
 
 // Stale-while-revalidate cache (survives tab switches; cleared on page reload).
@@ -170,6 +173,10 @@ export default function DeliveryTab({
   // "free", rules/load.ts) -- same computation ProjectLeadingTab's team
   // panel and CapacityRankingTab itself already read, not a new definition.
   const [myCapacity, setMyCapacity] = useState<CapacityRankRow | null>(null);
+  // Team view (2026-07-28) — the same capacity ranking the PL Team View shows
+  // in its side panel, and the source of the per-person status+load summary in
+  // the team Table view. Same GET /capacity-ranking, no new definition.
+  const [rankRows, setRankRows] = useState<CapacityRankRow[] | null>(null);
 
   // Notification deep-link: scroll + pulse the target card (see Shell).
   useEffect(() => {
@@ -192,6 +199,7 @@ export default function DeliveryTab({
         project: Project;
         assignments: Assignment[];
         angles: { id: string; expertPool?: string | null; archivedAt?: string | null }[];
+        notes: Note[];
       }[]
     >(`/projects/board?role=delivering&scope=${scope}${teamParam}&status=active`);
     // §8 scope toggle — "team" means every member of the VIEWED team's
@@ -218,6 +226,7 @@ export default function DeliveryTab({
             assignment: a,
             multiAngle: d.angles.length > 1,
             anglePool: poolByAngle.get(a.angleId) ?? undefined,
+            notes: d.notes ?? [],
           });
       }
     }
@@ -246,7 +255,10 @@ export default function DeliveryTab({
   }, [scope, teamView, reloadTick]);
 
   useEffect(() => {
-    api.get<CapacityRankRow[]>("/capacity-ranking").then((rows) => setMyCapacity(rows.find((r) => r.personId === actor.id) ?? null));
+    api.get<CapacityRankRow[]>("/capacity-ranking").then((rows) => {
+      setRankRows(rows);
+      setMyCapacity(rows.find((r) => r.personId === actor.id) ?? null);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reloadTick, demoHour]);
 
@@ -300,7 +312,24 @@ export default function DeliveryTab({
       : [];
   const manyGroups = teamView === "all" || teamView !== "" || teamMembers.length > 8;
 
-  const renderCard = ({ project: p, assignment: a, multiAngle, anglePool }: DeliveryItem) => {
+  // Team panel + per-person Table-view summary (2026-07-28) — both read the
+  // same GET /capacity-ranking rows. The side panel always lists the actor's
+  // OWN team (matching PL Team View); the table summary keys by personId.
+  const capById = new Map((rankRows ?? []).map((r) => [r.personId, r]));
+  const myTeamRanked = (rankRows ?? [])
+    .filter((r) => people.find((p) => p.id === r.personId)?.teamId === actor.teamId)
+    .sort((a, b) => a.load - b.load);
+
+  // Live status label from a capacity row — same wording as CapacityRankingTab's chip.
+  const statusOf = (row: CapacityRankRow | undefined): { label: string; cls: string } | null => {
+    if (!row) return null;
+    if (row.lunch) return { label: "Lunch", cls: "off" };
+    if (row.sundayOff) return { label: "Off · Sunday", cls: "off" };
+    if (!row.eligible) return { label: "Off", cls: "off" };
+    return row.free ? { label: "Free", cls: "free" } : { label: "Busy", cls: "busy" };
+  };
+
+  const renderCard = ({ project: p, assignment: a, multiAngle, anglePool, notes }: DeliveryItem) => {
     // Per-angle pool (2026-07-21): the live/asleep state and the pool chip
     // read THIS assignment's angle's pool; project pool is only the fallback.
     const cardPool = (anglePool as Project["expertPool"] | undefined) ?? p.expertPool;
@@ -435,6 +464,10 @@ export default function DeliveryTab({
             />
           </div>
         )}
+        {/* Notes on the delivery card too (2026-07-28) — same per-project
+            notes the PL board shows, editable/deletable inline by the author.
+            onReload keeps the card and the to-do box in sync. */}
+        <CardNotes notes={notes} onAdd={() => onNotes({ projectId: p.id })} onChanged={onReload} />
         <div className="actions">
           <button className="btn btn-ghost" onClick={() => onNotes({ projectId: p.id })}>
             📝 Notes
@@ -532,7 +565,8 @@ export default function DeliveryTab({
   );
 
   return (
-    <>
+    <div className="pl-board-layout">
+      <div className="pl-board-main">
       {visibleBroadcasts.length > 0 && (
         <>
           <div className="section-lbl" style={{ color: "#9A5F0C" }}>
@@ -658,6 +692,18 @@ export default function DeliveryTab({
                   <span className="cn-caret">{open ? "▾" : "▸"}</span>
                   <div className="avatar dl">{initials(person.name)}</div>
                   {person.name}
+                  {/* Table view (2026-07-28) — live status + Load right beside
+                      the name, pulled from the capacity ranking. */}
+                  {view === "table" && (() => {
+                    const st = statusOf(capById.get(person.id));
+                    const cap = capById.get(person.id);
+                    return st ? (
+                      <span className="dl-team-status">
+                        <span className={"mini " + st.cls}>{st.label}</span>
+                        {cap && <span className="dl-team-load">Load {cap.load.toFixed(1)}</span>}
+                      </span>
+                    ) : null;
+                  })()}
                   <span className="count">{personItems.length}</span>
                 </button>
                 {open &&
@@ -686,6 +732,29 @@ export default function DeliveryTab({
           {view === "table" ? renderTable(mineOrdered) : <div className="card-grid">{mineOrdered.map(renderCard)}</div>}
         </>
       )}
-    </>
+      </div>
+
+      {/* Team View mini team-ranking panel (2026-07-28) — same aside the PL
+          Team View shows top-right; always the actor's own team. */}
+      {scope === "team" && myTeamRanked.length > 0 && (
+        <aside className="team-capacity-panel">
+          <div className="team-capacity-header">Team capacity</div>
+          {myTeamRanked.map((r) => (
+            <div key={r.personId} className="team-capacity-row">
+              <div className="avatar">{initials(nameOf(r.personId))}</div>
+              <span className="team-capacity-name">{nameOf(r.personId)}</span>
+              <span className="team-capacity-load">{r.load.toFixed(1)}</span>
+              {!r.eligible ? (
+                <span className="mini off">Off</span>
+              ) : r.free ? (
+                <span className="mini free">Free</span>
+              ) : (
+                <span className="mini busy">Busy</span>
+              )}
+            </div>
+          ))}
+        </aside>
+      )}
+    </div>
   );
 }

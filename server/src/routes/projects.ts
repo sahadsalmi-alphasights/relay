@@ -15,7 +15,7 @@ import {
   listAssignmentsByProjectIds,
 } from "../repositories/assignments";
 import { listUnresolvedForProject } from "../repositories/goalChangeRequests";
-import { createNote, listNotesByProjectIds, listNotesForProject } from "../repositories/notes";
+import { createNote, deleteNote, findNoteById, listNotesByProjectIds, listNotesForProject, updateNoteBody } from "../repositories/notes";
 import {
   archiveProject,
   closeDeliveryForProject,
@@ -1079,6 +1079,57 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
     if (!project) throw notFound("project not found");
     return listNotesForProject(project.id, actor.id);
   });
+
+  // Edit a note (2026-07-28) — author only. Same row the card + to-do box both
+  // read, so editing here updates every surface at once (one note, one source).
+  app.patch<{ Params: { noteId: string }; Body: { body?: string } }>(
+    "/notes/:noteId",
+    { preHandler: [app.requireAuth] },
+    async (request) => {
+      const actor = request.actor!;
+      const note = await findNoteById(request.params.noteId);
+      if (!note) throw notFound("note not found");
+      if (note.authorId !== actor.id) throw forbidden("only the note's author may edit it");
+      if (!request.body?.body?.trim()) throw badRequest("body is required");
+      const updated = await updateNoteBody(note.id, request.body.body.trim());
+      await insertAuditLog({
+        entityType: "note",
+        entityId: note.id,
+        actorId: actor.id,
+        action: "note_edited",
+        oldValue: { body: note.body },
+        newValue: { body: updated.body },
+      });
+      return updated;
+    }
+  );
+
+  // Delete / "mark as done" (2026-07-28) — the note's author or the project's
+  // PL (or a manager/owner) may clear it. Hard delete: one source, so it
+  // vanishes from both the card and the to-do box together.
+  app.delete<{ Params: { noteId: string } }>(
+    "/notes/:noteId",
+    { preHandler: [app.requireAuth] },
+    async (request, reply) => {
+      const actor = request.actor!;
+      const note = await findNoteById(request.params.noteId);
+      if (!note) throw notFound("note not found");
+      const project = await findProjectById(note.projectId);
+      const isPl = project?.plId === actor.id;
+      if (note.authorId !== actor.id && !isPl && !actor.isManager && !actor.isOwner) {
+        throw forbidden("only the note's author or the project PL may clear it");
+      }
+      await deleteNote(note.id);
+      await insertAuditLog({
+        entityType: "note",
+        entityId: note.id,
+        actorId: actor.id,
+        action: "note_deleted",
+        oldValue: { body: note.body, projectId: note.projectId },
+      });
+      reply.code(204);
+    }
+  );
 
   // §8.1 — pending goal-change requests, for the PL board's badge + resolve banner.
   app.get<{ Params: { id: string } }>(

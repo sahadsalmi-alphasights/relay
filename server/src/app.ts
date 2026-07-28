@@ -32,7 +32,18 @@ export function buildApp(): FastifyInstance {
   // behind the Cloudflare tunnel), so the socket address is always the proxy —
   // X-Forwarded-For is what carries the real client. The origin is not
   // directly reachable, so the header can't be spoofed from outside.
-  const app = Fastify({ logger: true, trustProxy: true });
+  // Defense-in-depth request bounds (OWASP API4 — unrestricted resource
+  // consumption). bodyLimit: every endpoint here takes small JSON (notes,
+  // stepper deltas, intake) — 256 KB is far above any real payload and well
+  // under Fastify's 1 MB default, shrinking the DoS surface. requestTimeout
+  // hangs up on a slow-loris client that opens a request and never finishes
+  // it. Both are global; no route needs more.
+  const app = Fastify({
+    logger: true,
+    trustProxy: true,
+    bodyLimit: 256 * 1024,
+    requestTimeout: 30_000,
+  });
 
   // The web app runs on a different port (different origin); cookies need
   // an exact origin + credentials:true, not a wildcard. Methods are explicit

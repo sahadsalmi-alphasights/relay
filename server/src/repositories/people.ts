@@ -291,7 +291,11 @@ export async function deletePersonCascade(id: string, reassignPlTo?: string): Pr
     await tx.query(`DELETE FROM sunday_swap_request WHERE requested_by = $1`, [id]);
     const notifications = (await tx.query(`DELETE FROM notification WHERE person_id = $1`, [id])).rowCount ?? 0;
     await tx.query(`DELETE FROM push_subscription WHERE person_id = $1`, [id]);
-    await tx.query(`UPDATE audit_log SET actor_id = NULL WHERE actor_id = $1`, [id]);
+    // De-identify the deleted person's audit trail via the SECURITY DEFINER
+    // function (migration 1731000018000) rather than a direct UPDATE, so this
+    // keeps working when the runtime DB role has INSERT/SELECT-only on
+    // audit_log (append-only tamper-evidence — see SECURITY_CONFIGURATION §21).
+    await tx.query(`SELECT audit_log_anonymize_actor($1)`, [id]);
     await tx.query(`DELETE FROM person WHERE id = $1`, [id]);
     return { assignments, notes, notifications, projectsReassigned };
   });

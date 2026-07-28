@@ -28,4 +28,9 @@ COPY --from=build /app/dist ./dist
 COPY migrations ./migrations
 USER node
 EXPOSE 4000
-CMD ["sh", "-c", "npm run migrate:up && node dist/index.js"]
+# Migrations need DDL (owner) privileges; the app itself should run as a
+# least-privilege DML role (docs/SECURITY_CONFIGURATION.md §21). So the
+# migrate step uses MIGRATE_DATABASE_URL when set (the owner role), and the
+# app process uses DATABASE_URL (the scoped role). Falls back to DATABASE_URL
+# for both when MIGRATE_DATABASE_URL is unset — fully backward compatible.
+CMD ["sh", "-c", "DATABASE_URL=\"${MIGRATE_DATABASE_URL:-$DATABASE_URL}\" npm run migrate:up && node dist/index.js"]

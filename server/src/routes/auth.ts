@@ -1,28 +1,25 @@
 import type { FastifyPluginAsync } from "fastify";
 import { buildAuthorizationUrl, exchangeCallback, type OidcTransaction } from "../auth/oidc";
-import { encodeSession, SESSION_COOKIE, SESSION_TTL_MS } from "../auth/plugin";
+import { issueSession, SESSION_COOKIE } from "../auth/plugin";
 import { config } from "../config";
-import { badRequest, forbidden, notFound } from "../errors";
+import { badRequest, forbidden, notFound, unauthorized } from "../errors";
 import {
+  bumpSessionVersion,
   findOrCreatePersonByEmail,
   findPersonById,
   listPeople,
   markLogin,
   setDeactivated,
   setOwner,
+  type PersonRow,
 } from "../repositories/people";
 
 const OIDC_TXN_COOKIE = "relay_oidc_txn";
 
-function setSessionCookie(reply: import("fastify").FastifyReply, personId: string) {
-  reply.setCookie(SESSION_COOKIE, encodeSession(personId), {
-    signed: true,
-    httpOnly: true,
-    secure: config.nodeEnv === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: SESSION_TTL_MS / 1000,
-  });
+// A fresh login starts a new absolute window; the embedded session_version is
+// what a later bump (logout-everywhere / deactivation) checks against.
+function setSessionCookie(reply: import("fastify").FastifyReply, person: PersonRow) {
+  issueSession(reply, person.id, person.sessionVersion);
 }
 
 const authRoutes: FastifyPluginAsync = async (app) => {
@@ -44,7 +41,7 @@ const authRoutes: FastifyPluginAsync = async (app) => {
     const person = await findPersonById(personId);
     if (!person) throw notFound("unknown person");
 
-    setSessionCookie(reply, person.id);
+    setSessionCookie(reply, person);
     return person;
   });
 
@@ -99,7 +96,7 @@ const authRoutes: FastifyPluginAsync = async (app) => {
       }
 
       await markLogin(person.id);
-      setSessionCookie(reply, person.id);
+      setSessionCookie(reply, person);
       reply.redirect(config.webOrigin);
     } catch (err) {
       request.log.error(err, "OIDC callback failed");
@@ -108,6 +105,17 @@ const authRoutes: FastifyPluginAsync = async (app) => {
   });
 
   app.post("/logout", async (_request, reply) => {
+    reply.clearCookie(SESSION_COOKIE, { path: "/" });
+    return { ok: true };
+  });
+
+  // Logout everywhere — bump the caller's session_version so EVERY device's
+  // cookie (this one included) is rejected on its next request, then clear the
+  // local cookie for an immediate effect here. This is the revocation the
+  // plain /logout can't give (that only drops the current browser's cookie).
+  app.post("/logout-all", async (request, reply) => {
+    if (!request.actor) throw unauthorized();
+    await bumpSessionVersion(request.actor.id);
     reply.clearCookie(SESSION_COOKIE, { path: "/" });
     return { ok: true };
   });

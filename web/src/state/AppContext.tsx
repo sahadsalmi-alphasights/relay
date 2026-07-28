@@ -21,6 +21,7 @@ interface AppContextValue {
   effectiveAfterHours: boolean;
   sunday: boolean;
   logout: () => Promise<void>;
+  logoutAll: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -86,6 +87,14 @@ export function AppProvider({
     window.location.reload();
   }, []);
 
+  // Log out everywhere — revokes the session on the server (bumps
+  // session_version), so every other device/browser this person is signed in
+  // on is dropped on its next request, not just this tab.
+  const logoutAll = useCallback(async () => {
+    await api.post("/auth/logout-all");
+    window.location.reload();
+  }, []);
+
   const effectiveHour = demoHour ?? dubaiHour(nowMs);
   const effectiveAfterHours = demoHour != null ? demoHour < 8 || demoHour >= 19 : effectiveHour < 8 || effectiveHour >= 19;
   const sunday = isSunday(nowMs);
@@ -109,8 +118,9 @@ export function AppProvider({
       effectiveAfterHours,
       sunday,
       logout,
+      logoutAll,
     }),
-    [actor, people, teams, reloadPeople, reloadTeams, personById, nameOf, practiceOf, teamNameOf, nowMs, demoHour, effectiveHour, effectiveAfterHours, sunday, logout]
+    [actor, people, teams, reloadPeople, reloadTeams, personById, nameOf, practiceOf, teamNameOf, nowMs, demoHour, effectiveHour, effectiveAfterHours, sunday, logout, logoutAll]
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

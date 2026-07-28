@@ -26,7 +26,7 @@ export default function MoreSheet({
   onOpenTeam: () => void;
   onOpenRota: () => void;
 }) {
-  const { actor, setActor, logout } = useApp();
+  const { actor, setActor, logout, logoutAll } = useApp();
 
   const go = (t: Tab) => {
     setTab(t);
@@ -123,9 +123,18 @@ export default function MoreSheet({
           </div>
           <div style={{ fontSize: 11, color: "var(--soft)" }}>{actor.email}</div>
         </div>
-        <button style={{ fontSize: 12, fontWeight: 700, color: "var(--red)" }} onClick={logout}>
-          Log out
-        </button>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
+          <button style={{ fontSize: 12, fontWeight: 700, color: "var(--red)" }} onClick={logout}>
+            Log out
+          </button>
+          <button
+            style={{ fontSize: 11, fontWeight: 600, color: "var(--soft)" }}
+            title="Sign out of every device — revokes the session everywhere"
+            onClick={logoutAll}
+          >
+            Log out everywhere
+          </button>
+        </div>
       </div>
 
       <button className="close" onClick={onClose}>

@@ -3,6 +3,7 @@ import { config } from "../config";
 import { badRequest, conflict, forbidden, notFound } from "../errors";
 import { insertAuditLog } from "../repositories/auditLog";
 import {
+  bumpSessionVersion,
   createUser,
   deletePersonCascade,
   findPersonById,
@@ -185,6 +186,10 @@ const usersRoutes: FastifyPluginAsync = async (app) => {
       if (isAllowlistedOwner(target.email)) throw forbidden("a permanent owner (allowlist) cannot be deactivated");
 
       const updated = await setDeactivated(target.id, true);
+      // Kill their live sessions immediately — deactivation is already
+      // re-checked per request, but bumping the version also drops any
+      // cached/valid cookie the moment they're deactivated (belt + braces).
+      await bumpSessionVersion(target.id);
       await insertAuditLog({
         entityType: "person",
         entityId: target.id,

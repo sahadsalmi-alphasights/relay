@@ -1,4 +1,4 @@
-FROM node:20-slim AS build
+FROM node:26-slim AS build
 # Upgrade system packages to pick up security patches
 RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
 WORKDIR /app

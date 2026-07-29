@@ -32,6 +32,27 @@ export function dubaiDateKey(instant: Date): string {
   return `${year}-${month}-${day}`;
 }
 
+/**
+ * The current calendar month in Asia/Dubai, as a half-open UTC range
+ * [start, end) plus its "YYYY-MM" key. Used by the monthly market-share
+ * pulse so "this month" follows the Dubai calendar, not the server's UTC one
+ * (a project created at 01:00 Dubai on the 1st belongs to the new month).
+ */
+export function dubaiMonthRange(instant: Date): { startIso: string; endIso: string; monthKey: string } {
+  const d = toDubaiShifted(instant);
+  const year = d.getUTCFullYear();
+  const monthIdx = d.getUTCMonth(); // 0-based
+  const offsetMs = DUBAI_UTC_OFFSET_HOURS * 60 * 60 * 1000;
+  // Dubai-local midnight on the 1st, expressed back in UTC.
+  const startUtcMs = Date.UTC(year, monthIdx, 1) - offsetMs;
+  const endUtcMs = Date.UTC(year, monthIdx + 1, 1) - offsetMs;
+  return {
+    startIso: new Date(startUtcMs).toISOString(),
+    endIso: new Date(endUtcMs).toISOString(),
+    monthKey: `${year}-${String(monthIdx + 1).padStart(2, "0")}`,
+  };
+}
+
 /** §4 Rule 3: after hours = before 08:00 or after/at 19:00 Dubai time. */
 export function isAfterHours(instant: Date): boolean {
   const hour = dubaiHour(instant);

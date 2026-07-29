@@ -22,11 +22,13 @@ import {
   createProject,
   findProjectById,
   listProjects,
+  marketShareForMonth,
   reopenDeliveryForProject,
   resurfaceProject,
   softDeleteProject,
   transferProjectPl,
   updateProjectFields,
+  type MarketShareFilter,
   type ProjectFilter,
   type ProjectRow,
 } from "../repositories/projects";
@@ -40,7 +42,7 @@ import { resolveNow } from "../lib/requestTime";
 import { canArchiveProject, canEditProjectFields } from "../rules/permissions";
 import { isProjectLifecycleQuiet, needsCallsSoldUpdateToday, needsChaseClient } from "../rules/project";
 import { suggestGoal, suggestStaffing } from "../rules/suggestedGoal";
-import { dubaiHour } from "../rules/time";
+import { dubaiHour, dubaiMonthRange } from "../rules/time";
 import type { ProjectType } from "../rules/types";
 import { isValidHttpUrl } from "../rules/url";
 import { notifyBroadcastRecipients } from "../services/broadcast";
@@ -693,6 +695,16 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const created = await createAssignment(angleId, request.body.delivererId, request.body.goal, asGhost);
+    // A manually-staffed project must leave the "up for grabs" broadcast the
+    // same way a claimed one does (routes/angles.ts claim): once every angle
+    // reaches its seat target, flip open -> active so it drops off everyone's
+    // board and stops re-pinging. This was the bug — manual staffing created
+    // the assignment but never re-evaluated status, so the card lingered.
+    // A ghost is competition, not real staffing, so a ghost add never flips
+    // the project on its own (guarded here).
+    const fullyStaffed = asGhost
+      ? false
+      : await activateProjectIfFullyStaffed(project.id, project.projectType as ProjectType);
     await insertAuditLog({
       entityType: "assignment",
       entityId: created.id,
@@ -713,6 +725,9 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
     }
     await publishProjectChanged(project.id, [project.plId, request.body.delivererId]);
     publish({ type: "capacity-ranking" });
+    // If this staffed the last open seat, everyone's broadcast list must drop
+    // the card immediately — same signal the claim path sends.
+    if (fullyStaffed) publish({ type: "open-pool" });
     // Same wording for a ghost as a real assignment — the disguise the wizard
     // already uses, so a ghost never learns they're the invisible competition.
     await notify({
@@ -1010,6 +1025,30 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
    * formula intake itself suggests, recomputed live — see that function's
    * doc comment for why (no schema change to store a PL-adjusted override).
    */
+  // Monthly market-share pulse (2026-07-29). Read-only. scope: mine (this
+  // PL's cards), team (a team's cards), bu (everyone). Counts every card
+  // CREATED this Dubai-calendar month, INCLUDING soft-deleted ones (the query
+  // deliberately omits the deleted filter — see marketShareForMonth). Live:
+  // the client refetches on the same WS invalidate as the board.
+  app.get("/market-share", { preHandler: [app.requireAuth] }, async (request) => {
+    const q = request.query as { scope?: string; teamId?: string };
+    const actor = request.actor!;
+    const { startIso, endIso, monthKey } = dubaiMonthRange(resolveNow(request));
+
+    const filter: MarketShareFilter = {};
+    if (q.scope === "mine") {
+      filter.plId = actor.id;
+    } else if (q.scope === "team") {
+      const teamId = q.teamId && q.teamId !== "all" ? q.teamId : actor.teamId;
+      filter.plIdIn = teamId ? (await listPeopleByTeam(teamId)).map((p) => p.id) : [actor.id];
+    }
+    // scope 'bu' (or anything else) leaves the filter empty = every card.
+
+    const { callsSold, n } = await marketShareForMonth(filter, startIso, endIso);
+    const share = n > 0 ? callsSold / n : null;
+    return { month: monthKey, callsSold, n, share };
+  });
+
   app.get("/broadcasts", { preHandler: [app.requireAuth] }, async () => {
     const openProjects = await listProjects({ status: "open" });
     const out: {

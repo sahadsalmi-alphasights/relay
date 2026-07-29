@@ -3,6 +3,7 @@ import rateLimit from "@fastify/rate-limit";
 import websocketPlugin from "@fastify/websocket";
 import Fastify, { type FastifyInstance } from "fastify";
 import authPlugin from "./auth/plugin";
+import cloudflareAccessPlugin from "./auth/cloudflareAccess";
 import { config } from "./config";
 import { pool } from "./db";
 import { HttpError } from "./errors";
@@ -56,6 +57,9 @@ export function buildApp(): FastifyInstance {
     methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE"],
   });
   app.register(authPlugin);
+  // Defense in depth — verifies the Cloudflare Access assertion at the origin.
+  // Inert unless CF_ACCESS_TEAM_DOMAIN + CF_ACCESS_AUD are set (default off).
+  app.register(cloudflareAccessPlugin);
   app.register(websocketPlugin);
 
   // Production only, same gating pattern as the capacity-ranking cache: the

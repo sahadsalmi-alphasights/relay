@@ -84,13 +84,26 @@ export async function updateEveningCoverage(id: string, eveningCoverage: boolean
 
 /** "Out to Lunch" — self-serve only, same rule as evening coverage: nobody sets anyone else's. */
 export async function updateOutToLunch(id: string, outToLunch: boolean): Promise<PersonRow> {
-  await pool.query(`UPDATE person SET out_to_lunch = $2 WHERE id = $1`, [id, outToLunch]);
+  // Stamp when lunch was switched on so the scheduler can expire it an hour
+  // later; clear the stamp when switched off.
+  await pool.query(
+    `UPDATE person SET out_to_lunch = $2, out_to_lunch_since = CASE WHEN $2 THEN now() ELSE NULL END WHERE id = $1`,
+    [id, outToLunch]
+  );
   return (await findPersonById(id))!;
 }
 
-/** Daily reset (scheduler) — clear everyone's out-to-lunch (at 16:00 Dubai). Returns rows changed. */
-export async function resetAllOutToLunch(): Promise<number> {
-  const { rowCount } = await pool.query(`UPDATE person SET out_to_lunch = false WHERE out_to_lunch = true`);
+/**
+ * Lunch auto-off (scheduler) — clear anyone who's been on lunch longer than
+ * the window (1 hour), replacing the old fixed 16:00 reset. Also clears any
+ * on-lunch row missing a stamp (defensive). Returns rows changed.
+ */
+export async function expireOutToLunch(cutoffIso: string): Promise<number> {
+  const { rowCount } = await pool.query(
+    `UPDATE person SET out_to_lunch = false, out_to_lunch_since = NULL
+     WHERE out_to_lunch = true AND (out_to_lunch_since IS NULL OR out_to_lunch_since < $1)`,
+    [cutoffIso]
+  );
   return rowCount ?? 0;
 }
 

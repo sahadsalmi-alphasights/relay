@@ -134,6 +134,50 @@ export async function listProjects(filter: ProjectFilter): Promise<ProjectRow[]>
   return rows;
 }
 
+export interface MarketShareFilter {
+  /** Restrict to one PL (My View). */
+  plId?: string;
+  /** Restrict to a set of PLs (Team View — the team's members). */
+  plIdIn?: string[];
+  /** No plId/plIdIn = BU View (every card). */
+}
+
+/**
+ * Monthly market share = calls_sold / calls_n across every project card
+ * CREATED in the given month window, summed over all their angles.
+ *
+ * DELIBERATELY counts soft-deleted cards (no `deleted_at IS NULL` clause):
+ * the spec requires deleted projects to still count toward the month's share
+ * (a card that was created, sold against, then deleted still happened). This
+ * is the one read in the app that must NOT inherit the standard soft-delete
+ * filter — do not add one here. Archived/unarchived state is likewise
+ * ignored: all angles of a qualifying project count.
+ */
+export async function marketShareForMonth(
+  filter: MarketShareFilter,
+  monthStartIso: string,
+  monthEndIso: string
+): Promise<{ callsSold: number; n: number }> {
+  const clauses = ["p.created_at >= $1", "p.created_at < $2"];
+  const params: unknown[] = [monthStartIso, monthEndIso];
+  if (filter.plId) {
+    params.push(filter.plId);
+    clauses.push(`p.pl_id = $${params.length}`);
+  } else if (filter.plIdIn) {
+    params.push(filter.plIdIn);
+    clauses.push(`p.pl_id = ANY($${params.length})`);
+  }
+  const { rows } = await pool.query<{ callsSold: string; n: string }>(
+    `SELECT COALESCE(SUM(ang.calls_sold), 0)::int AS "callsSold",
+            COALESCE(SUM(ang.calls_n), 0)::int AS "n"
+     FROM project p
+     JOIN angle ang ON ang.project_id = p.id
+     WHERE ${clauses.join(" AND ")}`,
+    params
+  );
+  return { callsSold: Number(rows[0].callsSold), n: Number(rows[0].n) };
+}
+
 export interface CreateProjectInput {
   plId: string;
   client: string;

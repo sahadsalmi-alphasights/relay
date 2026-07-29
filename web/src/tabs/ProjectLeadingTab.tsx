@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import { applyCardOrder, loadCardOrder, moveBefore, saveCardOrder } from "../lib/cardOrder";
 import CardNotes from "../components/CardNotes";
+import MarketSharePulse from "../components/MarketSharePulse";
 import { api } from "../api/client";
 import type { Angle, Assignment, CapacityRankRow, GoalChangeRequest, Note, Project, Stage } from "../api/types";
 import { barColor, entityBrand, entityName, ghostsLast, initials, overDelivered, paceInfo, stageClass, stageLabel, typeClass } from "../lib/format";
@@ -932,6 +933,10 @@ export default function ProjectLeadingTab({
         </div>
       )}
       <div className="pl-board-main">
+        {/* Monthly market-share pulse — under Project Leading in every scope
+            (My / Team / BU), live via reloadTick. */}
+        <MarketSharePulse scope={scope} teamView={teamView} reloadTick={reloadTick} />
+
         {myStaleProjects.length > 0 && (
           <div className="review-strip" style={{ borderColor: "#F0DCB0", background: "#FFFDF8" }}>
             <span>📞</span>

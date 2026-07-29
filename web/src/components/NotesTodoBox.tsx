@@ -9,7 +9,14 @@ interface BoardItem {
   notes: Note[];
 }
 
-/** A single note inside the to-do box: edit inline, or mark done (delete). */
+interface PersonalNote {
+  id: string;
+  personId: string;
+  body: string;
+  createdAt: string;
+}
+
+/** A single project note inside the to-do box: edit inline, or mark done (delete). */
 function TodoNote({ note, onChanged }: { note: Note; onChanged: () => void }) {
   const { actor } = useApp();
   const [editing, setEditing] = useState(false);
@@ -111,15 +118,119 @@ function Section({ title, items, onOpenProject, onChanged }: {
   );
 }
 
+/** One personal reminder (Admin section): edit inline or mark done (delete). */
+function AdminNote({ note, onChanged }: { note: PersonalNote; onChanged: () => void }) {
+  const [editing, setEditing] = useState(false);
+  const [txt, setTxt] = useState(note.body);
+  const [busy, setBusy] = useState(false);
+
+  const save = async () => {
+    if (!txt.trim() || txt.trim() === note.body) {
+      setEditing(false);
+      return;
+    }
+    setBusy(true);
+    try {
+      await api.patch(`/people/me/notes/${note.id}`, { body: txt.trim() });
+      setEditing(false);
+      onChanged();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const done = async () => {
+    setBusy(true);
+    try {
+      await api.del(`/people/me/notes/${note.id}`);
+      onChanged();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (editing) {
+    return (
+      <div className="todo-note-edit">
+        <textarea value={txt} onChange={(e) => setTxt(e.target.value)} rows={2} autoFocus />
+        <div className="todo-note-edit-actions">
+          <button className="btn-sm btn-ghost" onClick={() => { setTxt(note.body); setEditing(false); }}>
+            Cancel
+          </button>
+          <button className="btn-sm btn-pl" disabled={busy} onClick={save}>
+            Save
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="todo-note todo-admin-note">
+      <span className="todo-note-body">{note.body}</span>
+      <span className="todo-note-actions">
+        <button className="cn-link" title="Edit" onClick={() => setEditing(true)}>
+          Edit
+        </button>
+        <button className="cn-link cn-done" disabled={busy} title="Mark done — removes this reminder" onClick={done}>
+          ✓ Done
+        </button>
+      </span>
+    </div>
+  );
+}
+
+/** Admin section — your own manual reminders (not tied to a project). */
+function AdminSection({ notes, onChanged }: { notes: PersonalNote[]; onChanged: () => void }) {
+  const [txt, setTxt] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const add = async () => {
+    if (!txt.trim()) return;
+    setBusy(true);
+    try {
+      await api.post(`/people/me/notes`, { body: txt.trim() });
+      setTxt("");
+      onChanged();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="todo-section">
+      <div className="todo-section-head">
+        Admin <span className="count">{notes.length}</span>
+      </div>
+      {notes.length === 0 && <div className="todo-empty">No reminders yet — add one below.</div>}
+      {notes.map((n) => (
+        <AdminNote key={n.id} note={n} onChanged={onChanged} />
+      ))}
+      <div className="todo-admin-add">
+        <input
+          value={txt}
+          onChange={(e) => setTxt(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") void add();
+          }}
+          placeholder="Write a reminder for yourself…"
+        />
+        <button className="btn-sm btn-pl" disabled={busy || !txt.trim()} onClick={add}>
+          ＋ Add
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /**
  * To-do mini-box (2026-07-28) — a docked, Intercom-style expandable widget in
  * the bottom-right corner, on both the Personal Delivery and Project Leading
- * tabs. Two sections: Delivery on top (projects you deliver on that have a
- * note), PLing below (projects you lead that have a note). Only projects with
- * a note appear. Board order is preserved verbatim — the same
- * most-recent-first-deliverable ranking listProjects() gives every board.
- * The notes are the very same rows the cards show, so editing or marking one
- * done here (onChanged → onReload) updates the card too — one note, one source.
+ * tabs. Sections: Delivery (projects you deliver on that have a note), PLing
+ * (projects you lead that have a note), and Admin (your own manual reminders,
+ * server-backed so they follow you across devices). Project notes are the very
+ * same rows the cards show, so editing or marking one done here (onChanged →
+ * onReload) updates the card too — one note, one source.
  */
 export default function NotesTodoBox({ reloadTick, onReload, onOpenProject }: {
   reloadTick: number;
@@ -129,6 +240,10 @@ export default function NotesTodoBox({ reloadTick, onReload, onOpenProject }: {
   const [open, setOpen] = useState(false);
   const [delivery, setDelivery] = useState<BoardItem[]>([]);
   const [pling, setPling] = useState<BoardItem[]>([]);
+  const [admin, setAdmin] = useState<PersonalNote[]>([]);
+  // Local refresh for personal reminders — bumped on add/edit/done so the
+  // Admin section updates instantly without reloading the whole board.
+  const [adminRev, setAdminRev] = useState(0);
 
   useEffect(() => {
     let alive = true;
@@ -147,8 +262,18 @@ export default function NotesTodoBox({ reloadTick, onReload, onOpenProject }: {
     };
   }, [reloadTick]);
 
+  useEffect(() => {
+    let alive = true;
+    api.get<PersonalNote[]>(`/people/me/notes`).then((rows) => alive && setAdmin(rows)).catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [reloadTick, adminRev]);
+
   const total =
-    delivery.reduce((s, it) => s + it.notes.length, 0) + pling.reduce((s, it) => s + it.notes.length, 0);
+    delivery.reduce((s, it) => s + it.notes.length, 0) +
+    pling.reduce((s, it) => s + it.notes.length, 0) +
+    admin.length;
 
   return (
     <div className="todo-dock">
@@ -163,6 +288,7 @@ export default function NotesTodoBox({ reloadTick, onReload, onOpenProject }: {
           <div className="todo-panel-body">
             <Section title="Delivery" items={delivery} onOpenProject={onOpenProject} onChanged={onReload} />
             <Section title="PLing" items={pling} onOpenProject={onOpenProject} onChanged={onReload} />
+            <AdminSection notes={admin} onChanged={() => setAdminRev((r) => r + 1)} />
           </div>
         </div>
       )}

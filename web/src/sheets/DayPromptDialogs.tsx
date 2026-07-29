@@ -59,15 +59,22 @@ function PromptDialog({
   const { nowMs } = useApp();
   const today = dubaiDateKey(nowMs);
   const [busy, setBusy] = useState(false);
-  // Re-read on every render tick (nowMs updates every 30s), so a snooze
-  // naturally expires without any timer of its own.
+  // A local version bump forces an immediate re-render when the prompt is
+  // answered — the dialog's visibility is derived from localStorage, which
+  // React can't observe on its own, so without this the No/Remind buttons
+  // only took effect on the next 30s nowMs tick (looked unresponsive).
+  const [, bump] = useState(0);
+  // Re-read on every render, so a snooze also expires naturally as nowMs ticks.
   const state = readState(storageKey, today);
 
   if (!inWindow || state.done || (state.snoozeUntil != null && Date.now() < state.snoozeUntil)) {
     return null;
   }
 
-  const settle = (next: PromptState) => writeState(storageKey, next);
+  const settle = (next: PromptState) => {
+    writeState(storageKey, next);
+    bump((n) => n + 1);
+  };
 
   const yes = async () => {
     setBusy(true);

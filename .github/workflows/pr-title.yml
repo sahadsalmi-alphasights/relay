@@ -1,0 +1,32 @@
+name: PR title
+
+# Enforces Conventional-Commit PR titles (feat, fix, chore, …) so history and
+# release notes stay consistent. Squash-merge uses the PR title as the commit
+# subject, so this is what lands on main.
+#
+# Implemented as an inline check (no third-party action) to keep the supply
+# chain minimal.
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  lint-title:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate PR title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          echo "Title: $PR_TITLE"
+          pattern='^(feat|fix|chore|docs|refactor|perf|test|build|ci|revert)(\([a-z0-9._-]+\))?!?: .+'
+          if [[ ! "$PR_TITLE" =~ $pattern ]]; then
+            echo "::error::PR title must follow Conventional Commits, e.g. 'feat(delivery): add drag-to-reorder'."
+            echo "Allowed types: feat, fix, chore, docs, refactor, perf, test, build, ci, revert"
+            exit 1
+          fi
+          echo "✅ PR title OK"

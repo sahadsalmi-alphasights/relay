@@ -1,28 +1,64 @@
 version: 2
 updates:
+  # ---- Application dependencies -------------------------------------------
   - package-ecosystem: "npm"
     directory: "/server"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 10
+    labels: ["dependencies", "server"]
+    reviewers: ["sahadsalmi-alphasights"]
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(deps-dev)"
+    groups:
+      server-minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: "npm"
     directory: "/web"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 10
+    labels: ["dependencies", "web"]
+    reviewers: ["sahadsalmi-alphasights"]
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(deps-dev)"
+    groups:
+      web-minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
 
+  # ---- Container base images ----------------------------------------------
   - package-ecosystem: "docker"
     directory: "/server"
     schedule:
       interval: "weekly"
+    labels: ["dependencies", "docker"]
+    reviewers: ["sahadsalmi-alphasights"]
+    commit-message:
+      prefix: "chore(docker)"
 
   - package-ecosystem: "docker"
     directory: "/web"
     schedule:
       interval: "weekly"
+    labels: ["dependencies", "docker"]
+    reviewers: ["sahadsalmi-alphasights"]
+    commit-message:
+      prefix: "chore(docker)"
 
+  # ---- GitHub Actions (keeps workflow actions patched & SHA-pinnable) ------
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+    labels: ["dependencies", "ci"]
+    reviewers: ["sahadsalmi-alphasights"]
+    commit-message:
+      prefix: "chore(ci)"
+    groups:
+      actions:
+        patterns: ["*"]

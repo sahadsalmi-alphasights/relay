@@ -13,6 +13,13 @@ import {
   updateOutToLunch,
   updatePersonStatus,
 } from "../repositories/people";
+import {
+  createPersonalNote,
+  deletePersonalNote,
+  findPersonalNoteById,
+  listPersonalNotes,
+  updatePersonalNoteBody,
+} from "../repositories/personalNotes";
 import { badRequest, forbidden, notFound } from "../errors";
 import { canManageTeamRoster, canSetGhostFlag, canSetPersonStatus } from "../rules/permissions";
 import { shouldWarnOnStatusChange } from "../rules/project";
@@ -174,6 +181,68 @@ const peopleRoutes: FastifyPluginAsync = async (app) => {
       publish({ type: "people" });
       publish({ type: "capacity-ranking" });
       return updated;
+    }
+  );
+
+  // Personal reminders — the "Admin" section of the notes to-do box. Strictly
+  // self-serve: every route operates only on the caller's own rows (a note's
+  // person_id must equal the actor), so one person can never read or touch
+  // another's reminders. Mutations are audit-logged like every other write.
+  app.get("/me/notes", { preHandler: [app.requireAuth] }, async (request) => {
+    return listPersonalNotes(request.actor!.id);
+  });
+
+  app.post<{ Body: { body?: string } }>("/me/notes", { preHandler: [app.requireAuth] }, async (request) => {
+    const actor = request.actor!;
+    if (!request.body?.body?.trim()) throw badRequest("body is required");
+    const created = await createPersonalNote(actor.id, request.body.body.trim());
+    await insertAuditLog({
+      entityType: "personal_note",
+      entityId: created.id,
+      actorId: actor.id,
+      action: "personal_note_created",
+      newValue: { body: created.body },
+    });
+    return created;
+  });
+
+  app.patch<{ Params: { id: string }; Body: { body?: string } }>(
+    "/me/notes/:id",
+    { preHandler: [app.requireAuth] },
+    async (request) => {
+      const actor = request.actor!;
+      const note = await findPersonalNoteById(request.params.id);
+      if (!note || note.personId !== actor.id) throw notFound("reminder not found");
+      if (!request.body?.body?.trim()) throw badRequest("body is required");
+      const updated = await updatePersonalNoteBody(note.id, request.body.body.trim());
+      await insertAuditLog({
+        entityType: "personal_note",
+        entityId: note.id,
+        actorId: actor.id,
+        action: "personal_note_edited",
+        oldValue: { body: note.body },
+        newValue: { body: updated.body },
+      });
+      return updated;
+    }
+  );
+
+  app.delete<{ Params: { id: string } }>(
+    "/me/notes/:id",
+    { preHandler: [app.requireAuth] },
+    async (request, reply) => {
+      const actor = request.actor!;
+      const note = await findPersonalNoteById(request.params.id);
+      if (!note || note.personId !== actor.id) throw notFound("reminder not found");
+      await deletePersonalNote(note.id);
+      await insertAuditLog({
+        entityType: "personal_note",
+        entityId: note.id,
+        actorId: actor.id,
+        action: "personal_note_deleted",
+        oldValue: { body: note.body },
+      });
+      reply.code(204);
     }
   );
 };

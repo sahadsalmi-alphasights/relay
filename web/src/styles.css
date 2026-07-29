@@ -252,6 +252,12 @@ a.client:hover { text-decoration:underline; }
 .todo-note-actions { display:inline-flex; gap:7px; flex-shrink:0; }
 .todo-note-edit textarea { width:100%; box-sizing:border-box; padding:6px 8px; border-radius:8px; border:1px solid var(--line); font-size:12px; font-family:inherit; color:var(--ink); background:var(--bg); resize:vertical; }
 .todo-note-edit-actions { display:flex; gap:6px; justify-content:flex-end; margin-top:5px; }
+/* Admin section — personal reminders. */
+.todo-admin-note { border-top:1px dashed var(--line); padding-top:6px; }
+.todo-admin-note:first-of-type { border-top:none; }
+.todo-admin-add { display:flex; gap:6px; margin-top:8px; }
+.todo-admin-add input { flex:1; min-width:0; box-sizing:border-box; padding:7px 9px; border-radius:9px; border:1px solid var(--line); font-size:12px; color:var(--ink); background:var(--bg); }
+.todo-admin-add button { flex-shrink:0; }
 @media (max-width:860px) {
   /* Mobile: sit to the LEFT (the ＋ New-project FAB owns bottom-right) and
      ride above the bottom nav bar. */

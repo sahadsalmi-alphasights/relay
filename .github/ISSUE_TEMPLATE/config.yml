@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 🔐 Report a security vulnerability
+    url: https://github.com/sahadsalmi-alphasights/relay/security/advisories/new
+    about: Please report vulnerabilities privately — never in a public issue. See SECURITY.md.
+  - name: 📓 CapTracker documentation (Confluence)
+    url: https://alphasights.atlassian.net/wiki/spaces/TECHOPS/folder/5201035295
+    about: Architecture, ops runbook, security and changelog.

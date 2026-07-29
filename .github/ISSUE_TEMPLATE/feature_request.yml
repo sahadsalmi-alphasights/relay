@@ -1,0 +1,28 @@
+name: 💡 Feature request
+description: Suggest an improvement or new capability
+title: "feat: <short summary>"
+labels: ["enhancement", "triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / motivation
+      description: What are you trying to do, and what's painful today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What would you like to see? Include mockups if helpful.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: input
+    id: jira
+    attributes:
+      label: Related Jira issue (optional)
+      placeholder: "ITE-XXXXX"

@@ -1,0 +1,52 @@
+name: 🐞 Bug report
+description: Something in CapTracker isn't working as expected
+title: "bug: <short summary>"
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. **Do not include secrets, tokens, or personal data.**
+        For security issues, use private reporting instead (see SECURITY.md).
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Go to '...'
+        2. Click '...'
+        3. See error
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Project Leading board
+        - Delivery board
+        - First Deliverables
+        - Capacity ranking / matching
+        - User management / Teams
+        - Notifications
+        - Auth / login
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: "Browser + OS, mobile/desktop, approximate time (Dubai)"
+  - type: input
+    id: jira
+    attributes:
+      label: Related Jira issue (optional)
+      placeholder: "ITE-XXXXX"

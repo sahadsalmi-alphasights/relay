@@ -1,0 +1,14 @@
+# CODEOWNERS — required reviewers for matching paths.
+# Enforced once "Require review from Code Owners" is enabled on the main ruleset.
+# Replace/extend with a GitHub team (e.g. @alphasights-eng/captracker) when one exists.
+
+# Default owner for everything in the repo
+*                       @sahadsalmi-alphasights
+
+# Security-sensitive areas — keep an explicit owner even if defaults change
+/.github/                @sahadsalmi-alphasights
+/.github/workflows/      @sahadsalmi-alphasights
+/server/src/auth/        @sahadsalmi-alphasights
+/server/src/rules/       @sahadsalmi-alphasights
+/server/migrations/      @sahadsalmi-alphasights
+SECURITY.md              @sahadsalmi-alphasights

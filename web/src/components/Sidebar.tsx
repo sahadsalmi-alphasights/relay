@@ -192,7 +192,7 @@ export default function Sidebar({
           {actor.isOwner && (
             <button className={tab === "Users" ? "active" : ""} onClick={() => setTab("Users")}>
               <span className="nav-icon ico" style={ico("users.png")} aria-hidden="true" />
-              <span className="nav-label">User Management</span>
+              <span className="nav-label">Settings</span>
             </button>
           )}
         </div>

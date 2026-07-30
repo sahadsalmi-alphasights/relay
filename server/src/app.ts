@@ -20,6 +20,7 @@ import peopleRoutes from "./routes/people";
 import projectsRoutes from "./routes/projects";
 import pushRoutes from "./routes/push";
 import sundayRotaRoutes from "./routes/sundayRota";
+import settingsRoutes from "./routes/settings";
 import sundaySwapRequestsRoutes from "./routes/sundaySwapRequests";
 import teamsRoutes from "./routes/teams";
 import wsRoutes from "./routes/ws";
@@ -112,6 +113,7 @@ export function buildApp(): FastifyInstance {
   app.register(pushRoutes, { prefix: "/push" });
   app.register(auditLogRoutes, { prefix: "/audit-log" });
   app.register(usersRoutes, { prefix: "/users" });
+  app.register(settingsRoutes, { prefix: "/settings" });
 
   const heartbeatTimer = startHeartbeat();
   const staleTimer = startStaleScheduler();

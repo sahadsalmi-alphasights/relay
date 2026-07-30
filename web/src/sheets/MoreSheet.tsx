@@ -92,7 +92,7 @@ export default function MoreSheet({
       {actor.isOwner && (
         <button className="more-item" onClick={() => go("Users")}>
           <span className="ico" style={ico("users.png")} aria-hidden="true" />
-          User Management
+          Settings
           <span className="more-gate" style={{ background: "var(--pl-soft)", color: "var(--pl)" }}>Owners</span>
         </button>
       )}

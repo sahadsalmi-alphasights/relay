@@ -13,6 +13,12 @@ export function dubaiHour(instant: Date): number {
   return toDubaiShifted(instant).getUTCHours();
 }
 
+/** Minutes since midnight (0–1439) in Asia/Dubai — matches coverage_settings' minute-of-day fields. */
+export function dubaiMinuteOfDay(instant: Date): number {
+  const d = toDubaiShifted(instant);
+  return d.getUTCHours() * 60 + d.getUTCMinutes();
+}
+
 /** 0 = Sunday, matching Date#getUTCDay, evaluated in Asia/Dubai. */
 export function dubaiWeekday(instant: Date): number {
   return toDubaiShifted(instant).getUTCDay();

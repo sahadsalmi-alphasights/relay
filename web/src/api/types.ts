@@ -227,3 +227,16 @@ export const DEFAULT_COVERAGE: CoverageSettings = {
   eveningResetEndMin: 480,
   eveningSnoozeMin: 60,
 };
+
+/** Owner-tunable Slack notification toggles (Settings → Notifications). slackConfigured reflects whether a webhook is set on the server (the URL is never sent to the client). */
+export interface NotificationSettings {
+  slackEnabled: boolean;
+  slackBroadcastUpForGrabs: boolean;
+  slackAssigned: boolean;
+  slackGoalChangeRequested: boolean;
+  slackGoalChangeResolved: boolean;
+  slackDeliveryLogged: boolean;
+  slackStaleFirstDeliverable: boolean;
+  slackProjectTransferred: boolean;
+  slackConfigured: boolean;
+}

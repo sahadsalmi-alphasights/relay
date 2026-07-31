@@ -2,6 +2,7 @@ import webpush from "web-push";
 import { config } from "../config";
 import { createNotification, type CreateNotificationInput } from "../repositories/notifications";
 import { deleteSubscriptionById, listForPerson } from "../repositories/pushSubscriptions";
+import { maybeNotifySlack } from "./slack";
 import { publish } from "../ws/hub";
 
 if (config.vapidPublicKey && config.vapidPrivateKey) {
@@ -34,6 +35,9 @@ export async function notify(input: CreateNotificationInput): Promise<void> {
   );
 
   await sendWebPush(input.personId, row.title, row.body);
+  // Fourth channel (optional) — Slack. No-op unless a webhook is configured
+  // and the owner has enabled this event; never throws, never blocks.
+  await maybeNotifySlack(row.type, row.title, row.body);
 }
 
 async function sendWebPush(personId: string, title: string, body: string): Promise<void> {

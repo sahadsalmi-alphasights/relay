@@ -1,8 +1,9 @@
 import { useState } from "react";
 import CoverageSettings from "../components/CoverageSettings";
+import NotificationSettings from "../components/NotificationSettings";
 import UserManagementTab from "./UserManagementTab";
 
-type SettingsView = "coverage" | "users";
+type SettingsView = "coverage" | "notifications" | "users";
 
 /**
  * Settings — the former "User Management" tab, now a container with two
@@ -20,12 +21,17 @@ export default function SettingsTab({ reloadTick, onReload }: { reloadTick: numb
         <button className={"btn-sm " + (view === "coverage" ? "btn-pl" : "btn-ghost")} onClick={() => setView("coverage")}>
           Coverage settings
         </button>
+        <button className={"btn-sm " + (view === "notifications" ? "btn-pl" : "btn-ghost")} onClick={() => setView("notifications")}>
+          Notifications
+        </button>
         <button className={"btn-sm " + (view === "users" ? "btn-pl" : "btn-ghost")} onClick={() => setView("users")}>
           User management
         </button>
       </div>
 
-      {view === "coverage" ? <CoverageSettings onSaved={onReload} /> : <UserManagementTab reloadTick={reloadTick} />}
+      {view === "coverage" && <CoverageSettings onSaved={onReload} />}
+      {view === "notifications" && <NotificationSettings onSaved={onReload} />}
+      {view === "users" && <UserManagementTab reloadTick={reloadTick} />}
     </>
   );
 }

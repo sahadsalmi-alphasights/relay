@@ -15,6 +15,11 @@ export const config = {
   oidcClientId: process.env.OIDC_CLIENT_ID ?? "",
   oidcClientSecret: process.env.OIDC_CLIENT_SECRET ?? "",
   oidcRedirectUri: process.env.OIDC_REDIRECT_URI ?? "",
+  // Slack integration (optional) — the Incoming Webhook URL is a credential,
+  // so it lives in env (like the VAPID/OIDC secrets), never in the DB or code.
+  // Unset = Slack disabled regardless of the in-app toggles. The DB holds only
+  // the non-secret toggles (which events go to Slack), owner-editable.
+  slackWebhookUrl: (process.env.SLACK_WEBHOOK_URL ?? "").trim(),
   // Cloudflare Access origin validation (defense in depth) — when BOTH are
   // set, the API re-verifies the Cf-Access-Jwt-Assertion header (signed by
   // Cloudflare at the edge) on every request, so even a request that somehow

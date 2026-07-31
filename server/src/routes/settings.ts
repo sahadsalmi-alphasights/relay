@@ -5,6 +5,13 @@ import {
   updateCoverageSettings,
   type CoverageSettings,
 } from "../repositories/coverageSettings";
+import {
+  getNotificationSettings,
+  updateNotificationSettings,
+  NOTIFICATION_SETTING_KEYS,
+  type NotificationSettings,
+} from "../repositories/notificationSettings";
+import { formatSlackMessage, postToSlack, slackConfigured } from "../services/slack";
 import { badRequest } from "../errors";
 import { publish } from "../ws/hub";
 
@@ -69,6 +76,49 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
       return updated;
     }
   );
+
+  // --- Notification / Slack settings ---
+  // Readable by anyone signed in; exposes only the non-secret toggles plus a
+  // boolean saying whether a Slack webhook is configured in env (never the URL).
+  app.get("/notifications", { preHandler: [app.requireAuth] }, async () => {
+    const settings = await getNotificationSettings();
+    return { ...settings, slackConfigured: slackConfigured() };
+  });
+
+  app.patch<{ Body: Partial<NotificationSettings> }>(
+    "/notifications",
+    { preHandler: [app.requireOwner] },
+    async (request) => {
+      const actor = request.actor!;
+      const body = request.body ?? {};
+      const patch: Partial<NotificationSettings> = {};
+      for (const key of NOTIFICATION_SETTING_KEYS) {
+        const v = body[key];
+        if (v === undefined) continue;
+        if (typeof v !== "boolean") throw badRequest(`${key} must be a boolean`);
+        patch[key] = v;
+      }
+      const current = await getNotificationSettings();
+      const updated = await updateNotificationSettings(patch);
+      await insertAuditLog({
+        entityType: "notification_settings",
+        entityId: "00000000-0000-0000-0000-000000000002",
+        actorId: actor.id,
+        action: "notification_settings_updated",
+        oldValue: current,
+        newValue: updated,
+      });
+      publish({ type: "settings" });
+      return { ...updated, slackConfigured: slackConfigured() };
+    }
+  );
+
+  // Owner-only "send a test message" — proves the webhook works end to end.
+  app.post("/notifications/test", { preHandler: [app.requireOwner] }, async (request) => {
+    if (!slackConfigured()) throw badRequest("Slack is not configured (SLACK_WEBHOOK_URL is not set on the server)");
+    const ok = await postToSlack(formatSlackMessage("CapTracker test message", `Sent by ${request.actor!.name}. If you can see this, Slack is wired up correctly.`));
+    return { ok };
+  });
 };
 
 export default settingsRoutes;

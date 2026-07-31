@@ -63,24 +63,26 @@ export function buildApp(): FastifyInstance {
   app.register(cloudflareAccessPlugin);
   app.register(websocketPlugin);
 
-  // Production only, same gating pattern as the capacity-ranking cache: the
-  // integration tests fire hundreds of requests from one address and would
-  // trip any limit worth having. Keyed per authenticated user first — the
-  // whole office shares one egress IP, so an IP bucket would throttle
-  // everyone collectively during busy hours. The auth plugin registers its
-  // onRequest hook before this one, so request.actor is already resolved.
-  // Unauthenticated traffic (login flows) falls back to the
-  // Cloudflare-reported client IP, then the trustProxy-resolved one.
-  if (config.nodeEnv === "production") {
-    app.register(rateLimit, {
-      max: 300,
-      timeWindow: "1 minute",
-      keyGenerator: (request) =>
-        request.actor?.id ??
-        (request.headers["cf-connecting-ip"] as string | undefined) ??
-        request.ip,
-    });
-  }
+  // Global rate limiting — registered in EVERY environment so it's always
+  // applied (and statically provable: previously this was wrapped in an
+  // `if (production)`, which is why CodeQL flagged every DB-touching route as
+  // un-rate-limited). Production keeps the real 300/min cap; other envs get an
+  // effectively-unlimited ceiling so the integration suite (hundreds of
+  // requests) is never throttled, while the limiter is genuinely in the chain.
+  // Keyed per authenticated user first — the whole office shares one egress
+  // IP, so an IP bucket would throttle everyone collectively during busy
+  // hours. The auth plugin registers its onRequest hook before this one, so
+  // request.actor is already resolved; unauthenticated traffic (login flows)
+  // falls back to the Cloudflare-reported client IP, then the trustProxy IP.
+  app.register(rateLimit, {
+    global: true,
+    max: config.nodeEnv === "production" ? 300 : 1_000_000,
+    timeWindow: "1 minute",
+    keyGenerator: (request) =>
+      request.actor?.id ??
+      (request.headers["cf-connecting-ip"] as string | undefined) ??
+      request.ip,
+  });
 
   app.setErrorHandler((err, request, reply) => {
     if (err instanceof HttpError) {

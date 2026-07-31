@@ -7,6 +7,7 @@ export type LiveEvent =
   | { type: "people" }
   | { type: "open-pool" }
   | { type: "sunday-rota" }
+  | { type: "settings" }
   | {
       type: "notification";
       notification: {

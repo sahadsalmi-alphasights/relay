@@ -9,7 +9,7 @@ import CapacityRankingTab from "./tabs/CapacityRankingTab";
 import DeliveryTab from "./tabs/DeliveryTab";
 import FirstDeliverablesTab from "./tabs/FirstDeliverablesTab";
 import ProjectLeadingTab from "./tabs/ProjectLeadingTab";
-import UserManagementTab from "./tabs/UserManagementTab";
+import SettingsTab from "./tabs/SettingsTab";
 import EditProjectSheet from "./sheets/EditProjectSheet";
 import IntakeWizard from "./sheets/IntakeWizard";
 import MorningCallsSoldDialog from "./sheets/MorningCallsSoldDialog";
@@ -22,7 +22,7 @@ import TeamEditSheet from "./sheets/TeamEditSheet";
 import TransferPlSheet from "./sheets/TransferPlSheet";
 import TeamSheet from "./sheets/TeamSheet";
 import { api } from "./api/client";
-import type { Assignment, Project } from "./api/types";
+import type { Assignment, CoverageSettings, Project } from "./api/types";
 import { useApp } from "./state/AppContext";
 import { useViewport } from "./lib/useViewport";
 import { dubaiDateKey, prettyDateKey } from "./lib/time";
@@ -60,6 +60,10 @@ export default function Shell() {
   // Transfer-to-another-PL: holds the full project whose card is being handed off.
   const [transferProject, setTransferProject] = useState<Project | null>(null);
   const [notesFor, setNotesFor] = useState<NotesTarget | null>(null);
+  // Owner-tunable coverage timings — the day-prompts read these instead of
+  // hardcoded windows. Refetched on reloadTick, so a Settings save (which
+  // publishes a `settings` WS invalidate → bumps reloadTick) applies live.
+  const [coverage, setCoverage] = useState<CoverageSettings | null>(null);
 
   const bumpReload = () => setReloadTick((t) => t + 1);
   // Live WS events can arrive in bursts (a teammate logging several
@@ -80,6 +84,13 @@ export default function Shell() {
   useEffect(() => {
     initSoundUnlock();
   }, []);
+
+  // Coverage timings for the day-prompts. Refetched on every reloadTick, so a
+  // `settings` WS invalidate (fired when an owner saves) updates the windows
+  // for everyone without a page reload.
+  useEffect(() => {
+    api.get<CoverageSettings>("/settings/coverage").then(setCoverage).catch(() => {});
+  }, [reloadTick]);
 
   // §11 step 5 / §9 (built) — one shared socket handles both concerns: a
   // "notification" event carries real content (already scoped server-side
@@ -250,7 +261,7 @@ export default function Shell() {
       {tab === "GhostRanking" && <CapacityRankingTab reloadTick={reloadTick} ghostOnly />}
       {tab === "FirstDel" && <FirstDeliverablesTab scope={scope} reloadTick={reloadTick} onCount={setFdCount} />}
       {tab === "AuditLog" && <AuditLogTab reloadTick={reloadTick} />}
-      {tab === "Users" && <UserManagementTab reloadTick={reloadTick} />}
+      {tab === "Users" && <SettingsTab reloadTick={reloadTick} onReload={bumpReload} />}
       {tab === "SundayRota" && <SundayCoverageTab reloadTick={reloadTick} />}
     </>
   );
@@ -259,8 +270,8 @@ export default function Shell() {
     return (
       <div className="app-shell">
         <MorningCallsSoldDialog onActioned={bumpReload} />
-        <LunchPrompt />
-        <EveningCoveragePrompt />
+        <LunchPrompt settings={coverage} />
+        <EveningCoveragePrompt settings={coverage} />
         <Sidebar
           tab={tab}
           setTab={setTab}
@@ -300,8 +311,8 @@ export default function Shell() {
   return (
     <div className="relay">
       <MorningCallsSoldDialog onActioned={bumpReload} />
-      <LunchPrompt />
-      <EveningCoveragePrompt />
+      <LunchPrompt settings={coverage} />
+      <EveningCoveragePrompt settings={coverage} />
       <Header
         scope={scope}
         setScope={setScope}

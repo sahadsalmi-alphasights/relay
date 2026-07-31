@@ -13,6 +13,7 @@ export type LiveEvent =
   | { type: "people" }
   | { type: "open-pool" }
   | { type: "sunday-rota" }
+  | { type: "settings" }
   /**
    * §9 (built) — the one event type carrying real content instead of just an
    * invalidate signal: it's already scoped to exactly one person (never a

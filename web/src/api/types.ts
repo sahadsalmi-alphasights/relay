@@ -201,3 +201,29 @@ export interface Notification {
   read: boolean;
   createdAt: string;
 }
+
+/** Owner-tunable coverage timings (Settings → Coverage). All values are minutes since Dubai midnight, except *AutoOff/*Snooze which are durations in minutes. */
+export interface CoverageSettings {
+  lunchPromptStartMin: number;
+  lunchPromptEndMin: number;
+  lunchAutoOffMin: number;
+  lunchSnoozeMin: number;
+  eveningPromptStartMin: number;
+  eveningPromptEndMin: number;
+  eveningResetStartMin: number;
+  eveningResetEndMin: number;
+  eveningSnoozeMin: number;
+}
+
+/** Client-side fallback = the seeded defaults, so prompts work before the fetch resolves. */
+export const DEFAULT_COVERAGE: CoverageSettings = {
+  lunchPromptStartMin: 750,
+  lunchPromptEndMin: 870,
+  lunchAutoOffMin: 60,
+  lunchSnoozeMin: 30,
+  eveningPromptStartMin: 1080,
+  eveningPromptEndMin: 1320,
+  eveningResetStartMin: 240,
+  eveningResetEndMin: 480,
+  eveningSnoozeMin: 60,
+};

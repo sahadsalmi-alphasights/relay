@@ -269,6 +269,26 @@ a.client:hover { text-decoration:underline; }
 .dl-team-status { display:inline-flex; align-items:center; gap:7px; margin-left:8px; }
 .dl-team-load { font-size:11px; font-weight:600; color:var(--soft); font-variant-numeric:tabular-nums; }
 
+/* Settings → Coverage (2026-07-29). */
+.settings-subnav { margin-bottom: 16px; }
+.cs-card { padding: 16px 18px; }
+.cs-head { font-size: 15px; font-weight: 700; margin-bottom: 6px; }
+.cs-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 0; border-top: 1px dashed var(--line); }
+.cs-row:first-of-type { border-top: none; }
+.cs-rl { font-size: 13.5px; font-weight: 600; color: var(--ink); }
+.cs-rs { font-size: 12px; color: var(--soft); margin-top: 2px; }
+.cs-controls { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.cs-to { color: var(--soft); font-size: 12px; }
+.cs-time { font-family: var(--mono, ui-monospace, monospace); font-size: 13.5px; background: var(--bg); border: 1px solid var(--line); border-radius: 9px; padding: 7px 9px; color: var(--ink); }
+.cs-time:disabled { opacity: .7; }
+.cs-stepper { display: inline-flex; align-items: center; gap: 2px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg); padding: 2px; }
+.cs-stepper button { border: none; background: transparent; color: var(--ink); width: 28px; height: 30px; font-size: 15px; cursor: pointer; border-radius: 7px; }
+.cs-stepper button:disabled { opacity: .4; cursor: default; }
+.cs-stepper .val { min-width: 30px; text-align: center; font-family: var(--mono, ui-monospace, monospace); font-size: 13.5px; }
+.cs-unit { color: var(--soft); font-size: 12px; padding: 0 6px 0 2px; }
+.cs-actions { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+.cs-ok { color: var(--green); font-size: 12.5px; font-weight: 600; }
+
 /* Monthly market-share pulse (2026-07-29) — double bar under Project Leading. */
 .ms-card { background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:14px 16px; margin-bottom:14px; }
 .ms-head { display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-bottom:9px; }

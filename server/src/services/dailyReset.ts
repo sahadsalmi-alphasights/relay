@@ -1,40 +1,45 @@
+import { getCoverageSettings } from "../repositories/coverageSettings";
 import { expireOutToLunch, resetAllEveningCoverage } from "../repositories/people";
-import { dubaiDateKey, dubaiHour } from "../rules/time";
+import { dubaiDateKey, dubaiMinuteOfDay } from "../rules/time";
 import { publish } from "../ws/hub";
 
-// "Out to Lunch" auto-off window: a person returns to Free one hour after they
-// switched it on (2026-07-29 — replaces the old fixed 16:00 daily reset).
-const LUNCH_WINDOW_MS = 60 * 60 * 1000;
-
 /**
- * Clock-driven automatic resets, run by the scheduler (not user actions):
+ * Clock-driven automatic resets, run by the scheduler (not user actions). All
+ * timings come from coverage_settings (Settings → Coverage), so they're
+ * owner-tunable with no redeploy — defaults match the old hardcoded values:
  *
- *  - Out to Lunch expires 1 hour after each person switched it on — checked
- *    every tick, per person (not at a fixed time of day).
- *  - Evening coverage returns to its default (off) each morning — nobody
- *    carries last night's opt-in into a new day; they're re-asked at 18:00.
+ *  - Out to Lunch expires `lunchAutoOffMin` minutes after each person switched
+ *    it on — checked every tick, per person (not at a fixed time of day).
+ *  - Evening coverage returns to off each morning inside the reset window
+ *    (`eveningResetStartMin`–`eveningResetEndMin`), so nobody carries last
+ *    night's opt-in into a new day.
  *
  * The evening reset fires at most once per Dubai calendar day; the last-run
  * date is held in memory (a missed day after a restart just resets whenever
- * the next tick lands inside the window). The morning window is 04:00–08:00
- * (before the 08:00 working day) so an afternoon restart never clobbers an
- * evening-coverage opt-in made for that same night.
+ * the next tick lands inside the window). The window sits before the working
+ * day so an afternoon restart never clobbers an opt-in made for that night.
  */
 let lastEveningResetDay: string | null = null;
 
 export async function runDailyResets(now: Date): Promise<void> {
   const day = dubaiDateKey(now);
-  const hour = dubaiHour(now);
+  const minuteOfDay = dubaiMinuteOfDay(now);
+  const settings = await getCoverageSettings();
 
-  // Lunch: expire anyone who's been on it longer than the window. Every tick,
-  // so auto-off lands within one scheduler interval of the hour mark.
-  const lunchCleared = await expireOutToLunch(new Date(now.getTime() - LUNCH_WINDOW_MS).toISOString());
+  // Lunch: expire anyone who's been on it longer than the configured window.
+  // Every tick, so auto-off lands within one scheduler interval of the mark.
+  const cutoffMs = now.getTime() - settings.lunchAutoOffMin * 60_000;
+  const lunchCleared = await expireOutToLunch(new Date(cutoffMs).toISOString());
   if (lunchCleared > 0) {
     publish({ type: "people" });
     publish({ type: "capacity-ranking" });
   }
 
-  if (hour >= 4 && hour < 8 && lastEveningResetDay !== day) {
+  if (
+    minuteOfDay >= settings.eveningResetStartMin &&
+    minuteOfDay < settings.eveningResetEndMin &&
+    lastEveningResetDay !== day
+  ) {
     lastEveningResetDay = day;
     const n = await resetAllEveningCoverage();
     if (n > 0) {

@@ -13,6 +13,26 @@ export function dubaiHour(instant: Date): number {
   return toDubaiShifted(instant).getUTCHours();
 }
 
+/**
+ * The epoch-ms instant of `hour`:00 Asia/Dubai on the calendar day AFTER the
+ * given instant's Dubai date. Used by the First-Deliverable-due ladder for its
+ * final "next morning 9am" reminder. Dubai has no DST, so the fixed offset is
+ * exact.
+ */
+export function nextDubaiMorningMs(fromMs: number, hour = 9): number {
+  const shifted = toDubaiShifted(new Date(fromMs)); // Dubai wall-clock expressed as a UTC Date
+  const nextDayWallUtc = Date.UTC(
+    shifted.getUTCFullYear(),
+    shifted.getUTCMonth(),
+    shifted.getUTCDate() + 1,
+    hour,
+    0,
+    0
+  );
+  // Convert that Dubai wall-clock back to a real UTC instant.
+  return nextDayWallUtc - DUBAI_UTC_OFFSET_HOURS * 60 * 60 * 1000;
+}
+
 /** Minutes since midnight (0–1439) in Asia/Dubai — matches coverage_settings' minute-of-day fields. */
 export function dubaiMinuteOfDay(instant: Date): number {
   const d = toDubaiShifted(instant);

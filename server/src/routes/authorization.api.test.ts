@@ -131,7 +131,7 @@ describe("§5e — goal changes flow through a request, never a direct deliverer
       method: "POST",
       url: `/assignments/${fx.assignment}/goal-change-requests`,
       cookies: { relay_session: delivererCookie.split("=")[1] },
-      payload: { body: "client wants 4 more profiles", requestedGoal: 12, requestedStatus: "active" },
+      payload: { body: "client wants 4 more profiles", requestedGoal: 12, requestedStatus: "Second Deliverable" },
     });
     expect(createRes.statusCode).toBe(200);
     const requestId = createRes.json().id as string;

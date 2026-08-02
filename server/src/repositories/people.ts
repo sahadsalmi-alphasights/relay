@@ -72,6 +72,20 @@ export async function listPeopleByTeam(teamId: string): Promise<PersonRow[]> {
   return rows;
 }
 
+/**
+ * The manager(s) of a team — there's no manager_id FK; "manager of a team" is
+ * simply the active people in that team flagged is_manager. Optionally exclude
+ * one person (e.g. the PL themselves, so a manager who is also the PL isn't
+ * double-notified). Deactivated people never count.
+ */
+export async function managersOfTeam(teamId: string, excludeId?: string): Promise<PersonRow[]> {
+  const { rows } = await pool.query(
+    `${SELECT} WHERE team_id = $1 AND is_manager = true AND deactivated_at IS NULL ORDER BY name`,
+    [teamId]
+  );
+  return (rows as PersonRow[]).filter((p) => p.id !== excludeId);
+}
+
 export async function updatePersonStatus(id: string, status: PersonStatus): Promise<PersonRow> {
   await pool.query(`UPDATE person SET status = $2 WHERE id = $1`, [id, status]);
   return (await findPersonById(id))!;

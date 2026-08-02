@@ -225,8 +225,20 @@ describe("Batch S — goal-change request accept/decline", () => {
     expect(res.statusCode).toBe(400);
   });
 
-  it("accepting applies the requested goal and status", async () => {
-    const requestId = await createRequest(3, "archived");
+  it("rejects a requestedStatus that isn't a valid stage target", async () => {
+    const cookie = await loginAs(app, fx.delivererAlpha);
+    const res = await app.inject({
+      method: "POST",
+      url: `/assignments/${fx.assignment}/goal-change-requests`,
+      cookies: cookieHeader(cookie),
+      // "active" is a project status, no longer a valid goal-change target.
+      payload: { body: "x", requestedGoal: 3, requestedStatus: "active" },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("accepting applies the requested goal and delivery stage", async () => {
+    const requestId = await createRequest(3, "Second Deliverable");
     const plCookie = await loginAs(app, fx.plAlpha);
     const res = await app.inject({
       method: "PATCH",
@@ -237,14 +249,43 @@ describe("Batch S — goal-change request accept/decline", () => {
     expect(res.statusCode).toBe(200);
     expect(res.json().outcome).toBe("accepted");
 
-    const { rows: assignmentRows } = await pool.query(`SELECT goal FROM assignment WHERE id = $1`, [fx.assignment]);
-    expect(assignmentRows[0].goal).toBe(3);
+    const { rows } = await pool.query(`SELECT goal, stage FROM assignment WHERE id = $1`, [fx.assignment]);
+    expect(rows[0].goal).toBe(3);
+    expect(rows[0].stage).toBe("Second Deliverable");
+  });
+
+  it("accepting with goal/status overrides applies the overrides (accept with changes)", async () => {
+    const requestId = await createRequest(3, "Second Deliverable");
+    const plCookie = await loginAs(app, fx.plAlpha);
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/goal-change-requests/${requestId}/resolve`,
+      cookies: cookieHeader(plCookie),
+      payload: { outcome: "accepted", goal: 7, status: "Hail Mary" },
+    });
+    expect(res.statusCode).toBe(200);
+
+    const { rows } = await pool.query(`SELECT goal, stage FROM assignment WHERE id = $1`, [fx.assignment]);
+    expect(rows[0].goal).toBe(7);
+    expect(rows[0].stage).toBe("Hail Mary");
+  });
+
+  it("accepting an 'Archive' target archives the project", async () => {
+    const requestId = await createRequest(3, "Archive");
+    const plCookie = await loginAs(app, fx.plAlpha);
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/goal-change-requests/${requestId}/resolve`,
+      cookies: cookieHeader(plCookie),
+      payload: { outcome: "accepted" },
+    });
+    expect(res.statusCode).toBe(200);
     const { rows: projectRows } = await pool.query(`SELECT status FROM project WHERE id = $1`, [fx.project]);
     expect(projectRows[0].status).toBe("archived");
   });
 
-  it("declining leaves the goal and status untouched", async () => {
-    const requestId = await createRequest(99, "archived");
+  it("declining leaves the goal untouched", async () => {
+    const requestId = await createRequest(99, "Hail Mary");
     const plCookie = await loginAs(app, fx.plAlpha);
     const res = await app.inject({
       method: "PATCH",
@@ -257,12 +298,10 @@ describe("Batch S — goal-change request accept/decline", () => {
 
     const { rows: assignmentRows } = await pool.query(`SELECT goal FROM assignment WHERE id = $1`, [fx.assignment]);
     expect(assignmentRows[0].goal).not.toBe(99);
-    const { rows: projectRows } = await pool.query(`SELECT status FROM project WHERE id = $1`, [fx.project]);
-    expect(projectRows[0].status).toBe("active");
   });
 
   it("rejects an outcome that isn't 'accepted' or 'declined'", async () => {
-    const requestId = await createRequest(3, "active");
+    const requestId = await createRequest(3, "First Deliverable");
     const plCookie = await loginAs(app, fx.plAlpha);
     const res = await app.inject({
       method: "PATCH",

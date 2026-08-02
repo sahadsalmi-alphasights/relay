@@ -21,6 +21,7 @@ import projectsRoutes from "./routes/projects";
 import pushRoutes from "./routes/push";
 import sundayRotaRoutes from "./routes/sundayRota";
 import settingsRoutes from "./routes/settings";
+import slackRoutes from "./routes/slack";
 import sundaySwapRequestsRoutes from "./routes/sundaySwapRequests";
 import teamsRoutes from "./routes/teams";
 import wsRoutes from "./routes/ws";
@@ -116,6 +117,7 @@ export function buildApp(): FastifyInstance {
   app.register(auditLogRoutes, { prefix: "/audit-log" });
   app.register(usersRoutes, { prefix: "/users" });
   app.register(settingsRoutes, { prefix: "/settings" });
+  app.register(slackRoutes, { prefix: "/slack" });
 
   const heartbeatTimer = startHeartbeat();
   const staleTimer = startStaleScheduler();

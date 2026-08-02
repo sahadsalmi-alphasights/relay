@@ -5,6 +5,19 @@ export const EXPERT_POOLS: ExpertPool[] = ["Global", "EU & MEA & India", "AUS / 
 
 export type Stage = "First Deliverable" | "Second Deliverable" | "Hail Mary" | "Selling";
 
+/**
+ * The target a deliverer can request in a goal-change: the four stages plus a
+ * shortcut to Archive the project. Displayed via stageLabel ("Selling"→"Admin").
+ */
+export type GoalChangeTarget = Stage | "Archive";
+export const GOAL_CHANGE_TARGETS: GoalChangeTarget[] = [
+  "First Deliverable",
+  "Second Deliverable",
+  "Hail Mary",
+  "Selling",
+  "Archive",
+];
+
 /** Project lifecycle — open (unclaimed) -> active (staffed), archived from either. Batch S removed 'idle'. */
 export type ProjectStatus = "open" | "active" | "archived";
 
@@ -122,9 +135,18 @@ export interface GoalChangeRequest {
   body: string;
   /** Batch S, item 4 — the structured ask; null only on pre-Batch-S rows. */
   requestedGoal: number | null;
-  requestedStatus: ProjectStatus | null;
+  /** A delivery-stage target ("First Deliverable"…"Selling") or "Archive". Pre-batch rows may hold a legacy value. */
+  requestedStatus: GoalChangeTarget | string | null;
   resolved: boolean;
   outcome: "accepted" | "declined" | null;
+}
+
+/** The actor's own still-open goal-change requests — drives the Delivery Poke button. */
+export interface MyGoalChangeRequest {
+  id: string;
+  assignmentId: string;
+  requestedGoal: number | null;
+  requestedStatus: GoalChangeTarget | string | null;
 }
 
 export interface SundayRotaEntry {

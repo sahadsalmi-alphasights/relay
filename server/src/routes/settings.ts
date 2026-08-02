@@ -11,7 +11,7 @@ import {
   NOTIFICATION_SETTING_KEYS,
   type NotificationSettings,
 } from "../repositories/notificationSettings";
-import { formatSlackMessage, postToSlack, slackConfigured } from "../services/slack";
+import { formatSlackMessage, postToSlack, slackConfigured, slackInteractiveConfigured } from "../services/slack";
 import { badRequest } from "../errors";
 import { publish } from "../ws/hub";
 
@@ -82,7 +82,7 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
   // boolean saying whether a Slack webhook is configured in env (never the URL).
   app.get("/notifications", { preHandler: [app.requireAuth] }, async () => {
     const settings = await getNotificationSettings();
-    return { ...settings, slackConfigured: slackConfigured() };
+    return { ...settings, slackConfigured: slackConfigured(), slackInteractiveConfigured: slackInteractiveConfigured() };
   });
 
   app.patch<{ Body: Partial<NotificationSettings> }>(
@@ -109,7 +109,7 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
         newValue: updated,
       });
       publish({ type: "settings" });
-      return { ...updated, slackConfigured: slackConfigured() };
+      return { ...updated, slackConfigured: slackConfigured(), slackInteractiveConfigured: slackInteractiveConfigured() };
     }
   );
 

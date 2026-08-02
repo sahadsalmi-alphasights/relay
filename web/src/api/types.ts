@@ -261,4 +261,6 @@ export interface NotificationSettings {
   slackStaleFirstDeliverable: boolean;
   slackProjectTransferred: boolean;
   slackConfigured: boolean;
+  /** Whether inbound interactivity (the "Accept from Slack" button) is wired — i.e. SLACK_SIGNING_SECRET is set. Read-only status; the secret is never sent. */
+  slackInteractiveConfigured: boolean;
 }

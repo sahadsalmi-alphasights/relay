@@ -7,6 +7,15 @@ export function slackConfigured(): boolean {
 }
 
 /**
+ * True when inbound interactivity is wired — i.e. the signing secret is set, so
+ * the "Accept from Slack" button on goal-change messages can be verified and
+ * acted on. The secret itself is never exposed.
+ */
+export function slackInteractiveConfigured(): boolean {
+  return !!config.slackSigningSecret;
+}
+
+/**
  * Maps a notification `type` to the per-event Slack toggle. Types with no
  * mapping (should be none) simply never post to Slack.
  */

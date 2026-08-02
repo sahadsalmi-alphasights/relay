@@ -7,7 +7,7 @@ import { useApp } from "../state/AppContext";
 const EVENTS: { key: keyof NS; label: string; sub: string; channel: string }[] = [
   { key: "slackBroadcastUpForGrabs", label: "Project up for grabs", sub: "A project needs staffing and went to the open pool.", channel: "Channel" },
   { key: "slackAssigned", label: "Assigned / seat claimed", sub: "You're staffed on an angle, or a seat was claimed from a broadcast.", channel: "DM" },
-  { key: "slackGoalChangeRequested", label: "Goal-change requested", sub: "A deliverer asks the PL to change a goal/status.", channel: "DM" },
+  { key: "slackGoalChangeRequested", label: "Goal-change requested", sub: "A deliverer asks the PL to change a goal/stage — includes an Accept button when interactive Slack is wired. Also carries Poke nudges.", channel: "DM" },
   { key: "slackGoalChangeResolved", label: "Goal-change resolved", sub: "The PL accepted or declined a request.", channel: "DM" },
   { key: "slackDeliveryLogged", label: "Delivery logged", sub: "A deliverer logged progress (can be chatty).", channel: "DM" },
   { key: "slackStaleFirstDeliverable", label: "Stalled on First Deliverable", sub: "Someone has been stuck on First Deliverable.", channel: "DM" },
@@ -51,8 +51,9 @@ export default function NotificationSettings({ onSaved }: { onSaved: () => void 
   const save = async () => {
     setBusy(true); setError(null);
     try {
-      const { slackConfigured, ...toggles } = draft;
+      const { slackConfigured, slackInteractiveConfigured, ...toggles } = draft;
       void slackConfigured;
+      void slackInteractiveConfigured;
       const updated = await api.patch<NS>("/settings/notifications", toggles);
       setDraft(updated); setSaved(updated); setOk(true); onSaved();
     } catch (err) {
@@ -93,6 +94,17 @@ export default function NotificationSettings({ onSaved }: { onSaved: () => void 
         </div>
         <div className="cs-row">
           <div>
+            <div className="cs-rl">Accept from Slack (interactive)</div>
+            <div className="cs-rs">The <b>Accept</b> button on a goal-change Slack message. Needs <code>SLACK_SIGNING_SECRET</code> set on the server and <code>/slack/interactive</code> reachable by Slack. Without it, the button is hidden and messages are read-only.</div>
+          </div>
+          <div className="cs-controls">
+            {draft.slackInteractiveConfigured
+              ? <span className="mini free">Configured</span>
+              : <span className="mini off">Not configured</span>}
+          </div>
+        </div>
+        <div className="cs-row">
+          <div>
             <div className="cs-rl">Send CapTracker alerts to Slack</div>
             <div className="cs-rs">Master switch. Off = nothing posts to Slack, whatever the per-event toggles say.</div>
           </div>
@@ -117,7 +129,7 @@ export default function NotificationSettings({ onSaved }: { onSaved: () => void 
       <div className="card cs-card">
         <div className="cs-head">Which alerts go to Slack</div>
         <p className="cs-rs" style={{ margin: "0 0 8px" }}>
-          Surface shows the intended target — channel broadcasts today; DMs arrive with the Slack app (Phase 2).
+          Surface shows the intended target. Goal-change messages carry an interactive Accept button when "Accept from Slack" above is configured.
         </p>
         {EVENTS.map((e) => (
           <div className="cs-row" key={e.key}>

@@ -28,7 +28,10 @@ export interface MatchContext {
  * applyFirstDeliverableBlock below), deliberately layered on top rather than
  * fused into isEligible(), same spirit as §4's "keep the rules independent."
  */
-export type MatchBlockReason = Exclude<IneligibleReason, "not_available"> | "first_deliverable_conflict";
+export type MatchBlockReason =
+  | Exclude<IneligibleReason, "not_available">
+  | "first_deliverable_conflict"
+  | "sunday_off";
 
 export interface RankedCandidate {
   personId: string;
@@ -167,6 +170,31 @@ export function applyFirstDeliverableBlock(
     }
     return r;
   });
+  adjusted.sort((a, b) => (a.eligible === b.eligible ? 0 : a.eligible ? -1 : 1));
+  return adjusted;
+}
+
+/**
+ * Sunday-rota block (2026-08-02) — on Sunday only people on today's rota are
+ * available; anyone eligible who is NOT on the rota is downgraded to
+ * ineligible ("sunday_off"), so they're never auto-picked but still appear
+ * (overridable), exactly like the first-deliverable block above. This is what
+ * the Capacity Ranking already shows as "Off · Sunday" — matching now agrees
+ * with it instead of auto-picking Sunday-off people. No-op on any other day
+ * (and when it's not Sunday the rota set is irrelevant/empty).
+ */
+export function applySundayRotaBlock(
+  ranked: RankedCandidate[],
+  isSundayNow: boolean,
+  rotaPersonIds: Set<string>
+): RankedCandidate[] {
+  if (!isSundayNow) return ranked;
+  const adjusted = ranked.map((r) =>
+    r.eligible && !rotaPersonIds.has(r.personId)
+      ? { ...r, eligible: false, ineligibleReason: "sunday_off" as const }
+      : r
+  );
+  // Keep ineligible sorted after eligible (stable — preserves load order within each group).
   adjusted.sort((a, b) => (a.eligible === b.eligible ? 0 : a.eligible ? -1 : 1));
   return adjusted;
 }

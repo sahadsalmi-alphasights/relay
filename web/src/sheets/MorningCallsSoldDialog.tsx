@@ -39,7 +39,14 @@ type RowMode = "callsSold" | "archive";
  * next fetch (next page load) naturally comes back empty until tomorrow's
  * calendar day makes today's touch stale again.
  */
-export default function MorningCallsSoldDialog({ onActioned }: { onActioned: () => void }) {
+export default function MorningCallsSoldDialog({
+  onActioned,
+  reopenTick = 0,
+}: {
+  onActioned: () => void;
+  /** Bumped by the PL board's calls-sold strip to re-open a missed prompt. */
+  reopenTick?: number;
+}) {
   const { isDesktop } = useViewport();
   const { nowMs } = useApp();
   // Weekdays only (Mon–Fri Dubai) — no calls-sold nag on the Sat/Sun weekend.
@@ -52,6 +59,9 @@ export default function MorningCallsSoldDialog({ onActioned }: { onActioned: () 
 
   useEffect(() => {
     if (weekend) return;
+    // Refetches on mount and whenever reopenTick changes (the strip click).
+    // Re-opening after everything's resolved simply returns [] and renders
+    // nothing, so a resolved prompt naturally disappears again.
     api.get<{ due: DueRow[] }>("/projects/calls-sold-due").then((res) => {
       setDue(res.due);
       const initialModes: Record<string, RowMode> = {};
@@ -64,7 +74,7 @@ export default function MorningCallsSoldDialog({ onActioned }: { onActioned: () 
       setValues(initialValues);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [reopenTick]);
 
   if (weekend || !due || due.length === 0) return null;
 

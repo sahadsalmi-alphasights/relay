@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { api, ApiError } from "../api/client";
 import { applyCardOrder, loadCardOrder, moveBefore, saveCardOrder } from "../lib/cardOrder";
-import type { Assignment, CapacityRankRow, Note, Project, ProjectStatus } from "../api/types";
+import type { Assignment, CapacityRankRow, GoalChangeTarget, MyGoalChangeRequest, Note, Project } from "../api/types";
+import { GOAL_CHANGE_TARGETS } from "../api/types";
 import { barColor, entityName, initials, overDelivered, stageClass, stageLabel, typeClass } from "../lib/format";
 import CardNotes from "../components/CardNotes";
 import EntityLogo from "../components/EntityLogo";
@@ -58,13 +59,13 @@ function RequestChange({
   onSend,
 }: {
   currentGoal: number;
-  currentStatus: ProjectStatus;
-  onSend: (body: string, requestedGoal: number, requestedStatus: ProjectStatus) => Promise<void>;
+  currentStatus: GoalChangeTarget;
+  onSend: (body: string, requestedGoal: number, requestedStatus: GoalChangeTarget) => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
   const [txt, setTxt] = useState("");
   const [goal, setGoal] = useState(currentGoal);
-  const [status, setStatus] = useState<ProjectStatus>(currentStatus);
+  const [status, setStatus] = useState<GoalChangeTarget>(currentStatus);
   const [busy, setBusy] = useState(false);
   if (!open) {
     return (
@@ -87,15 +88,17 @@ function RequestChange({
           />
         </label>
         <label style={{ flex: 1, fontSize: 12, color: "var(--soft)" }}>
-          Requested status
+          Requested stage
           <select
             value={status}
-            onChange={(e) => setStatus(e.target.value as ProjectStatus)}
+            onChange={(e) => setStatus(e.target.value as GoalChangeTarget)}
             style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid var(--line)", fontSize: 13, color: "var(--ink)", background: "var(--surface)" }}
           >
-            <option value="open">Open</option>
-            <option value="active">Active</option>
-            <option value="archived">Archived</option>
+            {GOAL_CHANGE_TARGETS.map((t) => (
+              <option key={t} value={t}>
+                {t === "Archive" ? "Archive" : stageLabel(t)}
+              </option>
+            ))}
           </select>
         </label>
       </div>
@@ -177,6 +180,25 @@ export default function DeliveryTab({
   // in its side panel, and the source of the per-person status+load summary in
   // the team Table view. Same GET /capacity-ranking, no new definition.
   const [rankRows, setRankRows] = useState<CapacityRankRow[] | null>(null);
+  // My still-open goal-change requests, keyed by assignment id → request id, so
+  // each of my assignment cards can show a Poke button while its request waits.
+  const [myPending, setMyPending] = useState<Map<string, string>>(new Map());
+
+  useEffect(() => {
+    api
+      .get<MyGoalChangeRequest[]>("/assignments/me/goal-change-requests")
+      .then((rows) => setMyPending(new Map(rows.map((r) => [r.assignmentId, r.id]))))
+      .catch(() => {});
+  }, [reloadTick]);
+
+  const poke = async (assignmentId: string) => {
+    try {
+      await api.post(`/assignments/${assignmentId}/goal-change-requests/poke`, {});
+      window.alert("Poke sent — the PL and their manager have been nudged.");
+    } catch (err) {
+      window.alert(err instanceof ApiError ? err.message : "Could not send the poke — try again.");
+    }
+  };
 
   // Notification deep-link: scroll + pulse the target card (see Shell).
   useEffect(() => {
@@ -457,11 +479,23 @@ export default function DeliveryTab({
           <div className="actions">
             <RequestChange
               currentGoal={a.goal}
-              currentStatus={p.status}
+              currentStatus={a.stage}
               onSend={async (body, requestedGoal, requestedStatus) => {
                 await api.post(`/assignments/${a.id}/goal-change-requests`, { body, requestedGoal, requestedStatus });
+                onReload();
               }}
             />
+            {/* Poke — only after a request is in and still unactioned. Nudges
+                the PL AND their manager so it doesn't sit ignored. */}
+            {myPending.has(a.id) && (
+              <button
+                className="btn btn-ghost"
+                title="Nudge the PL and their manager — your request hasn't been actioned yet"
+                onClick={() => poke(a.id)}
+              >
+                👉 Poke PL
+              </button>
+            )}
           </div>
         )}
         {/* Notes on the delivery card too (2026-07-28) — same per-project

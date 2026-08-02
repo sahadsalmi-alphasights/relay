@@ -68,7 +68,7 @@ describe("§9 (built) — notification fan-out reaches only intended recipients"
       method: "POST",
       url: `/assignments/${fx.assignment}/goal-change-requests`,
       cookies: { relay_session: cookie.split("=")[1] },
-      payload: { body: "please lower the goal", requestedGoal: 5, requestedStatus: "active" },
+      payload: { body: "please lower the goal", requestedGoal: 5, requestedStatus: "Second Deliverable" },
     });
     expect(res.statusCode).toBe(200);
 
@@ -86,7 +86,7 @@ describe("§9 (built) — notification fan-out reaches only intended recipients"
       method: "POST",
       url: `/assignments/${fx.assignment}/goal-change-requests`,
       cookies: { relay_session: delivererCookie.split("=")[1] },
-      payload: { body: "please lower the goal", requestedGoal: 5, requestedStatus: "active" },
+      payload: { body: "please lower the goal", requestedGoal: 5, requestedStatus: "Second Deliverable" },
     });
     const gcr = createRes.json();
 

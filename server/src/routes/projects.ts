@@ -47,6 +47,7 @@ import type { ProjectType } from "../rules/types";
 import { isValidHttpUrl } from "../rules/url";
 import { notifyBroadcastRecipients } from "../services/broadcast";
 import { notify } from "../services/notify";
+import { notifyStaffed } from "../services/staffingNotify";
 import { publish } from "../ws/hub";
 import { projectRecipientIds } from "../ws/recipients";
 
@@ -606,17 +607,13 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
       return created;
     });
 
+    // The intake creator leads the project, so they are the staffing PL.
+    const intakePl = { id: project.plId, name: actor.name, teamId: actor.teamId ?? null };
     // Ghost "assigned" notifications — deliberately identical wording to a
-    // real assignment's (the ghost never knows they're the competition).
+    // real assignment's (the ghost never knows they're the competition), and
+    // no cross-team manager ping (isGhost).
     for (const g of ghostNotifications) {
-      await notify({
-        personId: g.personId,
-        type: "assigned",
-        title: "New project assigned to you",
-        body: `${project.client} — you've been staffed with a goal of ${g.goal}.`,
-        entityType: "project",
-        entityId: project.id,
-      });
+      await notifyStaffed({ projectId: project.id, delivererId: g.personId, goal: g.goal, pl: intakePl, isGhost: true });
     }
 
     await publishProjectChanged(project.id, [actor.id, ...allAssignments.map((a) => a.delivererId), ...ghostDelivererIds]);
@@ -624,14 +621,7 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
       publish({ type: "capacity-ranking" });
       // §9 (built) — "project assigned to you," one per newly staffed deliverer.
       for (const a of allAssignments) {
-        await notify({
-          personId: a.delivererId,
-          type: "assigned",
-          title: "New project assigned to you",
-          body: `${project.client} — you've been staffed with a goal of ${a.goal}.`,
-          entityType: "project",
-          entityId: project.id,
-        });
+        await notifyStaffed({ projectId: project.id, delivererId: a.delivererId, goal: a.goal, pl: intakePl });
       }
     } else {
       publish({ type: "open-pool" });
@@ -734,15 +724,17 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
     // If this staffed the last open seat, everyone's broadcast list must drop
     // the card immediately — same signal the claim path sends.
     if (fullyStaffed) publish({ type: "open-pool" });
-    // Same wording for a ghost as a real assignment — the disguise the wizard
-    // already uses, so a ghost never learns they're the invisible competition.
-    await notify({
-      personId: request.body.delivererId,
-      type: "assigned",
-      title: "New project assigned to you",
-      body: `${project.client} — you've been staffed with a goal of ${created.goal}.`,
-      entityType: "project",
-      entityId: project.id,
+    // Deliverer-facing copy names the PL who staffed them + the goal (same
+    // disguised wording for a ghost, so a ghost never learns they're the
+    // invisible competition). A cross-team staffing also pings the deliverer's
+    // own team manager(s) — but never for a ghost.
+    const staffingPl = await findPersonById(project.plId);
+    await notifyStaffed({
+      projectId: project.id,
+      delivererId: request.body.delivererId,
+      goal: created.goal,
+      pl: { id: project.plId, name: staffingPl?.name ?? actor.name, teamId: staffingPl?.teamId ?? null },
+      isGhost: asGhost,
     });
     return created;
   });

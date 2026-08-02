@@ -9,8 +9,13 @@ import {
   updateAssignmentGoal,
   updateAssignmentProgress,
 } from "../repositories/assignments";
-import { createGoalChangeRequest } from "../repositories/goalChangeRequests";
+import {
+  createGoalChangeRequest,
+  findUnresolvedByAssignment,
+  listUnresolvedByRequester,
+} from "../repositories/goalChangeRequests";
 import { cumulativeDeliveredForAssignment, listRoundsForAssignment } from "../repositories/deliveryRounds";
+import { findPersonById, managersOfTeam } from "../repositories/people";
 import { findProjectById } from "../repositories/projects";
 import { badRequest, forbidden, notFound } from "../errors";
 import {
@@ -22,14 +27,13 @@ import {
   canSwapDeliverer,
 } from "../rules/permissions";
 import { STAGE_ORDER } from "../rules/config";
+import { GOAL_CHANGE_TARGETS, goalChangeTargetLabel, isGoalChangeTarget } from "../rules/goalChange";
 import { advanceStage, backStage } from "../rules/stage";
 import { swapDeliverer } from "../rules/swap";
-import type { ProjectStatus, Stage } from "../rules/types";
+import type { Stage } from "../rules/types";
 import { notify } from "../services/notify";
 import { publish } from "../ws/hub";
 import { projectRecipientIds } from "../ws/recipients";
-
-const PROJECT_STATUSES: ProjectStatus[] = ["open", "active", "archived"];
 
 async function publishProjectChanged(projectId: string, involvedPersonIds: string[]): Promise<void> {
   const recipients = await projectRecipientIds(involvedPersonIds);
@@ -344,36 +348,99 @@ const assignmentsRoutes: FastifyPluginAsync = async (app) => {
       if (typeof requestedGoal !== "number" || !Number.isFinite(requestedGoal) || requestedGoal < 0) {
         throw badRequest("requestedGoal must be a non-negative number");
       }
-      if (!requestedStatus || !PROJECT_STATUSES.includes(requestedStatus as (typeof PROJECT_STATUSES)[number])) {
-        throw badRequest(`requestedStatus must be one of: ${PROJECT_STATUSES.join(", ")}`);
+      // The "status" is a delivery-stage target now (or "Archive"), not a
+      // project lifecycle status — accepting maps it to the deliverer's stage.
+      if (!requestedStatus || !isGoalChangeTarget(requestedStatus)) {
+        throw badRequest(`requestedStatus must be one of: ${GOAL_CHANGE_TARGETS.join(", ")}`);
       }
       const body = request.body?.body ?? "";
-      const created = await createGoalChangeRequest(
-        assignment.id,
-        actor.id,
-        body,
-        requestedGoal,
-        requestedStatus as (typeof PROJECT_STATUSES)[number]
-      );
+      const created = await createGoalChangeRequest(assignment.id, actor.id, body, requestedGoal, requestedStatus);
       const project = await findProjectById(assignment.projectId);
       if (project) {
         await publishProjectChanged(project.id, [project.plId, assignment.delivererId]);
-        // §9 (built) — a deliverer raises a request -> notify the PL.
-        await notify({
-          personId: project.plId,
-          type: "goal_change_requested",
-          title: "Goal change requested",
-          body: `${actor.name} on ${project.client}: goal ${requestedGoal}, status ${requestedStatus}${body ? ` — "${body}"` : ""}.`,
-          // Point at the ASSIGNMENT (not the request row) so clicking the
-          // notification can deep-link straight to that deliverer's goal/stage
-          // editor on the PL board, not just the project card.
-          entityType: "assignment",
-          entityId: assignment.id,
-        });
+        // §9 (built) — a deliverer raises a request -> notify the PL. Copy
+        // matches the spec: "<name> has requested a goal change on Project
+        // <client>: Goal of <n> Status <stage>. Explanation: <why>".
+        const statusLabel = goalChangeTargetLabel(requestedStatus);
+        await notify(
+          {
+            personId: project.plId,
+            type: "goal_change_requested",
+            title: "Goal change requested",
+            body: `${actor.name} has requested a goal change on Project ${project.client}: Goal of ${requestedGoal} Status ${statusLabel}.${body ? ` Explanation: ${body}` : ""}`,
+            // Point at the ASSIGNMENT (not the request row) so clicking the
+            // notification can deep-link straight to that deliverer's goal/stage
+            // editor on the PL board, not just the project card.
+            entityType: "assignment",
+            entityId: assignment.id,
+          },
+          {
+            // Interactive Slack Accept — the value carries the request id so the
+            // /slack/interactive handler can resolve it as-requested.
+            slackButton: { text: "✓ Accept", actionId: "accept_goal_change", value: created.id, style: "primary" },
+          }
+        );
       }
       return created;
     }
   );
+
+  /**
+   * Poke — the deliverer nudges an unactioned goal-change request. Only the
+   * assignment's own deliverer may poke, and only while a request is still
+   * open. Escalates to the PL *and* the manager(s) of the PL's team, so an
+   * ignored request doesn't just sit forever on one PL's bell.
+   */
+  app.post<{ Params: { id: string } }>(
+    "/:id/goal-change-requests/poke",
+    { preHandler: [app.requireAuth] },
+    async (request) => {
+      const actor = request.actor!;
+      const assignment = await findAssignmentById(request.params.id);
+      if (!assignment) throw notFound("assignment not found");
+      if (!canRequestGoalChange(actor.id, assignment)) {
+        throw forbidden("only the assignment's own deliverer may poke a goal change request");
+      }
+      const open = await findUnresolvedByAssignment(assignment.id);
+      if (!open) throw badRequest("no open goal change request to poke");
+      const project = await findProjectById(assignment.projectId);
+      if (!project) throw notFound("project not found");
+
+      const pl = await findPersonById(project.plId);
+      const plName = pl?.name ?? "the PL";
+      const body = `${actor.name} requested a goal change to ${plName}'s project ${project.client} that has not been actioned on.`;
+      // PL first, then the PL's-team managers (excluding the PL if they happen
+      // to be a manager too, so nobody is double-poked).
+      const recipients = new Set<string>([project.plId]);
+      if (pl?.teamId) for (const m of await managersOfTeam(pl.teamId, project.plId)) recipients.add(m.id);
+      for (const personId of recipients) {
+        await notify({
+          personId,
+          type: "goal_change_requested",
+          title: "Goal change still needs action",
+          body,
+          entityType: "assignment",
+          entityId: assignment.id,
+        });
+      }
+      return { ok: true, poked: recipients.size };
+    }
+  );
+
+  /**
+   * The actor's own still-open goal-change requests, keyed for the Delivery
+   * board so it can show a Poke button on exactly those assignments.
+   */
+  app.get("/me/goal-change-requests", { preHandler: [app.requireAuth] }, async (request) => {
+    const actor = request.actor!;
+    const rows = await listUnresolvedByRequester(actor.id);
+    return rows.map((r) => ({
+      id: r.id,
+      assignmentId: r.assignmentId,
+      requestedGoal: r.requestedGoal,
+      requestedStatus: r.requestedStatus,
+    }));
+  });
 };
 
 export default assignmentsRoutes;

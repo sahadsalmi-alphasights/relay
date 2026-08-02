@@ -55,6 +55,9 @@ export default function Shell() {
   // A goal-change notification deep-links to the specific deliverer's goal +
   // stage editor, not just the project card.
   const [focusAssignment, setFocusAssignment] = useState<{ id: string; tick: number } | null>(null);
+  // Bumped to re-open the (possibly missed) calls-sold dialog on demand — the
+  // PL board's calls-sold reminder strip is a shortcut back into it.
+  const [callsSoldReopen, setCallsSoldReopen] = useState(0);
   const [teamEditFor, setTeamEditFor] = useState<string | null>(null);
   const [editProjectFor, setEditProjectFor] = useState<string | null>(null);
   // Transfer-to-another-PL: holds the full project whose card is being handed off.
@@ -132,7 +135,7 @@ export default function Shell() {
       n.type === "delivery_logged" ||
       n.type === "goal_change_requested" ||
       n.type === "project_transferred" ||
-      (n.type === "stale_first_deliverable" && n.title.startsWith("Deliverer stalled")) ||
+      (n.type === "stale_first_deliverable" && n.title.startsWith("Deliverer")) ||
       (n.type === "assigned" && n.title.startsWith("Seat claimed"))
     ) {
       setTab("PL");
@@ -245,6 +248,7 @@ export default function Shell() {
           onNotes={setNotesFor}
           focusProject={focusProject}
           focusAssignment={focusAssignment}
+          onReopenCallsSold={() => setCallsSoldReopen((t) => t + 1)}
         />
       )}
       {tab === "Delivery" && (
@@ -269,7 +273,7 @@ export default function Shell() {
   if (isDesktop) {
     return (
       <div className="app-shell">
-        <MorningCallsSoldDialog onActioned={bumpReload} />
+        <MorningCallsSoldDialog onActioned={bumpReload} reopenTick={callsSoldReopen} />
         <LunchPrompt settings={coverage} />
         <EveningCoveragePrompt settings={coverage} />
         <Sidebar
@@ -310,7 +314,7 @@ export default function Shell() {
 
   return (
     <div className="relay">
-      <MorningCallsSoldDialog onActioned={bumpReload} />
+      <MorningCallsSoldDialog onActioned={bumpReload} reopenTick={callsSoldReopen} />
       <LunchPrompt settings={coverage} />
       <EveningCoveragePrompt settings={coverage} />
       <Header

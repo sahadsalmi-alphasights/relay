@@ -2,8 +2,13 @@ import webpush from "web-push";
 import { config } from "../config";
 import { createNotification, type CreateNotificationInput } from "../repositories/notifications";
 import { deleteSubscriptionById, listForPerson } from "../repositories/pushSubscriptions";
-import { maybeNotifySlack } from "./slack";
+import { maybeNotifySlack, type SlackButton } from "./slack";
 import { publish } from "../ws/hub";
+
+/** Optional per-notification extras — e.g. an interactive Slack Accept button. */
+export interface NotifyOptions {
+  slackButton?: SlackButton;
+}
 
 if (config.vapidPublicKey && config.vapidPrivateKey) {
   webpush.setVapidDetails(config.vapidSubject, config.vapidPublicKey, config.vapidPrivateKey);
@@ -15,7 +20,7 @@ if (config.vapidPublicKey && config.vapidPrivateKey) {
  * the live socket to that person only (never their team), and Web Push to
  * every device they've opted into (works with the tab closed).
  */
-export async function notify(input: CreateNotificationInput): Promise<void> {
+export async function notify(input: CreateNotificationInput, opts?: NotifyOptions): Promise<void> {
   const row = await createNotification(input);
 
   publish(
@@ -37,7 +42,7 @@ export async function notify(input: CreateNotificationInput): Promise<void> {
   await sendWebPush(input.personId, row.title, row.body);
   // Fourth channel (optional) — Slack. No-op unless a webhook is configured
   // and the owner has enabled this event; never throws, never blocks.
-  await maybeNotifySlack(row.type, row.title, row.body);
+  await maybeNotifySlack(row.type, row.title, row.body, opts?.slackButton);
 }
 
 async function sendWebPush(personId: string, title: string, body: string): Promise<void> {

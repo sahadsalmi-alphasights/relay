@@ -61,17 +61,26 @@ function projStats(assignments: Assignment[]) {
  * inline stepper right on that assignee's own row — "Edit team" (below)
  * is what changes/adds deliverers now.
  */
+// Stage targets a goal-change request can ask for: the four stages + Archive.
+const REQUEST_TARGET_OPTIONS: { value: Stage | "Archive"; label: string }[] = [
+  ...STAGE_OPTIONS,
+  { value: "Archive", label: "Archive" },
+];
+
 function AssigneeGoalEditor({
   assignment,
   onSave,
   openGoals,
   openTick,
+  pendingRequest,
 }: {
   assignment: Assignment;
   onSave: () => void;
   /** Deep-link from a goal-change notification: auto-open this editor. */
   openGoals?: boolean;
   openTick?: number;
+  /** The open goal-change request for this assignee, if any — enables the accept/decline prefill panel. */
+  pendingRequest?: GoalChangeRequest | null;
 }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -113,9 +122,29 @@ function AssigneeGoalEditor({
           style={{ display: "block", marginTop: 4, color: "var(--pl)", background: "var(--pl-soft)" }}
           onClick={() => setOpen(true)}
         >
-          Edit goals
+          {pendingRequest ? "Review request" : "Edit goals"}
         </button>
       </div>
+    );
+  }
+
+  // When there's an open request, the editor doubles as the accept/decline
+  // panel — goal + stage prefilled with what the deliverer asked for, so the
+  // PL can accept as-is or tweak either before accepting ("accept with
+  // changes"). This is exactly what clicking the notification opens.
+  if (pendingRequest) {
+    return (
+      <ResolveRequestPanel
+        assignment={assignment}
+        request={pendingRequest}
+        busy={busy}
+        setBusy={setBusy}
+        onDone={() => {
+          setOpen(false);
+          onSave();
+        }}
+        onCancel={() => setOpen(false)}
+      />
     );
   }
 
@@ -133,6 +162,84 @@ function AssigneeGoalEditor({
       <button className="btn-sm btn-ghost" onClick={() => setOpen(false)}>
         ✓ Done
       </button>
+    </div>
+  );
+}
+
+/**
+ * The accept/decline panel a PL sees when opening a deliverer's goal-change
+ * request (from the notification deep-link or the review strip). Goal + stage
+ * are prefilled with the request; editing either and accepting is an "accept
+ * with changes", which the deliverer's confirmation reflects.
+ */
+function ResolveRequestPanel({
+  assignment,
+  request,
+  busy,
+  setBusy,
+  onDone,
+  onCancel,
+}: {
+  assignment: Assignment;
+  request: GoalChangeRequest;
+  busy: boolean;
+  setBusy: (b: boolean) => void;
+  onDone: () => void;
+  onCancel: () => void;
+}) {
+  const [goal, setGoal] = useState(request.requestedGoal ?? assignment.goal);
+  const [status, setStatus] = useState<Stage | "Archive">(
+    (request.requestedStatus as Stage | "Archive") ?? assignment.stage
+  );
+
+  const resolve = async (outcome: "accepted" | "declined") => {
+    setBusy(true);
+    try {
+      await api.patch(`/goal-change-requests/${request.id}/resolve`,
+        outcome === "accepted" ? { outcome, goal, status } : { outcome }
+      );
+      onDone();
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "That didn't go through — try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="assignee-num" style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
+      <div className="step">
+        <button disabled={busy} onClick={() => setGoal((g) => Math.max(0, g - 1))}>
+          −
+        </button>
+        <span className="val">{goal}</span>
+        <button disabled={busy} onClick={() => setGoal((g) => g + 1)}>
+          +
+        </button>
+      </div>
+      <select
+        className="stage-select"
+        value={status}
+        disabled={busy}
+        onChange={(e) => setStatus(e.target.value as Stage | "Archive")}
+      >
+        {REQUEST_TARGET_OPTIONS.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+      <div style={{ display: "flex", gap: 6 }}>
+        <button className="btn-sm btn-pl" disabled={busy} onClick={() => resolve("accepted")} title="Apply goal + stage">
+          ✓ Accept
+        </button>
+        <button className="btn-sm btn-ghost" disabled={busy} onClick={() => resolve("declined")}>
+          Decline
+        </button>
+        <button className="btn-sm btn-ghost" disabled={busy} onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
     </div>
   );
 }
@@ -274,6 +381,7 @@ export default function ProjectLeadingTab({
   onNotes,
   focusProject,
   focusAssignment,
+  onReopenCallsSold,
 }: {
   scope: Scope;
   /** Team view target: "" = own team, "all" = whole BU, else a team id. */
@@ -289,6 +397,8 @@ export default function ProjectLeadingTab({
   /** Goal-change deep-link: open this assignment's goal/stage editor and flash its row. */
   focusAssignment?: { id: string; tick: number } | null;
   onNotes: (t: NotesTarget) => void;
+  /** Re-open the (missed) calls-sold dialog — the strip is a shortcut back into it. */
+  onReopenCallsSold?: () => void;
 }) {
   const { actor, people, nameOf, practiceOf, nowMs, effectiveHour, demoHour } = useApp();
   // Stale-while-revalidate: seed from the last board this session so switching
@@ -471,6 +581,12 @@ export default function ProjectLeadingTab({
   // narrows to the actor's own, same set "mine" scope would show).
   const myStaleProjects = items.filter((it) => it.project.plId === actor.id && it.project.needsCallsSoldUpdate);
 
+  // Open goal-change requests keyed by assignment, so an assignee's Edit-goals
+  // control can double as the accept/decline prefill panel (notification
+  // deep-link opens exactly this).
+  const pendingByAssignment = new Map<string, GoalChangeRequest>();
+  for (const it of items) for (const r of it.pending) pendingByAssignment.set(r.assignmentId, r);
+
   // §6/§8 — one assignee's own row: name, progress, stage/timer/back/advance.
   // Shared between the single-angle (flat list) and multi-angle (grouped)
   // renderings below, so there's exactly one place this markup lives.
@@ -489,7 +605,15 @@ export default function ProjectLeadingTab({
             </div>
             <div className="assignee-sub">{a.customDelivered > 0 ? `Incl. ${a.customDelivered} custom` : "No custom"}</div>
           </div>
-          {!readOnly && <AssigneeGoalEditor assignment={a} onSave={onReload} openGoals={focused} openTick={focused ? assignFocus?.tick : undefined} />}
+          {!readOnly && (
+            <AssigneeGoalEditor
+              assignment={a}
+              onSave={onReload}
+              openGoals={focused}
+              openTick={focused ? assignFocus?.tick : undefined}
+              pendingRequest={pendingByAssignment.get(a.id) ?? null}
+            />
+          )}
         </div>
         {/* §6/§8 — this assignee's own stage, timer, and the phase dropdown (per-deliverer, domain change 8). */}
         <div className="assignee-actions-row">
@@ -938,12 +1062,18 @@ export default function ProjectLeadingTab({
         <MarketSharePulse scope={scope} teamView={teamView} reloadTick={reloadTick} />
 
         {myStaleProjects.length > 0 && (
-          <div className="review-strip" style={{ borderColor: "#F0DCB0", background: "#FFFDF8" }}>
+          <button
+            type="button"
+            className="review-strip review-strip-btn"
+            style={{ borderColor: "#F0DCB0", background: "#FFFDF8", width: "100%", textAlign: "left", cursor: "pointer" }}
+            title="Open the calls-sold update again"
+            onClick={() => onReopenCallsSold?.()}
+          >
             <span>📞</span>
             <div style={{ flex: 1 }}>
               <b>Update calls sold</b> for today: {myStaleProjects.map((it) => it.project.client).join(", ")}
             </div>
-          </div>
+          </button>
         )}
 
         {items
@@ -962,7 +1092,8 @@ export default function ProjectLeadingTab({
                 </button>
                 <div style={{ flex: 1 }}>
                   <b>{nameOf(r.requestedBy)}</b> on <b>{it.project.client}</b> requests goal{" "}
-                  <b>{r.requestedGoal}</b>, status <b>{r.requestedStatus}</b>
+                  <b>{r.requestedGoal}</b>, stage{" "}
+                  <b>{r.requestedStatus === "Archive" ? "Archive" : stageLabel(r.requestedStatus ?? "")}</b>
                   {r.body ? ` — "${r.body}"` : ""}
                 </div>
                 {/* Batch S, item 4 — explicit accept/decline (tick/X), not one

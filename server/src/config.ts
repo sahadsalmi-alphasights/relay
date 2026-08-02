@@ -20,6 +20,12 @@ export const config = {
   // Unset = Slack disabled regardless of the in-app toggles. The DB holds only
   // the non-secret toggles (which events go to Slack), owner-editable.
   slackWebhookUrl: (process.env.SLACK_WEBHOOK_URL ?? "").trim(),
+  // Inbound Slack interactivity (optional) — the Signing Secret from the Slack
+  // app's "Basic Information" page. Required to verify that a button-click
+  // payload actually came from Slack (HMAC over the raw body + timestamp).
+  // Unset = the /slack/interactive endpoint rejects everything, so the Accept
+  // button degrades to "open the app" and nothing can be spoofed.
+  slackSigningSecret: (process.env.SLACK_SIGNING_SECRET ?? "").trim(),
   // Cloudflare Access origin validation (defense in depth) — when BOTH are
   // set, the API re-verifies the Cf-Access-Jwt-Assertion header (signed by
   // Cloudflare at the edge) on every request, so even a request that somehow

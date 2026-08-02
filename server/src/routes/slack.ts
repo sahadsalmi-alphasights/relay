@@ -34,8 +34,24 @@ function verifySignature(rawBody: string, timestamp: string | undefined, signatu
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
+/**
+ * Slack's response_url always lives on hooks.slack.com. Restricting the fetch
+ * target to that exact host makes the outbound call safe even if a payload
+ * somehow reached here with a forged response_url (defense in depth on top of
+ * the signature check) — no SSRF to an attacker-chosen origin.
+ */
+function isSlackResponseUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return u.protocol === "https:" && u.hostname === "hooks.slack.com";
+  } catch {
+    return false;
+  }
+}
+
 /** Best-effort update of the original Slack message (never throws). */
 async function replaceMessage(responseUrl: string, text: string): Promise<void> {
+  if (!isSlackResponseUrl(responseUrl)) return;
   try {
     await fetch(responseUrl, {
       method: "POST",
@@ -55,7 +71,9 @@ const slackRoutes: FastifyPluginAsync = async (app) => {
     done(null, body);
   });
 
-  app.post("/interactive", async (request, reply) => {
+  // Explicit per-route rate limit on top of the global limiter — this endpoint
+  // is public (signature-gated, no session), so bound it tightly by source IP.
+  app.post("/interactive", { config: { rateLimit: { max: 60, timeWindow: "1 minute" } } }, async (request, reply) => {
     const rawBody = typeof request.body === "string" ? request.body : "";
     const signature = request.headers["x-slack-signature"] as string | undefined;
     const timestamp = request.headers["x-slack-request-timestamp"] as string | undefined;

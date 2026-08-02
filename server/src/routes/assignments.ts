@@ -433,7 +433,6 @@ const assignmentsRoutes: FastifyPluginAsync = async (app) => {
    */
   app.get("/me/goal-change-requests", { preHandler: [app.requireAuth] }, async (request) => {
     const actor = request.actor!;
-    const { listUnresolvedByRequester } = await import("../repositories/goalChangeRequests");
     const rows = await listUnresolvedByRequester(actor.id);
     return rows.map((r) => ({
       id: r.id,

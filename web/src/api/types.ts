@@ -145,7 +145,7 @@ export interface SundaySwapRequest {
 export interface RankedCandidate {
   personId: string;
   eligible: boolean;
-  ineligibleReason?: "no_evening_coverage" | "out_to_lunch" | "first_deliverable_conflict";
+  ineligibleReason?: "no_evening_coverage" | "out_to_lunch" | "first_deliverable_conflict" | "sunday_off";
   load: number;
   rawRemaining: number;
   practiceAreaMatch: boolean;

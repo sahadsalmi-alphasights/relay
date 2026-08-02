@@ -734,6 +734,8 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
                                     ? "Busy — first deliverable elsewhere"
                                     : r.ineligibleReason === "out_to_lunch"
                                     ? "Out to lunch — back soon"
+                                    : r.ineligibleReason === "sunday_off"
+                                    ? "Off — not on today's Sunday rota"
                                     : "Evening coverage off — applies from 7pm"}
                                 </div>
                               </div>

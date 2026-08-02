@@ -34,15 +34,15 @@ import {
 } from "../repositories/projects";
 import { countAssignmentsForAngle, seatTargetForAngle } from "../repositories/angles";
 import { findPersonById, listPeopleByTeam } from "../repositories/people";
-import { listAvailableCandidatesWithAssignments } from "../services/candidates";
+import { listAvailableCandidatesWithAssignments, sundayRotaPersonIdsForDate } from "../services/candidates";
 import { badRequest, conflict, forbidden, notFound } from "../errors";
 import { isEligible } from "../rules/eligibility";
-import { allocateAcrossAngles, applyFirstDeliverableBlock, rankCandidates } from "../rules/matching";
+import { allocateAcrossAngles, applyFirstDeliverableBlock, applySundayRotaBlock, rankCandidates } from "../rules/matching";
 import { resolveNow } from "../lib/requestTime";
 import { canArchiveProject, canEditProjectFields } from "../rules/permissions";
 import { isProjectLifecycleQuiet, needsCallsSoldUpdateToday, needsChaseClient } from "../rules/project";
 import { suggestGoal, suggestStaffing } from "../rules/suggestedGoal";
-import { dubaiHour, dubaiMonthRange } from "../rules/time";
+import { dubaiDateKey, dubaiHour, dubaiMonthRange, isSunday } from "../rules/time";
 import type { ProjectType } from "../rules/types";
 import { isValidHttpUrl } from "../rules/url";
 import { notifyBroadcastRecipients } from "../services/broadcast";
@@ -341,7 +341,13 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
         plPracticeArea: actor.practiceArea ?? "",
       };
       const ranked = rankCandidates(candidates, context);
-      const blocked = applyFirstDeliverableBlock(ranked, candidates, hour);
+      const fdBlocked = applyFirstDeliverableBlock(ranked, candidates, hour);
+      // Sunday: only people on today's rota may be auto-picked. Off-rota people
+      // are blocked (overridable), matching the "Off · Sunday" the Capacity
+      // Ranking already shows — fixes them being auto-matched on Sundays.
+      const sundayNow = isSunday(now);
+      const rotaIds = sundayNow ? await sundayRotaPersonIdsForDate(dubaiDateKey(now)) : new Set<string>();
+      const blocked = applySundayRotaBlock(fdBlocked, sundayNow, rotaIds);
       // Allocation prefers free people on the PL's own team first (2026-07-23);
       // ghost allocation stays pure-load (no team preference).
       const { perAngle, totalEligible, projectStatus } = allocateAcrossAngles(

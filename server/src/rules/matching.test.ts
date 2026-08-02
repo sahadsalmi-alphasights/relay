@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   allocateAcrossAngles,
   applyFirstDeliverableBlock,
+  applySundayRotaBlock,
   autoMatch,
   blocksNewFirstDeliverable,
   rankCandidates,
@@ -355,3 +356,33 @@ describe("applyFirstDeliverableBlock — layered on top of rankCandidates()", ()
     expect(adjusted.filter((r) => r.eligible).map((r) => r.personId)).toEqual(["free1", "free2"]);
   });
 });
+
+describe("applySundayRotaBlock — Sunday off-rota people are not auto-picked (2026-08-02)", () => {
+  const sundayRanked: RankedCandidate[] = [
+    { personId: "on-rota", eligible: true, load: 2, rawRemaining: 1, practiceAreaMatch: false, free: true, teamId: null },
+    { personId: "off-rota", eligible: true, load: 1, rawRemaining: 0, practiceAreaMatch: false, free: true, teamId: null },
+  ];
+
+  it("is a no-op on any non-Sunday day", () => {
+    const out = applySundayRotaBlock(sundayRanked, false, new Set());
+    expect(out).toBe(sundayRanked);
+    expect(out.every((r) => r.eligible)).toBe(true);
+  });
+
+  it("blocks eligible people not on today's rota, keeping on-rota eligible", () => {
+    const out = applySundayRotaBlock(sundayRanked, true, new Set(["on-rota"]));
+    const on = out.find((r) => r.personId === "on-rota")!;
+    const off = out.find((r) => r.personId === "off-rota")!;
+    expect(on.eligible).toBe(true);
+    expect(off.eligible).toBe(false);
+    expect(off.ineligibleReason).toBe("sunday_off");
+    expect(out[0].personId).toBe("on-rota"); // eligible sorts before ineligible
+  });
+
+  it("with nobody on the rota, allocation finds zero eligible (project would broadcast)", () => {
+    const blocked = applySundayRotaBlock(sundayRanked, true, new Set());
+    const result = allocateAcrossAngles(blocked, [{ key: "a", staffCount: 2 }]);
+    expect(result.totalEligible).toBe(0);
+    expect(result.projectStatus).toBe("open");
+  });
+})

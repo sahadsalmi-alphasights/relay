@@ -434,10 +434,40 @@ a.client:hover { text-decoration:underline; }
 .review-strip { background:var(--amber-bg); border:1px solid #F0DCB0; border-radius:12px; padding:10px 12px; margin-bottom:12px; font-size:12px; color:#7A520E; display:flex; align-items:center; gap:8px; }
 .review-jump { color:inherit; font-size:14px; cursor:pointer; flex-shrink:0; }
 .review-jump:hover { transform:translateX(-1px); }
-/* Clickable variant of the reminder strip (missed calls-sold) — a real button that still looks like the strip. */
-.review-strip-btn { font:inherit; color:#7A520E; }
-.review-strip-btn:hover { filter:brightness(0.98); }
-[data-theme="dark"] .review-strip-btn { color:#D9B96A; }
+/* Top-of-page calls-sold reminder — a clickable, attention-getting banner
+   above the Sunday strip. Warm gradient, phone badge, CTA pill on the right. */
+.calls-sold-banner {
+  display:flex; align-items:center; gap:12px; width:100%; text-align:left;
+  margin-bottom:12px; padding:12px 14px; border-radius:14px; cursor:pointer;
+  font:inherit; color:#7A4E0B;
+  background:linear-gradient(100deg, #FFF4DE 0%, #FFE9C7 100%);
+  border:1px solid #F1CE86; box-shadow:0 1px 2px rgba(140,90,10,0.08);
+  transition:transform .12s ease, box-shadow .12s ease, filter .12s ease;
+}
+.calls-sold-banner:hover { transform:translateY(-1px); box-shadow:0 4px 14px rgba(140,90,10,0.16); filter:saturate(1.05); }
+.calls-sold-banner:active { transform:translateY(0); }
+.csb-icon {
+  flex-shrink:0; width:34px; height:34px; border-radius:10px; font-size:17px;
+  display:grid; place-items:center; background:rgba(240,170,40,0.22);
+}
+.csb-text { display:flex; flex-direction:column; line-height:1.35; min-width:0; flex:1; }
+.csb-text b { font-size:13px; font-weight:700; }
+.csb-names { font-size:12px; color:#9A7530; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.csb-cta {
+  flex-shrink:0; display:inline-flex; align-items:center; gap:6px;
+  font-size:12px; font-weight:700; color:#8A5A0E;
+  background:rgba(255,255,255,0.7); border:1px solid #F1CE86;
+  padding:5px 11px; border-radius:999px;
+}
+.calls-sold-banner:hover .csb-cta span { transform:translateX(2px); }
+.csb-cta span { transition:transform .12s ease; }
+[data-theme="dark"] .calls-sold-banner {
+  color:#F0D6A0; background:linear-gradient(100deg, #3A2E12 0%, #4A3814 100%);
+  border-color:#5C441A; box-shadow:none;
+}
+[data-theme="dark"] .csb-icon { background:rgba(240,170,40,0.18); }
+[data-theme="dark"] .csb-names { color:#C8A968; }
+[data-theme="dark"] .csb-cta { color:#F0D6A0; background:rgba(255,255,255,0.06); border-color:#5C441A; }
 /* Morning calls-sold dialog — mobile gets a non-blocking reminder banner instead of the desktop dialog. */
 .morning-banner { position:sticky; top:0; z-index:30; background:var(--amber-bg); border-bottom:1px solid #F0DCB0; color:#7A520E; font-size:12px; padding:10px 16px; }
 .morning-dialog { text-align:left; }

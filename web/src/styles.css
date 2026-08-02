@@ -269,6 +269,34 @@ a.client:hover { text-decoration:underline; }
 .dl-team-status { display:inline-flex; align-items:center; gap:7px; margin-left:8px; }
 .dl-team-load { font-size:11px; font-weight:600; color:var(--soft); font-variant-numeric:tabular-nums; }
 
+/* Settings → Sunday rota — quarter planner grid (2026-08-02). */
+.srp-toolbar { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:10px; }
+.srp-search { display:flex; align-items:center; gap:7px; background:var(--field, var(--bg)); border:1px solid var(--line); border-radius:9px; padding:6px 10px; flex:1; max-width:280px; }
+.srp-search input { border:none; background:transparent; outline:none; font-size:13px; color:var(--ink); width:100%; }
+.srp-range { font-size:12px; color:var(--soft); font-variant-numeric:tabular-nums; }
+.srp-scroll { overflow:auto; max-height:70vh; border:1px solid var(--line); border-radius:12px; background:var(--surface, var(--card)); }
+.srp-table { border-collapse:separate; border-spacing:0; font-size:12px; }
+.srp-table th, .srp-table td { padding:6px 5px; text-align:center; }
+.srp-table thead th { position:sticky; top:0; z-index:3; background:var(--surface, var(--card)); border-bottom:1px solid var(--line); }
+.srp-col-h b { display:block; font-size:12px; color:var(--ink); font-variant-numeric:tabular-nums; }
+.srp-col-h small { display:block; font-size:9.5px; color:var(--soft); text-transform:uppercase; letter-spacing:.3px; }
+.srp-name-h, .srp-name-c { position:sticky; left:0; z-index:2; background:var(--surface, var(--card)); text-align:left !important; min-width:170px; box-shadow:1px 0 0 var(--line); }
+.srp-table thead .srp-name-h { z-index:4; }
+.srp-name-c { border-bottom:1px solid var(--line); }
+.srp-person { display:flex; align-items:center; gap:8px; }
+.srp-pname { display:block; font-size:12.5px; font-weight:600; color:var(--ink); white-space:nowrap; }
+.srp-team { display:block; font-size:10px; color:var(--soft); }
+.srp-cell-td { border-bottom:1px solid var(--line); }
+.srp-cell { width:24px; height:24px; border-radius:6px; border:1.5px solid var(--line); background:var(--field, var(--bg)); color:transparent; font-size:13px; font-weight:800; cursor:pointer; padding:0; line-height:1; transition:background .1s; }
+.srp-cell:hover:not(:disabled) { border-color:var(--green); }
+.srp-cell.on { background:var(--green); border-color:var(--green); color:#fff; }
+.srp-cell.busy { opacity:.5; cursor:default; }
+.srp-cell:disabled { cursor:default; }
+.srp-total td { border-top:2px solid var(--line); font-weight:700; color:var(--soft); font-variant-numeric:tabular-nums; background:var(--field, var(--bg)); }
+.srp-total .srp-name-c { background:var(--field, var(--bg)); }
+.srp-more { display:flex; align-items:center; gap:12px; margin-top:12px; }
+.srp-empty { font-size:12px; color:var(--soft); }
+
 /* Settings → Coverage (2026-07-29). */
 .settings-subnav { margin-bottom: 16px; }
 .cs-card { padding: 16px 18px; }

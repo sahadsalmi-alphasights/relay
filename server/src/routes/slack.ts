@@ -35,25 +35,23 @@ function verifySignature(rawBody: string, timestamp: string | undefined, signatu
 }
 
 /**
- * Slack's response_url always lives on hooks.slack.com. Restricting the fetch
- * target to that exact host makes the outbound call safe even if a payload
- * somehow reached here with a forged response_url (defense in depth on top of
- * the signature check) — no SSRF to an attacker-chosen origin.
+ * Best-effort update of the original Slack message (never throws).
+ *
+ * Slack's response_url always lives on hooks.slack.com. The host is validated
+ * inline and the fetch targets the parsed URL object, so even a forged
+ * response_url can't drive an outbound request to an attacker-chosen origin
+ * (defense in depth on top of the signature check — no SSRF).
  */
-function isSlackResponseUrl(url: string): boolean {
-  try {
-    const u = new URL(url);
-    return u.protocol === "https:" && u.hostname === "hooks.slack.com";
-  } catch {
-    return false;
-  }
-}
-
-/** Best-effort update of the original Slack message (never throws). */
 async function replaceMessage(responseUrl: string, text: string): Promise<void> {
-  if (!isSlackResponseUrl(responseUrl)) return;
+  let target: URL;
   try {
-    await fetch(responseUrl, {
+    target = new URL(responseUrl);
+  } catch {
+    return;
+  }
+  if (target.protocol !== "https:" || target.hostname !== "hooks.slack.com") return;
+  try {
+    await fetch(target, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ replace_original: true, text }),

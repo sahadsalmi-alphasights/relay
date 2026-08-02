@@ -49,8 +49,11 @@ export default function MorningCallsSoldDialog({
 }) {
   const { isDesktop } = useViewport();
   const { nowMs } = useApp();
-  // Weekdays only (Mon–Fri Dubai) — no calls-sold nag on the Sat/Sun weekend.
-  const weekend = isDubaiWeekend(nowMs);
+  // Weekdays only (Mon–Fri Dubai) for the automatic morning nag — but an
+  // explicit reopen (reopenTick > 0, from the top-of-page reminder) bypasses
+  // that so the PL can still update on a weekend if they choose to.
+  const forced = reopenTick > 0;
+  const weekend = isDubaiWeekend(nowMs) && !forced;
   const [due, setDue] = useState<DueRow[] | null>(null);
   const [modes, setModes] = useState<Record<string, RowMode>>({});
   const [values, setValues] = useState<Record<string, number>>({});

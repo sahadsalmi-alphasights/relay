@@ -13,6 +13,7 @@ import SettingsTab from "./tabs/SettingsTab";
 import EditProjectSheet from "./sheets/EditProjectSheet";
 import IntakeWizard from "./sheets/IntakeWizard";
 import MorningCallsSoldDialog from "./sheets/MorningCallsSoldDialog";
+import CallsSoldReminder from "./components/CallsSoldReminder";
 import { EveningCoveragePrompt, LunchPrompt } from "./sheets/DayPromptDialogs";
 import MoreSheet from "./sheets/MoreSheet";
 import NotesSheet from "./sheets/NotesSheet";
@@ -224,6 +225,12 @@ export default function Shell() {
     <NotesTodoBox reloadTick={reloadTick} onReload={bumpReload} onOpenProject={setNotesFor} />
   );
 
+  // Top-of-page calls-sold nudge, above the Sunday banner — clickable, reopens
+  // the calls-sold dialog. Renders nothing when nothing's due.
+  const callsSoldReminder = (
+    <CallsSoldReminder reloadTick={reloadTick} onReopen={() => setCallsSoldReopen((t) => t + 1)} />
+  );
+
   const sundayBanner = sunday && (
     <div className="sunday-strip">
       🗓 <b>Sunday</b> — today is {prettyDateKey(dubaiDateKey(nowMs))}.{" "}
@@ -248,7 +255,6 @@ export default function Shell() {
           onNotes={setNotesFor}
           focusProject={focusProject}
           focusAssignment={focusAssignment}
-          onReopenCallsSold={() => setCallsSoldReopen((t) => t + 1)}
         />
       )}
       {tab === "Delivery" && (
@@ -291,6 +297,7 @@ export default function Shell() {
         <div className="main-area">
           <TopBar liveStatus={liveStatus} notif={notif} onOpenNotification={openNotification} />
           <div className="content-wide">
+            {callsSoldReminder}
             {sundayBanner}
             {activeTab}
           </div>
@@ -330,6 +337,7 @@ export default function Shell() {
 
       <div className="body">
         <div className={"mode-strip " + modeClass} />
+        {callsSoldReminder}
         {sundayBanner}
         {activeTab}
       </div>

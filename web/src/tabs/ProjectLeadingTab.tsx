@@ -381,7 +381,6 @@ export default function ProjectLeadingTab({
   onNotes,
   focusProject,
   focusAssignment,
-  onReopenCallsSold,
 }: {
   scope: Scope;
   /** Team view target: "" = own team, "all" = whole BU, else a team id. */
@@ -397,8 +396,6 @@ export default function ProjectLeadingTab({
   /** Goal-change deep-link: open this assignment's goal/stage editor and flash its row. */
   focusAssignment?: { id: string; tick: number } | null;
   onNotes: (t: NotesTarget) => void;
-  /** Re-open the (missed) calls-sold dialog — the strip is a shortcut back into it. */
-  onReopenCallsSold?: () => void;
 }) {
   const { actor, people, nameOf, practiceOf, nowMs, effectiveHour, demoHour } = useApp();
   // Stale-while-revalidate: seed from the last board this session so switching
@@ -579,8 +576,6 @@ export default function ProjectLeadingTab({
   // calls_sold hasn't been touched today, regardless of scope (Team view
   // can list teammates' projects the actor can't edit, so this always
   // narrows to the actor's own, same set "mine" scope would show).
-  const myStaleProjects = items.filter((it) => it.project.plId === actor.id && it.project.needsCallsSoldUpdate);
-
   // Open goal-change requests keyed by assignment, so an assignee's Edit-goals
   // control can double as the accept/decline prefill panel (notification
   // deep-link opens exactly this).
@@ -1060,21 +1055,6 @@ export default function ProjectLeadingTab({
         {/* Monthly market-share pulse — under Project Leading in every scope
             (My / Team / BU), live via reloadTick. */}
         <MarketSharePulse scope={scope} teamView={teamView} reloadTick={reloadTick} />
-
-        {myStaleProjects.length > 0 && (
-          <button
-            type="button"
-            className="review-strip review-strip-btn"
-            style={{ borderColor: "#F0DCB0", background: "#FFFDF8", width: "100%", textAlign: "left", cursor: "pointer" }}
-            title="Open the calls-sold update again"
-            onClick={() => onReopenCallsSold?.()}
-          >
-            <span>📞</span>
-            <div style={{ flex: 1 }}>
-              <b>Update calls sold</b> for today: {myStaleProjects.map((it) => it.project.client).join(", ")}
-            </div>
-          </button>
-        )}
 
         {items
           .filter((it) => it.pending.length > 0)

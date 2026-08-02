@@ -385,4 +385,4 @@ describe("applySundayRotaBlock — Sunday off-rota people are not auto-picked (2
     expect(result.totalEligible).toBe(0);
     expect(result.projectStatus).toBe("open");
   });
-})
+});

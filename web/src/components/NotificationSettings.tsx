@@ -71,6 +71,16 @@ export default function NotificationSettings({ onSaved }: { onSaved: () => void 
     } finally { setBusy(false); }
   };
 
+  const sendSamples = async () => {
+    setBusy(true); setTestMsg(null); setError(null);
+    try {
+      const res = await api.post<{ ok: boolean; sent: number }>("/settings/notifications/sample-all");
+      setTestMsg(res.ok ? `Sent ${res.sent} sample messages to Slack ✓` : "Slack rejected the samples — check the webhook URL.");
+    } catch (err) {
+      setTestMsg(err instanceof ApiError ? err.message : "Could not send samples");
+    } finally { setBusy(false); }
+  };
+
   return (
     <>
       <div className="scope-note">
@@ -118,8 +128,9 @@ export default function NotificationSettings({ onSaved }: { onSaved: () => void 
               <div className="cs-rl">Test it</div>
               <div className="cs-rs">Post a one-off test message to the configured Slack channel.</div>
             </div>
-            <div className="cs-controls">
+            <div className="cs-controls" style={{ gap: 8 }}>
               <button className="btn btn-ghost" disabled={busy} onClick={sendTest}>Send test message</button>
+              <button className="btn btn-ghost" disabled={busy} onClick={sendSamples} title="Post one example of every notification type to the channel">Send sample of each event</button>
             </div>
           </div>
         )}

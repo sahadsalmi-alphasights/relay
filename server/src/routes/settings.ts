@@ -11,7 +11,7 @@ import {
   NOTIFICATION_SETTING_KEYS,
   type NotificationSettings,
 } from "../repositories/notificationSettings";
-import { formatSlackMessage, postToSlack, slackConfigured, slackInteractiveConfigured } from "../services/slack";
+import { formatSlackMessage, postToSlack, postSampleNotifications, slackConfigured, slackInteractiveConfigured } from "../services/slack";
 import {
   getHrIntegrationSettings,
   updateHrIntegrationSettings,
@@ -125,6 +125,15 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
     if (!slackConfigured()) throw badRequest("Slack is not configured (SLACK_WEBHOOK_URL is not set on the server)");
     const ok = await postToSlack(formatSlackMessage("CapTracker test message", `Sent by ${request.actor!.name}. If you can see this, Slack is wired up correctly.`));
     return { ok };
+  });
+
+  // Owner-only "send a sample of each event" — posts one example of every
+  // notification type to the channel so the team can preview them. Ignores the
+  // per-event toggles (it's a manual preview).
+  app.post("/notifications/sample-all", { preHandler: [app.requireOwner] }, async (request) => {
+    if (!slackConfigured()) throw badRequest("Slack is not configured (SLACK_WEBHOOK_URL is not set on the server)");
+    const sent = await postSampleNotifications(request.actor!.name);
+    return { ok: sent > 0, sent };
   });
 
   // ---- BambooHR leave sync (Integrations) -------------------------------

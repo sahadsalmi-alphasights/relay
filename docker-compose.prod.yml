@@ -43,6 +43,13 @@ services:
       # User management — owner allowlist. Read in config.ts but was never
       # passed through, so the allowlist was always empty in production.
       OWNER_EMAILS: ${OWNER_EMAILS:-}
+      # Optional integrations — read in config.ts. MUST be forwarded here or
+      # the container never sees them however they're set in .env.production.
+      # `:-` keeps them optional (blank when unset) with no compose WARN noise.
+      BAMBOOHR_API_KEY: ${BAMBOOHR_API_KEY:-}
+      BAMBOOHR_SUBDOMAIN: ${BAMBOOHR_SUBDOMAIN:-}
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
+      SLACK_SIGNING_SECRET: ${SLACK_SIGNING_SECRET:-}
     expose:
       - "4000"
 

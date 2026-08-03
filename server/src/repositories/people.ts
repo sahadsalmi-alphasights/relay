@@ -19,6 +19,8 @@ export interface PersonRow {
   isGhost: boolean;
   lastLoginAt: string | null;
   deactivatedAt: string | null;
+  /** Set by the BambooHR leave sync when it put this person Offline; null otherwise. Lets "Who is out" mark leave vs manual Offline. */
+  hrOfflineAt: string | null;
   /** Server-side session revocation — bumped to invalidate all of this person's outstanding session cookies at once. */
   sessionVersion: number;
 }
@@ -33,6 +35,7 @@ const SELECT = `
          is_owner AS "isOwner", practice_area AS "practiceArea", status,
          evening_coverage AS "eveningCoverage", out_to_lunch AS "outToLunch", is_ghost AS "isGhost",
          last_login_at AS "lastLoginAt", deactivated_at AS "deactivatedAt",
+         hr_offline_at AS "hrOfflineAt",
          session_version AS "sessionVersion"
   FROM person`;
 

@@ -82,6 +82,18 @@ export default function NotificationSettings({ onSaved }: { onSaved: () => void 
     } finally { setBusy(false); }
   };
 
+  // "DM me a test" — sends a sample of one alert type (event key) or all of
+  // them ("all") as a Slack DM to the current owner. Needs DM mode (bot token).
+  const dmMe = async (event: string) => {
+    setBusy(true); setTestMsg(null); setError(null);
+    try {
+      const res = await api.post<{ ok: boolean; sent: number; hint?: string }>("/settings/notifications/sample-dm", { event });
+      setTestMsg(res.ok ? `DM'd ${res.sent} sample${res.sent > 1 ? "s" : ""} to you ✓ — check your Slack.` : (res.hint ?? "No DM sent."));
+    } catch (err) {
+      setTestMsg(err instanceof ApiError ? err.message : "Could not send DM");
+    } finally { setBusy(false); }
+  };
+
   return (
     <>
       <div className="scope-note">
@@ -140,9 +152,12 @@ export default function NotificationSettings({ onSaved }: { onSaved: () => void 
               <div className="cs-rl">Test it</div>
               <div className="cs-rs">Post a one-off test message to the configured Slack channel.</div>
             </div>
-            <div className="cs-controls" style={{ gap: 8 }}>
+            <div className="cs-controls" style={{ gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
               <button className="btn btn-ghost" disabled={busy} onClick={sendTest}>Send test message</button>
               <button className="btn btn-ghost" disabled={busy} onClick={sendSamples} title="Post one example of every notification type to the channel">Send sample of each event</button>
+              {draft.slackDmConfigured && (
+                <button className="btn btn-ghost" disabled={busy} onClick={() => dmMe("all")} title="DM yourself a sample of every alert type">DM me all samples</button>
+              )}
             </div>
           </div>
         )}
@@ -160,7 +175,10 @@ export default function NotificationSettings({ onSaved }: { onSaved: () => void 
               <div className="cs-rl">{e.label} <span className="mini team" style={{ marginLeft: 6 }}>{e.channel}</span></div>
               <div className="cs-rs">{e.sub}</div>
             </div>
-            <div className="cs-controls">
+            <div className="cs-controls" style={{ gap: 8 }}>
+              {!readOnly && draft.slackDmConfigured && (
+                <button className="btn-sm btn-ghost" disabled={busy} onClick={() => dmMe(e.key)} title="DM this alert to yourself as a test">DM me</button>
+              )}
               <Toggle on={draft[e.key] as boolean} disabled={eventsDisabled} onClick={() => set(e.key, !(draft[e.key] as boolean))} />
             </div>
           </div>

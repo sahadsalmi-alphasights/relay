@@ -11,7 +11,8 @@ import {
   NOTIFICATION_SETTING_KEYS,
   type NotificationSettings,
 } from "../repositories/notificationSettings";
-import { formatSlackMessage, postToSlack, postSampleNotifications, slackConfigured, slackDmConfigured, slackInteractiveConfigured } from "../services/slack";
+import { dmSampleToPerson, formatSlackMessage, postToSlack, postSampleNotifications, SAMPLE_EVENT_KEYS, slackConfigured, slackDmConfigured, slackInteractiveConfigured } from "../services/slack";
+import { findPersonById } from "../repositories/people";
 import {
   getHrIntegrationSettings,
   updateHrIntegrationSettings,
@@ -135,6 +136,30 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
     const sent = await postSampleNotifications(request.actor!.name);
     return { ok: sent > 0, sent };
   });
+
+  // Owner-only "DM me a test" — sends a sample of one alert type (by key) or
+  // all of them as a direct message to the requester, so they can preview
+  // exactly what an individual receives. Needs a bot token (DM mode).
+  app.post<{ Body: { event?: string } }>(
+    "/notifications/sample-dm",
+    { preHandler: [app.requireOwner] },
+    async (request) => {
+      if (!slackDmConfigured()) {
+        throw badRequest("Per-person DMs aren't configured (SLACK_BOT_TOKEN is not set on the server)");
+      }
+      const event = request.body?.event;
+      if (event && event !== "all" && !SAMPLE_EVENT_KEYS.includes(event)) {
+        throw badRequest("unknown event");
+      }
+      const me = await findPersonById(request.actor!.id);
+      if (!me?.email) throw badRequest("your account has no email to DM");
+      const sent = await dmSampleToPerson(me.email, event && event !== "all" ? event : undefined);
+      if (sent === 0) {
+        return { ok: false, sent, hint: "No DM sent — check the bot has chat:write + users:read.email (reinstalled) and your Slack email matches." };
+      }
+      return { ok: true, sent };
+    }
+  );
 
   // ---- BambooHR leave sync (Integrations) -------------------------------
   // Readable by any signed-in user; `configured` reflects whether the env

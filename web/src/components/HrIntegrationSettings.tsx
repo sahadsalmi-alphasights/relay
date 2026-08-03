@@ -14,7 +14,7 @@ function Toggle({ on, disabled, onClick }: { on: boolean; disabled: boolean; onC
 /**
  * Settings → Integrations → BambooHR. Owner-editable leave sync: when someone
  * is on a matching leave type (vacation/sick) in BambooHR, CapTracker sets them
- * Offline, and restores them to Available when the leave ends. The API
+ * "On vacation", and restores them to Available when the leave ends. The API
  * credentials live on the server (env) and are shown here only as a read-only
  * "Configured / Not configured" status — the key is never sent to the client.
  */
@@ -75,7 +75,7 @@ export default function HrIntegrationSettings({ onSaved }: { onSaved: () => void
       <div className="scope-note">
         {readOnly
           ? "BambooHR leave sync — read-only (owners manage this)."
-          : "Sync BambooHR leave into CapTracker: anyone on a matching leave type is set Offline, and restored to Available when they're back."}
+          : "Sync BambooHR leave into CapTracker: anyone on a matching leave type is set to “On vacation”, and restored to Available when they’re back."}
       </div>
 
       <div className="card cs-card">
@@ -91,7 +91,7 @@ export default function HrIntegrationSettings({ onSaved }: { onSaved: () => void
         </div>
         <div className="cs-row">
           <div>
-            <div className="cs-rl">Sync leave → Offline</div>
+            <div className="cs-rl">Sync leave → On vacation</div>
             <div className="cs-rs">Master switch. When on, the sync runs automatically (about every 30 min) and can be run on demand below.</div>
           </div>
           <div className="cs-controls">

@@ -50,7 +50,7 @@ export default function WhoIsOut() {
                   </div>
                 </div>
                 <div className="cs-controls">
-                  {p.status === "Offline" && p.hrOfflineAt && <span className="mini free">🗓 BambooHR leave</span>}
+                  {p.hrOfflineAt && <span className="mini free">🗓 BambooHR leave</span>}
                 </div>
               </div>
             ))}

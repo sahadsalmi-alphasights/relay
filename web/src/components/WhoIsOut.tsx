@@ -22,7 +22,7 @@ export default function WhoIsOut() {
   return (
     <>
       <div className="scope-note">
-        Who's currently unavailable across the BU — anyone not set to “Available”. Leave synced from BambooHR shows as Offline with a leave tag.
+        Who's currently unavailable across the BU — anyone not set to “Available”. Leave synced from BambooHR shows under On vacation with a leave tag.
       </div>
 
       {outCount === 0 && <div className="empty">Everyone's available right now. 🎉</div>}

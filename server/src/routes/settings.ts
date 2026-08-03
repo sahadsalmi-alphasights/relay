@@ -153,9 +153,13 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
       }
       const me = await findPersonById(request.actor!.id);
       if (!me?.email) throw badRequest("your account has no email to DM");
-      const sent = await dmSampleToPerson(me.email, event && event !== "all" ? event : undefined);
+      const { sent, error } = await dmSampleToPerson(me.email, event && event !== "all" ? event : undefined);
       if (sent === 0) {
-        return { ok: false, sent, hint: "No DM sent — check the bot has chat:write + users:read.email (reinstalled) and your Slack email matches." };
+        return {
+          ok: false,
+          sent,
+          hint: `No DM sent (Slack: ${error ?? "unknown"}). Add bot scopes chat:write + users:read.email and Reinstall the app; and check your Slack email matches ${me.email}.`,
+        };
       }
       return { ok: true, sent };
     }

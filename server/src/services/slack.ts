@@ -140,20 +140,28 @@ async function slackApi<T>(method: string, body: Record<string, unknown>): Promi
   }
 }
 
-/** Resolve a person's work email to their Slack user id (needs users:read.email). Null if not found. */
-async function lookupSlackUserId(email: string): Promise<string | null> {
-  const res = await slackApi<{ ok: boolean; user?: { id?: string } }>("users.lookupByEmail", { email });
-  return res?.ok && res.user?.id ? res.user.id : null;
-}
-
-/** DM a person by email (needs chat:write). Renders the interactive block when a button is given. Returns true on success. */
-export async function dmPerson(email: string, title: string, body: string, button?: SlackButton): Promise<boolean> {
-  const userId = await lookupSlackUserId(email);
-  if (!userId) return false;
-  const payload: Record<string, unknown> = { channel: userId, text: formatSlackMessage(title, body) };
+/**
+ * DM a person by email (needs users:read.email to look them up + chat:write to
+ * message). Renders the interactive block when a button is given. Returns ok,
+ * plus Slack's error string on failure (e.g. missing_scope, users_not_found,
+ * channel_not_found) so callers can surface a precise reason.
+ */
+export async function dmPerson(
+  email: string,
+  title: string,
+  body: string,
+  button?: SlackButton
+): Promise<{ ok: boolean; error?: string }> {
+  const look = await slackApi<{ ok: boolean; error?: string; user?: { id?: string } }>("users.lookupByEmail", {
+    email,
+  });
+  if (!look) return { ok: false, error: "no_response" };
+  if (!look.ok || !look.user?.id) return { ok: false, error: look.error ?? "user_not_found" };
+  const payload: Record<string, unknown> = { channel: look.user.id, text: formatSlackMessage(title, body) };
   if (button) payload.blocks = messageBlocks(title, body, button);
-  const res = await slackApi<{ ok: boolean }>("chat.postMessage", payload);
-  return !!res?.ok;
+  const post = await slackApi<{ ok: boolean; error?: string }>("chat.postMessage", payload);
+  if (!post) return { ok: false, error: "no_response" };
+  return post.ok ? { ok: true } : { ok: false, error: post.error ?? "post_failed" };
 }
 
 /**
@@ -269,14 +277,16 @@ export async function postSampleNotifications(sentBy: string): Promise<number> {
  * them. Used by the "DM me a test" buttons so an owner previews exactly what an
  * individual receives. Requires a bot token. Returns how many DMs were sent.
  */
-export async function dmSampleToPerson(email: string, eventKey?: string): Promise<number> {
-  if (!slackDmConfigured()) return 0;
+export async function dmSampleToPerson(email: string, eventKey?: string): Promise<{ sent: number; error?: string }> {
+  if (!slackDmConfigured()) return { sent: 0, error: "not_configured" };
   const chosen = eventKey ? SAMPLES.filter((s) => s.key === eventKey) : SAMPLES;
   let sent = 0;
+  let error: string | undefined;
   for (const { sample } of chosen) {
     const withButton = sample.button && config.slackSigningSecret ? sample.button : undefined;
-    const ok = await dmPerson(email, `[Test] ${sample.title}`, sample.body, withButton);
-    if (ok) sent += 1;
+    const r = await dmPerson(email, `[Test] ${sample.title}`, sample.body, withButton);
+    if (r.ok) sent += 1;
+    else if (!error) error = r.error;
   }
-  return sent;
+  return { sent, error };
 }

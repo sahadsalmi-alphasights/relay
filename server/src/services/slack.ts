@@ -172,13 +172,14 @@ export async function dmPerson(
   const look = await slackGet<{ ok: boolean; error?: string; user?: { id?: string } }>(
     `users.lookupByEmail?email=${encodeURIComponent(email)}`
   );
-  if (!look) return { ok: false, error: "no_response" };
-  if (!look.ok || !look.user?.id) return { ok: false, error: look.error ?? "user_not_found" };
-  const payload: Record<string, unknown> = { channel: look.user.id, text: formatSlackMessage(title, body) };
+  if (!look) return { ok: false, error: "lookup:no_response" };
+  if (!look.ok || !look.user?.id) return { ok: false, error: `lookup:${look.error ?? "user_not_found"}` };
+  // Post with `text` always set (fallback/preview); blocks carry the button.
+  const payload: Record<string, unknown> = { channel: look.user.id, text: `${title}\n${body}` };
   if (button) payload.blocks = messageBlocks(title, body, button);
   const post = await slackApi<{ ok: boolean; error?: string }>("chat.postMessage", payload);
-  if (!post) return { ok: false, error: "no_response" };
-  return post.ok ? { ok: true } : { ok: false, error: post.error ?? "post_failed" };
+  if (!post) return { ok: false, error: "post:no_response" };
+  return post.ok ? { ok: true } : { ok: false, error: `post:${post.error ?? "post_failed"}` };
 }
 
 /**

@@ -26,6 +26,11 @@ export const config = {
   // Unset = the /slack/interactive endpoint rejects everything, so the Accept
   // button degrades to "open the app" and nothing can be spoofed.
   slackSigningSecret: (process.env.SLACK_SIGNING_SECRET ?? "").trim(),
+  // Slack bot token (xoxb-…) — enables per-person DMs. When set, personal
+  // notifications are DM'd to the recipient (looked up by email) instead of
+  // the shared channel; broadcasts still go to the channel. Needs scopes
+  // chat:write + users:read.email. Credential → env only.
+  slackBotToken: (process.env.SLACK_BOT_TOKEN ?? "").trim(),
   // BambooHR integration (optional) — the API key is a credential, so it lives
   // in env (never DB/code). Both the key and the company subdomain are needed;
   // unset = the leave sync stays inert regardless of the in-app toggle. The DB

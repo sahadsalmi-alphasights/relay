@@ -5,6 +5,7 @@ import { listProjects, type ProjectRow } from "../repositories/projects";
 import { isAfterHours } from "../rules/time";
 import type { ProjectType } from "../rules/types";
 import { notify } from "./notify";
+import { notifyChannel, slackDmConfigured } from "./slack";
 
 const REPING_INTERVAL_MINUTES = 15;
 
@@ -30,6 +31,17 @@ export async function notifyBroadcastRecipients(project: ProjectRow, now: Date):
       entityType: "project",
       entityId: project.id,
     });
+  }
+  // In DM mode, the per-person notify() above intentionally skips Slack for
+  // open_pool (it's a team event) — so post it to the shared channel ONCE here,
+  // rather than DMing every eligible person. In legacy webhook mode each
+  // recipient's notify() already channels it, so we don't double up.
+  if (slackDmConfigured()) {
+    await notifyChannel(
+      "open_pool",
+      "Project up for grabs",
+      `${project.client} has no one staffed — everyone's busy on fresh projects. First to accept takes a seat.`
+    );
   }
 }
 

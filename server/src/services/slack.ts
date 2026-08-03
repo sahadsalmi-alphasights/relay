@@ -140,6 +140,21 @@ async function slackApi<T>(method: string, body: Record<string, unknown>): Promi
   }
 }
 
+/** GET-style Slack Web API call (for methods that take query params, e.g. users.lookupByEmail). */
+async function slackGet<T>(pathWithQuery: string): Promise<T | null> {
+  if (!config.slackBotToken) return null;
+  try {
+    const res = await fetch(`https://slack.com/api/${pathWithQuery}`, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${config.slackBotToken}` },
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as T;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * DM a person by email (needs users:read.email to look them up + chat:write to
  * message). Renders the interactive block when a button is given. Returns ok,
@@ -152,9 +167,11 @@ export async function dmPerson(
   body: string,
   button?: SlackButton
 ): Promise<{ ok: boolean; error?: string }> {
-  const look = await slackApi<{ ok: boolean; error?: string; user?: { id?: string } }>("users.lookupByEmail", {
-    email,
-  });
+  // users.lookupByEmail takes the email as a query param, NOT a JSON body —
+  // posting JSON makes Slack see no `email` and return invalid_arguments.
+  const look = await slackGet<{ ok: boolean; error?: string; user?: { id?: string } }>(
+    `users.lookupByEmail?email=${encodeURIComponent(email)}`
+  );
   if (!look) return { ok: false, error: "no_response" };
   if (!look.ok || !look.user?.id) return { ok: false, error: look.error ?? "user_not_found" };
   const payload: Record<string, unknown> = { channel: look.user.id, text: formatSlackMessage(title, body) };

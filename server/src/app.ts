@@ -29,6 +29,7 @@ import { startHeartbeat } from "./ws/hub";
 import { startStaleScheduler } from "./services/staleScheduler";
 import { startBroadcastRepingScheduler } from "./services/broadcast";
 import { startDailyResetScheduler } from "./services/dailyReset";
+import { startHrSyncScheduler } from "./services/hrSyncScheduler";
 
 export function buildApp(): FastifyInstance {
   // trustProxy: every production request arrives via nginx (which itself sits
@@ -123,11 +124,13 @@ export function buildApp(): FastifyInstance {
   const staleTimer = startStaleScheduler();
   const broadcastRepingTimer = startBroadcastRepingScheduler();
   const dailyResetTimer = startDailyResetScheduler();
+  const hrSyncTimer = startHrSyncScheduler();
   app.addHook("onClose", (_instance, done) => {
     clearInterval(heartbeatTimer);
     clearInterval(staleTimer);
     clearInterval(broadcastRepingTimer);
     clearInterval(dailyResetTimer);
+    clearInterval(hrSyncTimer);
     done();
   });
 

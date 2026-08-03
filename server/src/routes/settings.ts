@@ -12,6 +12,13 @@ import {
   type NotificationSettings,
 } from "../repositories/notificationSettings";
 import { formatSlackMessage, postToSlack, slackConfigured, slackInteractiveConfigured } from "../services/slack";
+import {
+  getHrIntegrationSettings,
+  updateHrIntegrationSettings,
+  type HrIntegrationSettingsPatch,
+} from "../repositories/hrIntegrationSettings";
+import { hrConfigured, fetchDirectoryEmails } from "../services/bamboohr";
+import { runHrLeaveSync } from "../services/hrLeaveSync";
 import { badRequest } from "../errors";
 import { publish } from "../ws/hub";
 
@@ -118,6 +125,66 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
     if (!slackConfigured()) throw badRequest("Slack is not configured (SLACK_WEBHOOK_URL is not set on the server)");
     const ok = await postToSlack(formatSlackMessage("CapTracker test message", `Sent by ${request.actor!.name}. If you can see this, Slack is wired up correctly.`));
     return { ok };
+  });
+
+  // ---- BambooHR leave sync (Integrations) -------------------------------
+  // Readable by any signed-in user; `configured` reflects whether the env
+  // credentials are set (the key itself is never sent).
+  app.get("/hr-integration", { preHandler: [app.requireAuth] }, async () => {
+    const settings = await getHrIntegrationSettings();
+    return { ...settings, configured: hrConfigured() };
+  });
+
+  // Owner-only, audit-logged. Only `enabled` and `leaveTypeKeywords` are editable.
+  app.patch<{ Body: HrIntegrationSettingsPatch }>(
+    "/hr-integration",
+    { preHandler: [app.requireOwner] },
+    async (request) => {
+      const actor = request.actor!;
+      const body = request.body ?? {};
+      const patch: HrIntegrationSettingsPatch = {};
+      if (body.enabled !== undefined) {
+        if (typeof body.enabled !== "boolean") throw badRequest("enabled must be a boolean");
+        patch.enabled = body.enabled;
+      }
+      if (body.leaveTypeKeywords !== undefined) {
+        if (typeof body.leaveTypeKeywords !== "string") throw badRequest("leaveTypeKeywords must be a string");
+        const cleaned = body.leaveTypeKeywords.trim();
+        if (!cleaned) throw badRequest("leaveTypeKeywords cannot be empty");
+        patch.leaveTypeKeywords = cleaned;
+      }
+      const current = await getHrIntegrationSettings();
+      const updated = await updateHrIntegrationSettings(patch);
+      await insertAuditLog({
+        entityType: "hr_integration_settings",
+        entityId: "00000000-0000-0000-0000-000000000003",
+        actorId: actor.id,
+        action: "hr_integration_settings_updated",
+        oldValue: current,
+        newValue: updated,
+      });
+      publish({ type: "settings" });
+      return { ...updated, configured: hrConfigured() };
+    }
+  );
+
+  // Owner-only "sync now" — runs a pass immediately and returns what it did.
+  app.post("/hr-integration/sync", { preHandler: [app.requireOwner] }, async () => {
+    if (!hrConfigured()) {
+      throw badRequest("BambooHR is not configured (BAMBOOHR_API_KEY / BAMBOOHR_SUBDOMAIN are not set on the server)");
+    }
+    const result = await runHrLeaveSync(new Date());
+    return result;
+  });
+
+  // Owner-only connection test — hits the directory endpoint to prove the
+  // credentials work, without changing anyone's status.
+  app.post("/hr-integration/test", { preHandler: [app.requireOwner] }, async () => {
+    if (!hrConfigured()) {
+      throw badRequest("BambooHR is not configured (BAMBOOHR_API_KEY / BAMBOOHR_SUBDOMAIN are not set on the server)");
+    }
+    const directory = await fetchDirectoryEmails();
+    return { ok: directory !== null, employees: directory?.size ?? 0 };
   });
 };
 

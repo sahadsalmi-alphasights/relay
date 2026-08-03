@@ -1,17 +1,18 @@
 import { useApp } from "../state/AppContext";
 import { initials } from "../lib/format";
 
-// The statuses that count as "out", in display order, with an emoji.
-const OUT_GROUPS: { status: string; label: string; emoji: string }[] = [
-  { status: "On vacation", label: "On vacation", emoji: "🌴" },
-  { status: "Sick", label: "Sick", emoji: "🤒" },
-  { status: "Offline", label: "Offline", emoji: "⚪" },
+// The "out" buckets, in display order. Offline is folded into On vacation —
+// we don't surface a separate Offline section here; anyone not Available and
+// not Sick shows as On vacation.
+const OUT_GROUPS: { key: string; label: string; emoji: string; statuses: string[] }[] = [
+  { key: "vacation", label: "On vacation", emoji: "🌴", statuses: ["On vacation", "Offline"] },
+  { key: "sick", label: "Sick", emoji: "🤒", statuses: ["Sick"] },
 ];
 
 /**
  * Settings → Who is out. A read-only, at-a-glance list of everyone who isn't
- * Available right now, grouped by status. People the BambooHR sync put Offline
- * for leave are tagged so they're distinguishable from a manual Offline.
+ * Available right now. Two buckets only — On vacation (incl. Offline) and Sick.
+ * BambooHR-synced leave carries a tag.
  */
 export default function WhoIsOut() {
   const { people, teamNameOf } = useApp();
@@ -29,11 +30,11 @@ export default function WhoIsOut() {
 
       {OUT_GROUPS.map((g) => {
         const rows = active
-          .filter((p) => p.status === g.status)
+          .filter((p) => g.statuses.includes(p.status))
           .sort((a, b) => a.name.localeCompare(b.name));
         if (rows.length === 0) return null;
         return (
-          <div className="card cs-card" key={g.status}>
+          <div className="card cs-card" key={g.key}>
             <div className="cs-head">
               {g.emoji} {g.label} <span className="mini team" style={{ marginLeft: 6 }}>{rows.length}</span>
             </div>

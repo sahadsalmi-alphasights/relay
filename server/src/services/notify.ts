@@ -42,7 +42,7 @@ export async function notify(input: CreateNotificationInput, opts?: NotifyOption
   await sendWebPush(input.personId, row.title, row.body);
   // Fourth channel (optional) — Slack. No-op unless a webhook is configured
   // and the owner has enabled this event; never throws, never blocks.
-  await maybeNotifySlack(row.type, row.title, row.body, opts?.slackButton);
+  await maybeNotifySlack(input.personId, row.type, row.title, row.body, opts?.slackButton);
 }
 
 async function sendWebPush(personId: string, title: string, body: string): Promise<void> {

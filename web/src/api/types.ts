@@ -274,4 +274,6 @@ export interface NotificationSettings {
   slackConfigured: boolean;
   /** Whether inbound interactivity (the "Accept from Slack" button) is wired — i.e. SLACK_SIGNING_SECRET is set. Read-only status; the secret is never sent. */
   slackInteractiveConfigured: boolean;
+  /** Whether a bot token is set — enables per-person DMs. Read-only status; the token is never sent. */
+  slackDmConfigured: boolean;
 }

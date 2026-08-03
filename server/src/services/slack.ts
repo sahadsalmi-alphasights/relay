@@ -1,9 +1,33 @@
 import { config } from "../config";
 import { getNotificationSettings, type NotificationSettings } from "../repositories/notificationSettings";
+import { findPersonById } from "../repositories/people";
 
 /** True when a Slack webhook is configured in env. The URL itself is never exposed. */
 export function slackConfigured(): boolean {
   return !!config.slackWebhookUrl;
+}
+
+/** True when a bot token is configured — enables per-person DMs. The token is never exposed. */
+export function slackDmConfigured(): boolean {
+  return !!config.slackBotToken;
+}
+
+/** Events that belong in the shared channel, not a personal DM. */
+const TEAM_EVENTS = new Set<string>(["open_pool"]);
+
+export type SlackRoute = "dm" | "channel" | "skip";
+
+/**
+ * Where a notification's Slack copy should go — the pure routing decision.
+ * - No bot token (legacy): everything goes to the channel webhook.
+ * - Bot token (DM mode): team events (broadcasts) are skipped here (the
+ *   broadcast path posts them to the channel once), everything else DMs the
+ *   individual recipient.
+ */
+export function slackRouteFor(type: string, dmMode: boolean): SlackRoute {
+  if (!dmMode) return "channel";
+  if (TEAM_EVENTS.has(type)) return "skip";
+  return "dm";
 }
 
 /**
@@ -100,26 +124,82 @@ function messageBlocks(title: string, body: string, button?: SlackButton): unkno
   return blocks;
 }
 
+/** Slack Web API call (bot token). Guarded; returns the parsed JSON or null. */
+async function slackApi<T>(method: string, body: Record<string, unknown>): Promise<T | null> {
+  if (!config.slackBotToken) return null;
+  try {
+    const res = await fetch(`https://slack.com/api/${method}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${config.slackBotToken}`, "Content-Type": "application/json; charset=utf-8" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as T;
+  } catch {
+    return null;
+  }
+}
+
+/** Resolve a person's work email to their Slack user id (needs users:read.email). Null if not found. */
+async function lookupSlackUserId(email: string): Promise<string | null> {
+  const res = await slackApi<{ ok: boolean; user?: { id?: string } }>("users.lookupByEmail", { email });
+  return res?.ok && res.user?.id ? res.user.id : null;
+}
+
+/** DM a person by email (needs chat:write). Renders the interactive block when a button is given. Returns true on success. */
+export async function dmPerson(email: string, title: string, body: string, button?: SlackButton): Promise<boolean> {
+  const userId = await lookupSlackUserId(email);
+  if (!userId) return false;
+  const payload: Record<string, unknown> = { channel: userId, text: formatSlackMessage(title, body) };
+  if (button) payload.blocks = messageBlocks(title, body, button);
+  const res = await slackApi<{ ok: boolean }>("chat.postMessage", payload);
+  return !!res?.ok;
+}
+
 /**
- * Called from notify() for every notification. Posts to Slack only when the
- * webhook is configured (env), the master switch is on, and this event's
- * toggle is on. When a `button` is supplied it renders an interactive Block
- * Kit message (the inbound /slack/interactive route handles the click). Never
- * throws.
+ * Post a team message to the shared channel (webhook), gated by the master
+ * switch + this event's toggle. Used for broadcasts in DM mode (once per
+ * round), so "up for grabs" reaches the channel rather than DMing everyone.
+ */
+export async function notifyChannel(type: string, title: string, body: string): Promise<void> {
+  if (!slackConfigured()) return;
+  try {
+    const settings = await getNotificationSettings();
+    if (!slackEventEnabled(settings, type)) return;
+    await postToSlack(formatSlackMessage(title, body));
+  } catch {
+    // never let Slack delivery affect the in-app path
+  }
+}
+
+/**
+ * Called from notify() for every notification. Gated by the master switch +
+ * the per-event toggle. Routing (see slackRouteFor): with a bot token, personal
+ * events DM the recipient (looked up by email) and team events are left to the
+ * broadcast path; without a bot token, everything posts to the channel webhook.
+ * Interactive buttons only render when a signing secret is set. Never throws.
  */
 export async function maybeNotifySlack(
+  personId: string,
   type: string,
   title: string,
   body: string,
   button?: SlackButton
 ): Promise<void> {
-  if (!slackConfigured()) return;
   try {
     const settings = await getNotificationSettings();
     if (!slackEventEnabled(settings, type)) return;
-    // Interactive buttons only work when a signing secret is configured to
-    // verify the callback; without it, fall back to a plain (safe) message.
     const withButton = button && config.slackSigningSecret ? button : undefined;
+    const route = slackRouteFor(type, slackDmConfigured());
+    if (route === "skip") return;
+    if (route === "dm") {
+      const person = await findPersonById(personId);
+      if (!person?.email) return;
+      await dmPerson(person.email, title, body, withButton);
+      return;
+    }
+    // channel (legacy webhook mode)
+    if (!slackConfigured()) return;
     await postToSlack(formatSlackMessage(title, body), withButton ? messageBlocks(title, body, withButton) : undefined);
   } catch {
     // never let Slack delivery affect the in-app notification path

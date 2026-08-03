@@ -51,9 +51,10 @@ export default function NotificationSettings({ onSaved }: { onSaved: () => void 
   const save = async () => {
     setBusy(true); setError(null);
     try {
-      const { slackConfigured, slackInteractiveConfigured, ...toggles } = draft;
+      const { slackConfigured, slackInteractiveConfigured, slackDmConfigured, ...toggles } = draft;
       void slackConfigured;
       void slackInteractiveConfigured;
+      void slackDmConfigured;
       const updated = await api.patch<NS>("/settings/notifications", toggles);
       setDraft(updated); setSaved(updated); setOk(true); onSaved();
     } catch (err) {
@@ -111,6 +112,17 @@ export default function NotificationSettings({ onSaved }: { onSaved: () => void 
             {draft.slackInteractiveConfigured
               ? <span className="mini free">Configured</span>
               : <span className="mini off">Not configured</span>}
+          </div>
+        </div>
+        <div className="cs-row">
+          <div>
+            <div className="cs-rl">Per-person direct messages</div>
+            <div className="cs-rs">When a bot token (<code>SLACK_BOT_TOKEN</code>, needs <code>chat:write</code> + <code>users:read.email</code>) is set on the server, personal alerts DM the individual (matched by work email) and only broadcasts post to the channel. Off = everything posts to the channel.</div>
+          </div>
+          <div className="cs-controls">
+            {draft.slackDmConfigured
+              ? <span className="mini free">On — DMs enabled</span>
+              : <span className="mini off">Channel-only</span>}
           </div>
         </div>
         <div className="cs-row">

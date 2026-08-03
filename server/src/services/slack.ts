@@ -125,3 +125,51 @@ export async function maybeNotifySlack(
     // never let Slack delivery affect the in-app notification path
   }
 }
+
+/**
+ * One representative sample per notification type — dummy data — for the owner
+ * "Send a sample of each event" preview. Bypasses the per-event toggles on
+ * purpose (it's a manual preview of every message the team could receive).
+ */
+const SAMPLE_NOTIFICATIONS: { title: string; body: string; button?: SlackButton }[] = [
+  { title: "New project assigned to you", body: "Nadia Karim has staffed you on a new project with a goal of 3." },
+  { title: "Team member staffed on another team's project", body: "Omar Rashid has been staffed by Nadia Karim from Team Industrial Scale with a goal of 4." },
+  { title: "Seat claimed from the broadcast", body: "Client_Helios — Sell-side just got a new deliverer from the broadcast." },
+  {
+    title: "Goal change requested",
+    body: "Omar Rashid has requested a goal change on Project Client_Helios: Goal of 2 Status Second Deliverable. Explanation: pool is thin.",
+    button: { text: "✓ Accept", actionId: "accept_goal_change", value: "sample", style: "primary" },
+  },
+  { title: "Goal change still needs action", body: "Omar Rashid requested a goal change to Nadia Karim's project Client_Helios that has not been actioned on." },
+  { title: "Your goal change request was accepted", body: "Client_Helios: your goal change request was accepted — goal 2, status Second Deliverable." },
+  { title: "Delivery logged — review", body: "Omar Rashid logged progress on Client_Helios: 4/8." },
+  { title: "First Deliverable due", body: "Client_Helios has been in First Deliverable 2+ hours with no progress logged." },
+  { title: "Project up for grabs", body: "Client_Helios has no one staffed — everyone's busy on fresh projects. First to accept takes a seat." },
+  { title: "A project was transferred to you", body: "Client_Helios — Buy-side diligence is now yours to lead." },
+];
+
+/**
+ * Post an intro header plus one sample of every notification type to the
+ * configured channel. Owner-triggered preview; ignores the per-event toggles.
+ * Returns how many messages were accepted (2xx). Never throws.
+ */
+export async function postSampleNotifications(sentBy: string): Promise<number> {
+  if (!slackConfigured()) return 0;
+  let sent = 0;
+  const intro = await postToSlack(
+    formatSlackMessage(
+      "🧪 CapTracker — sample notifications (preview)",
+      `The next messages show each alert type CapTracker can post here. These are examples, not real events. Sent by ${sentBy}.`
+    )
+  );
+  if (intro) sent += 1;
+  for (const s of SAMPLE_NOTIFICATIONS) {
+    const withButton = s.button && config.slackSigningSecret ? s.button : undefined;
+    const ok = await postToSlack(
+      formatSlackMessage(s.title, s.body),
+      withButton ? messageBlocks(s.title, s.body, withButton) : undefined
+    );
+    if (ok) sent += 1;
+  }
+  return sent;
+}

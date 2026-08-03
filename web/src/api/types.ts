@@ -37,6 +37,8 @@ export interface Person {
   isGhost: boolean;
   lastLoginAt: string | null;
   deactivatedAt: string | null;
+  /** Set by the BambooHR leave sync when it put this person Offline — lets "Who is out" mark BambooHR leave vs a manual Offline. */
+  hrOfflineAt?: string | null;
 }
 
 /** User management portal — role tiers. owner > manager > member. */

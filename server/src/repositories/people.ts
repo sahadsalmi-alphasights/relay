@@ -100,24 +100,25 @@ export async function updateEveningCoverage(id: string, eveningCoverage: boolean
 }
 
 /**
- * BambooHR leave sync — set someone Offline and stamp hr_offline_at so the sync
- * can later restore only the people IT changed. Idempotent: a no-op if they're
- * already sync-managed offline.
+ * BambooHR leave sync — set someone to "On vacation" and stamp hr_offline_at so
+ * the sync can later restore only the people IT changed. Any matching leave type
+ * (vacation or sick) maps to the single "On vacation" status — it excludes them
+ * from broadcasts at all hours, unlike Offline. Idempotent.
  */
-export async function setHrOffline(id: string): Promise<void> {
+export async function setHrOnLeave(id: string): Promise<void> {
   await pool.query(
-    `UPDATE person SET status = 'Offline', hr_offline_at = COALESCE(hr_offline_at, now()) WHERE id = $1`,
+    `UPDATE person SET status = 'On vacation', hr_offline_at = COALESCE(hr_offline_at, now()) WHERE id = $1`,
     [id]
   );
 }
 
 /** Restore a sync-managed person to Available and clear the marker (called when their leave ends). */
-export async function clearHrOfflineToAvailable(id: string): Promise<void> {
+export async function clearHrLeaveToAvailable(id: string): Promise<void> {
   await pool.query(`UPDATE person SET status = 'Available', hr_offline_at = NULL WHERE id = $1`, [id]);
 }
 
-/** Everyone the sync currently holds Offline (has an hr_offline_at marker), active only. */
-export async function listHrManagedOffline(): Promise<{ id: string; email: string; name: string }[]> {
+/** Everyone the sync currently holds on leave (has an hr_offline_at marker), active only. */
+export async function listHrManagedLeave(): Promise<{ id: string; email: string; name: string }[]> {
   const { rows } = await pool.query(
     `SELECT id, email, name FROM person WHERE hr_offline_at IS NOT NULL AND deactivated_at IS NULL`
   );

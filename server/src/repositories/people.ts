@@ -96,6 +96,31 @@ export async function updateEveningCoverage(id: string, eveningCoverage: boolean
   return (await findPersonById(id))!;
 }
 
+/**
+ * BambooHR leave sync — set someone Offline and stamp hr_offline_at so the sync
+ * can later restore only the people IT changed. Idempotent: a no-op if they're
+ * already sync-managed offline.
+ */
+export async function setHrOffline(id: string): Promise<void> {
+  await pool.query(
+    `UPDATE person SET status = 'Offline', hr_offline_at = COALESCE(hr_offline_at, now()) WHERE id = $1`,
+    [id]
+  );
+}
+
+/** Restore a sync-managed person to Available and clear the marker (called when their leave ends). */
+export async function clearHrOfflineToAvailable(id: string): Promise<void> {
+  await pool.query(`UPDATE person SET status = 'Available', hr_offline_at = NULL WHERE id = $1`, [id]);
+}
+
+/** Everyone the sync currently holds Offline (has an hr_offline_at marker), active only. */
+export async function listHrManagedOffline(): Promise<{ id: string; email: string; name: string }[]> {
+  const { rows } = await pool.query(
+    `SELECT id, email, name FROM person WHERE hr_offline_at IS NOT NULL AND deactivated_at IS NULL`
+  );
+  return rows;
+}
+
 /** "Out to Lunch" — self-serve only, same rule as evening coverage: nobody sets anyone else's. */
 export async function updateOutToLunch(id: string, outToLunch: boolean): Promise<PersonRow> {
   // Stamp when lunch was switched on so the scheduler can expire it an hour

@@ -1,10 +1,11 @@
 import { useState } from "react";
 import CoverageSettings from "../components/CoverageSettings";
 import NotificationSettings from "../components/NotificationSettings";
+import HrIntegrationSettings from "../components/HrIntegrationSettings";
 import SundayRotaPlanner from "../components/SundayRotaPlanner";
 import UserManagementTab from "./UserManagementTab";
 
-type SettingsView = "coverage" | "notifications" | "rota" | "users";
+type SettingsView = "coverage" | "notifications" | "integrations" | "rota" | "users";
 
 /**
  * Settings — the former "User Management" tab, now a container with sections:
@@ -26,12 +27,14 @@ export default function SettingsTab({ reloadTick, onReload }: { reloadTick: numb
       <div className="dl-view-switch settings-subnav" role="group" aria-label="Settings section">
         {tab("coverage", "Coverage settings")}
         {tab("notifications", "Notifications")}
+        {tab("integrations", "Integrations")}
         {tab("rota", "Sunday rota")}
         {tab("users", "User management")}
       </div>
 
       {view === "coverage" && <CoverageSettings onSaved={onReload} />}
       {view === "notifications" && <NotificationSettings onSaved={onReload} />}
+      {view === "integrations" && <HrIntegrationSettings onSaved={onReload} />}
       {view === "rota" && <SundayRotaPlanner reloadTick={reloadTick} />}
       {view === "users" && <UserManagementTab reloadTick={reloadTick} />}
     </>

@@ -26,6 +26,12 @@ export const config = {
   // Unset = the /slack/interactive endpoint rejects everything, so the Accept
   // button degrades to "open the app" and nothing can be spoofed.
   slackSigningSecret: (process.env.SLACK_SIGNING_SECRET ?? "").trim(),
+  // BambooHR integration (optional) — the API key is a credential, so it lives
+  // in env (never DB/code). Both the key and the company subdomain are needed;
+  // unset = the leave sync stays inert regardless of the in-app toggle. The DB
+  // only ever holds the non-secret settings (enabled, which leave types count).
+  bamboohrApiKey: (process.env.BAMBOOHR_API_KEY ?? "").trim(),
+  bamboohrSubdomain: (process.env.BAMBOOHR_SUBDOMAIN ?? "").trim(),
   // Cloudflare Access origin validation (defense in depth) — when BOTH are
   // set, the API re-verifies the Cf-Access-Jwt-Assertion header (signed by
   // Cloudflare at the edge) on every request, so even a request that somehow

@@ -141,6 +141,15 @@ export interface GoalChangeRequest {
   outcome: "accepted" | "declined" | null;
 }
 
+/** BambooHR leave-sync settings (Settings → Integrations). `configured` reflects whether the env credentials are set; the API key is never sent. */
+export interface HrIntegrationSettings {
+  enabled: boolean;
+  leaveTypeKeywords: string;
+  lastSyncAt: string | null;
+  lastSyncSummary: string | null;
+  configured: boolean;
+}
+
 /** The actor's own still-open goal-change requests — drives the Delivery Poke button. */
 export interface MyGoalChangeRequest {
   id: string;

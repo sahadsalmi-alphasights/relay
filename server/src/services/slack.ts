@@ -1,6 +1,7 @@
 import { config } from "../config";
 import { getNotificationSettings, type NotificationSettings } from "../repositories/notificationSettings";
 import { findPersonById } from "../repositories/people";
+import { GOAL_CHANGE_TARGETS, goalChangeTargetLabel } from "../rules/goalChange";
 
 /** True when a Slack webhook is configured in env. The URL itself is never exposed. */
 export function slackConfigured(): boolean {
@@ -101,24 +102,19 @@ export async function postToSlack(text: string, blocks?: unknown[]): Promise<boo
   }
 }
 
-/** Block Kit for a message with an optional single action button. */
-function messageBlocks(title: string, body: string, button?: SlackButton): unknown[] {
-  const blocks: unknown[] = [
-    { type: "section", text: { type: "mrkdwn", text: `*${title}*\n${body}` } },
-  ];
-  if (button) {
+/** Block Kit for a message with zero or more action buttons. */
+function messageBlocks(title: string, body: string, buttons?: SlackButton[]): unknown[] {
+  const blocks: unknown[] = [{ type: "section", text: { type: "mrkdwn", text: `*${title}*\n${body}` } }];
+  if (buttons && buttons.length) {
     blocks.push({
       type: "actions",
-      // block_id echoes back too — the interaction handler reads action_id.
-      elements: [
-        {
-          type: "button",
-          text: { type: "plain_text", text: button.text, emoji: true },
-          action_id: button.actionId,
-          value: button.value,
-          ...(button.style ? { style: button.style } : {}),
-        },
-      ],
+      elements: buttons.map((b) => ({
+        type: "button",
+        text: { type: "plain_text", text: b.text, emoji: true },
+        action_id: b.actionId,
+        value: b.value,
+        ...(b.style ? { style: b.style } : {}),
+      })),
     });
   }
   return blocks;
@@ -165,7 +161,7 @@ export async function dmPerson(
   email: string,
   title: string,
   body: string,
-  button?: SlackButton
+  buttons?: SlackButton[]
 ): Promise<{ ok: boolean; error?: string }> {
   // users.lookupByEmail takes the email as a query param, NOT a JSON body —
   // posting JSON makes Slack see no `email` and return invalid_arguments.
@@ -174,9 +170,9 @@ export async function dmPerson(
   );
   if (!look) return { ok: false, error: "lookup:no_response" };
   if (!look.ok || !look.user?.id) return { ok: false, error: `lookup:${look.error ?? "user_not_found"}` };
-  // Post with `text` always set (fallback/preview); blocks carry the button.
+  // Post with `text` always set (fallback/preview); blocks carry the buttons.
   const payload: Record<string, unknown> = { channel: look.user.id, text: `${title}\n${body}` };
-  if (button) payload.blocks = messageBlocks(title, body, button);
+  if (buttons && buttons.length) payload.blocks = messageBlocks(title, body, buttons);
   const post = await slackApi<{ ok: boolean; error?: string }>("chat.postMessage", payload);
   if (!post) return { ok: false, error: "post:no_response" };
   return post.ok ? { ok: true } : { ok: false, error: `post:${post.error ?? "post_failed"}` };
@@ -210,23 +206,24 @@ export async function maybeNotifySlack(
   type: string,
   title: string,
   body: string,
-  button?: SlackButton
+  buttons?: SlackButton[]
 ): Promise<void> {
   try {
     const settings = await getNotificationSettings();
     if (!slackEventEnabled(settings, type)) return;
-    const withButton = button && config.slackSigningSecret ? button : undefined;
+    // Interactive buttons only work when a signing secret is set to verify the callback.
+    const withButtons = buttons && config.slackSigningSecret ? buttons : undefined;
     const route = slackRouteFor(type, slackDmConfigured());
     if (route === "skip") return;
     if (route === "dm") {
       const person = await findPersonById(personId);
       if (!person?.email) return;
-      await dmPerson(person.email, title, body, withButton);
+      await dmPerson(person.email, title, body, withButtons);
       return;
     }
     // channel (legacy webhook mode)
     if (!slackConfigured()) return;
-    await postToSlack(formatSlackMessage(title, body), withButton ? messageBlocks(title, body, withButton) : undefined);
+    await postToSlack(formatSlackMessage(title, body), withButtons ? messageBlocks(title, body, withButtons) : undefined);
   } catch {
     // never let Slack delivery affect the in-app notification path
   }
@@ -237,7 +234,19 @@ export async function maybeNotifySlack(
  * "Send a sample of each event" preview. Bypasses the per-event toggles on
  * purpose (it's a manual preview of every message the team could receive).
  */
-interface SampleMsg { title: string; body: string; button?: SlackButton }
+interface SampleMsg { title: string; body: string; buttons?: SlackButton[] }
+
+/**
+ * The Accept / Amend / Decline buttons for a goal-change request Slack message.
+ * `value` carries the request id so /slack/interactive can act on it.
+ */
+export function goalChangeButtons(gcrId: string): SlackButton[] {
+  return [
+    { text: "✓ Accept", actionId: "accept_goal_change", value: gcrId, style: "primary" },
+    { text: "✎ Amend", actionId: "amend_goal_change", value: gcrId },
+    { text: "✕ Decline", actionId: "decline_goal_change", value: gcrId, style: "danger" },
+  ];
+}
 
 /**
  * One representative sample per per-event toggle (key = the NotificationSettings
@@ -251,7 +260,7 @@ const SAMPLES: { key: string; sample: SampleMsg }[] = [
     sample: {
       title: "Goal change requested",
       body: "Omar Rashid has requested a goal change on Project Client_Helios: Goal of 2 Status Second Deliverable. Explanation: pool is thin.",
-      button: { text: "✓ Accept", actionId: "accept_goal_change", value: "sample", style: "primary" },
+      buttons: goalChangeButtons("sample"),
     },
   },
   { key: "slackGoalChangeResolved", sample: { title: "Your goal change request was accepted", body: "Client_Helios: your goal change request was accepted — goal 2, status Second Deliverable." } },
@@ -280,10 +289,10 @@ export async function postSampleNotifications(sentBy: string): Promise<number> {
   );
   if (intro) sent += 1;
   for (const { sample } of SAMPLES) {
-    const withButton = sample.button && config.slackSigningSecret ? sample.button : undefined;
+    const withButtons = sample.buttons && config.slackSigningSecret ? sample.buttons : undefined;
     const ok = await postToSlack(
       formatSlackMessage(sample.title, sample.body),
-      withButton ? messageBlocks(sample.title, sample.body, withButton) : undefined
+      withButtons ? messageBlocks(sample.title, sample.body, withButtons) : undefined
     );
     if (ok) sent += 1;
   }
@@ -301,10 +310,71 @@ export async function dmSampleToPerson(email: string, eventKey?: string): Promis
   let sent = 0;
   let error: string | undefined;
   for (const { sample } of chosen) {
-    const withButton = sample.button && config.slackSigningSecret ? sample.button : undefined;
-    const r = await dmPerson(email, `[Test] ${sample.title}`, sample.body, withButton);
+    const withButtons = sample.buttons && config.slackSigningSecret ? sample.buttons : undefined;
+    const r = await dmPerson(email, `[Test] ${sample.title}`, sample.body, withButtons);
     if (r.ok) sent += 1;
     else if (!error) error = r.error;
   }
   return { sent, error };
+}
+
+/** Slack modal callback_id for the goal-change Amend flow. */
+export const AMEND_CALLBACK_ID = "amend_goal_change";
+
+/**
+ * Open the "Amend goal change" modal (views.open) prefilled with the requested
+ * goal + stage, so a PL can tweak either and accept-with-changes from Slack.
+ * private_metadata carries the request id. Needs the bot token + a trigger_id
+ * from the button click. Returns false if Slack rejects it.
+ */
+export async function openGoalChangeAmendModal(
+  triggerId: string,
+  gcrId: string,
+  requestedGoal: number | null,
+  requestedStatus: string | null
+): Promise<boolean> {
+  const options = GOAL_CHANGE_TARGETS.map((t) => ({
+    text: { type: "plain_text", text: goalChangeTargetLabel(t) },
+    value: t,
+  }));
+  const initialStatus = GOAL_CHANGE_TARGETS.includes((requestedStatus ?? "") as (typeof GOAL_CHANGE_TARGETS)[number])
+    ? requestedStatus
+    : undefined;
+  const view = {
+    type: "modal",
+    callback_id: AMEND_CALLBACK_ID,
+    private_metadata: gcrId,
+    title: { type: "plain_text", text: "Amend goal change" },
+    submit: { type: "plain_text", text: "Accept with changes" },
+    close: { type: "plain_text", text: "Cancel" },
+    blocks: [
+      {
+        type: "input",
+        block_id: "goal",
+        label: { type: "plain_text", text: "Goal" },
+        element: {
+          type: "number_input",
+          is_decimal_allowed: false,
+          action_id: "goal",
+          initial_value: String(requestedGoal ?? 1),
+          min_value: "0",
+        },
+      },
+      {
+        type: "input",
+        block_id: "status",
+        label: { type: "plain_text", text: "Stage" },
+        element: {
+          type: "static_select",
+          action_id: "status",
+          options,
+          ...(initialStatus
+            ? { initial_option: { text: { type: "plain_text", text: goalChangeTargetLabel(initialStatus) }, value: initialStatus } }
+            : {}),
+        },
+      },
+    ],
+  };
+  const res = await slackApi<{ ok: boolean; error?: string }>("views.open", { trigger_id: triggerId, view });
+  return !!res?.ok;
 }

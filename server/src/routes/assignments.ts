@@ -32,6 +32,7 @@ import { advanceStage, backStage } from "../rules/stage";
 import { swapDeliverer } from "../rules/swap";
 import type { Stage } from "../rules/types";
 import { notify } from "../services/notify";
+import { goalChangeButtons } from "../services/slack";
 import { publish } from "../ws/hub";
 import { projectRecipientIds } from "../ws/recipients";
 
@@ -375,9 +376,9 @@ const assignmentsRoutes: FastifyPluginAsync = async (app) => {
             entityId: assignment.id,
           },
           {
-            // Interactive Slack Accept — the value carries the request id so the
-            // /slack/interactive handler can resolve it as-requested.
-            slackButton: { text: "✓ Accept", actionId: "accept_goal_change", value: created.id, style: "primary" },
+            // Interactive Slack Accept / Amend / Decline — each button's value
+            // carries the request id so /slack/interactive can resolve it.
+            slackButtons: goalChangeButtons(created.id),
           }
         );
       }

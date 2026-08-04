@@ -56,6 +56,7 @@ export async function checkStaleAssignments(now: Date): Promise<void> {
     const label = thresholdLabel(crossed);
     // Recipients: deliverer + PL + the PL's-team manager(s), de-duped.
     const pl = await findPersonById(a.projectPlId);
+    const deliverer = await findPersonById(a.delivererId);
     const managerIds = pl?.teamId ? (await managersOfTeam(pl.teamId, a.projectPlId)).map((m) => m.id) : [];
 
     await notify({
@@ -68,12 +69,15 @@ export async function checkStaleAssignments(now: Date): Promise<void> {
     });
     const escalation = new Set<string>([a.projectPlId, ...managerIds]);
     escalation.delete(a.delivererId); // never double-notify if PL is also the deliverer
+    // Name the deliverer so a PL/manager with several stale deliverers on the
+    // same project gets distinguishable alerts, not N identical "the assignee" ones.
+    const who = deliverer?.name ?? "A deliverer";
     for (const personId of escalation) {
       await notify({
         personId,
         type: "stale_first_deliverable",
         title: "Deliverer's First Deliverable due",
-        body: `${project.client}'s assignee has been in First Deliverable ${label} with no progress logged.`,
+        body: `${who} on ${project.client} has been in First Deliverable ${label} with no progress logged.`,
         entityType: "assignment",
         entityId: a.id,
       });

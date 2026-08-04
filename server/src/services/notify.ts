@@ -5,9 +5,9 @@ import { deleteSubscriptionById, listForPerson } from "../repositories/pushSubsc
 import { maybeNotifySlack, type SlackButton } from "./slack";
 import { publish } from "../ws/hub";
 
-/** Optional per-notification extras — e.g. an interactive Slack Accept button. */
+/** Optional per-notification extras — e.g. interactive Slack action buttons. */
 export interface NotifyOptions {
-  slackButton?: SlackButton;
+  slackButtons?: SlackButton[];
 }
 
 if (config.vapidPublicKey && config.vapidPrivateKey) {
@@ -42,7 +42,7 @@ export async function notify(input: CreateNotificationInput, opts?: NotifyOption
   await sendWebPush(input.personId, row.title, row.body);
   // Fourth channel (optional) — Slack. No-op unless a webhook is configured
   // and the owner has enabled this event; never throws, never blocks.
-  await maybeNotifySlack(input.personId, row.type, row.title, row.body, opts?.slackButton);
+  await maybeNotifySlack(input.personId, row.type, row.title, row.body, opts?.slackButtons);
 }
 
 async function sendWebPush(personId: string, title: string, body: string): Promise<void> {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { slackRouteFor } from "./slack";
+import { goalChangeButtons, slackRouteFor } from "./slack";
 
 describe("slackRouteFor", () => {
   it("routes everything to the channel when no bot token (legacy mode)", () => {
@@ -19,5 +19,21 @@ describe("slackRouteFor", () => {
 
   it("skips team events in DM mode (broadcast posts them to the channel once)", () => {
     expect(slackRouteFor("open_pool", true)).toBe("skip");
+  });
+});
+
+describe("goalChangeButtons", () => {
+  it("offers Accept, Amend and Decline, each carrying the request id", () => {
+    const buttons = goalChangeButtons("gcr-123");
+    expect(buttons.map((b) => b.actionId)).toEqual([
+      "accept_goal_change",
+      "amend_goal_change",
+      "decline_goal_change",
+    ]);
+    expect(buttons.every((b) => b.value === "gcr-123")).toBe(true);
+    // Accept is primary, Decline is danger, Amend is neutral.
+    expect(buttons[0].style).toBe("primary");
+    expect(buttons[1].style).toBeUndefined();
+    expect(buttons[2].style).toBe("danger");
   });
 });

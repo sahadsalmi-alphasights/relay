@@ -77,3 +77,33 @@ describe("bug 4 — scope=team returns a teammate's project, not just the actor'
     expect(res.statusCode).toBe(403);
   });
 });
+
+describe("PATCH /teams/:id — a manager can rename their own team", () => {
+  const patchName = (cookie: string, teamId: string, name: string) =>
+    app.inject({
+      method: "PATCH",
+      url: `/teams/${teamId}`,
+      cookies: { relay_session: cookie.split("=")[1] },
+      payload: { name },
+    });
+
+  it("lets the team's own manager rename it", async () => {
+    // plAlpha is a manager on teamAlpha (fixture is_manager = true).
+    const cookie = await loginAs(app, fx.plAlpha);
+    const res = await patchName(cookie, fx.teamAlpha, "Team_Renamed");
+    expect(res.statusCode).toBe(200);
+    expect(res.json().name).toBe("Team_Renamed");
+  });
+
+  it("403s a manager of a different team", async () => {
+    const cookie = await loginAs(app, fx.managerBeta);
+    const res = await patchName(cookie, fx.teamAlpha, "Nope");
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("403s a non-manager on the team", async () => {
+    const cookie = await loginAs(app, fx.delivererAlpha);
+    const res = await patchName(cookie, fx.teamAlpha, "Nope");
+    expect(res.statusCode).toBe(403);
+  });
+});

@@ -25,11 +25,15 @@ export default function TeamSheet({
   reloadTick: number;
   onReload: () => void;
 }) {
-  const { actor, people, reloadPeople, teamNameOf } = useApp();
+  const { actor, people, teams, reloadPeople, reloadTeams, teamNameOf } = useApp();
   const teamId = actor.teamId!;
   const mates = people.filter((p) => p.teamId === teamId);
+  const teamName = teams.find((t) => t.id === teamId)?.name ?? teamNameOf(teamId);
 
   const [unassigned, setUnassigned] = useState<Person[]>([]);
+  // Manager-only inline team rename.
+  const [renaming, setRenaming] = useState(false);
+  const [nameDraft, setNameDraft] = useState(teamName);
   const [pickedUnassigned, setPickedUnassigned] = useState("");
   const [capacity, setCapacity] = useState<Map<string, CapacityRankRow>>(new Map());
   const [warning, setWarning] = useState<{ name: string; outstanding: number } | null>(null);
@@ -98,6 +102,32 @@ export default function TeamSheet({
     }
   };
 
+  // Keep the draft aligned with the live name when it isn't being edited
+  // (e.g. after a socket-driven reloadTeams from elsewhere).
+  useEffect(() => {
+    if (!renaming) setNameDraft(teamName);
+  }, [teamName, renaming]);
+
+  const saveName = async () => {
+    const next = nameDraft.trim();
+    if (!next || next === teamName) {
+      setRenaming(false);
+      setNameDraft(teamName);
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await api.patch(`/teams/${teamId}`, { name: next });
+      await reloadTeams();
+      setRenaming(false);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not rename team");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const add = async () => {
     if (!pickedUnassigned) return;
     setBusy(true);
@@ -116,7 +146,44 @@ export default function TeamSheet({
 
   return (
     <Sheet onClose={onClose}>
-      <h2>My team · {teamNameOf(teamId).replace("Team_", "")}</h2>
+      {renaming && actor.isManager ? (
+        <div className="add-row" style={{ marginBottom: 4 }}>
+          <input
+            autoFocus
+            value={nameDraft}
+            disabled={busy}
+            placeholder="Team name"
+            onChange={(e) => setNameDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") saveName();
+              if (e.key === "Escape") {
+                setRenaming(false);
+                setNameDraft(teamName);
+              }
+            }}
+          />
+          <button className="btn-sm btn-pl" disabled={busy || !nameDraft.trim()} onClick={saveName}>
+            Save
+          </button>
+        </div>
+      ) : (
+        <h2 style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span>My team · {teamName.replace("Team_", "")}</span>
+          {actor.isManager && (
+            <button
+              className="btn-sm btn-ghost"
+              style={{ fontSize: 11 }}
+              title="Rename this team"
+              onClick={() => {
+                setNameDraft(teamName);
+                setRenaming(true);
+              }}
+            >
+              ✎ Rename
+            </button>
+          )}
+        </h2>
+      )}
         <div className="sub">
           {actor.isManager
             ? "You're a manager — you can set status and the roster. Coverage is each person's own choice."

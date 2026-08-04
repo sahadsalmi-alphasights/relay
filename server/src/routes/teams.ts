@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from "fastify";
-import { badRequest, conflict, notFound } from "../errors";
+import { badRequest, conflict, forbidden, notFound } from "../errors";
 import { insertAuditLog } from "../repositories/auditLog";
 import { findPersonById, listPeopleByTeam, setManagerFlag } from "../repositories/people";
 import { createTeam, deleteTeam, findTeamById, listTeams, renameTeam } from "../repositories/teams";
@@ -28,12 +28,18 @@ const teamsRoutes: FastifyPluginAsync = async (app) => {
     return team;
   });
 
+  // Rename — an owner (any team, from User Management) OR the team's own
+  // manager (from "My team"). A manager can only touch the team they're on;
+  // the check is server-side, hiding the control in the UI is not enough.
   app.patch<{ Params: { id: string }; Body: { name?: string } }>(
     "/:id",
-    { preHandler: [app.requireOwner] },
+    { preHandler: [app.requireAuth] },
     async (request) => {
+      const actor = request.actor!;
       const team = await findTeamById(request.params.id);
       if (!team) throw notFound("unknown team");
+      const canRename = actor.isOwner || (actor.isManager && actor.teamId === team.id);
+      if (!canRename) throw forbidden("only the team's manager or an owner can rename this team");
       const name = request.body?.name?.trim();
       if (!name) throw badRequest("team name is required");
       const updated = await renameTeam(team.id, name);

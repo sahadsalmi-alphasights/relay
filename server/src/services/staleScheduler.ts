@@ -10,9 +10,15 @@ import { notify } from "./notify";
 const LADDER_MINUTES = [30, 60, 120, 240];
 
 /** Human label for a threshold — the final (large) one reads "next morning". */
-function thresholdLabel(minutes: number): string {
+export function thresholdLabel(minutes: number): string {
   if (minutes >= 24 * 60) return "since yesterday";
-  if (minutes >= 60) return `${minutes / 60}+ hour${minutes >= 120 ? "s" : ""}`;
+  if (minutes >= 60) {
+    // Floor to whole hours — the "next morning 9am" ladder step lands on an
+    // arbitrary minute (e.g. 935), so `minutes / 60` would read "15.5833+
+    // hours". "15+ hours" stays truthful (it's a "more than" threshold).
+    const hours = Math.floor(minutes / 60);
+    return `${hours}+ hour${hours >= 2 ? "s" : ""}`;
+  }
   return `${minutes}+ minutes`;
 }
 

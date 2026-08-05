@@ -85,12 +85,12 @@ export interface SlackButton {
  * fully guarded — a Slack outage must never break (or slow) an in-app
  * notification. Returns true only on a 2xx.
  */
-export async function postToSlack(text: string, blocks?: unknown[]): Promise<boolean> {
+export async function postToSlack(text: string, attachments?: unknown[]): Promise<boolean> {
   if (!config.slackWebhookUrl) return false;
   try {
     // `text` is always sent as the notification/fallback string even when
-    // blocks are present, so mobile push previews and a11y still read well.
-    const payload = blocks ? { text, blocks } : { text };
+    // attachments are present, so mobile push previews and a11y still read well.
+    const payload = attachments ? { text, attachments } : { text };
     const res = await fetch(config.slackWebhookUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -102,9 +102,45 @@ export async function postToSlack(text: string, blocks?: unknown[]): Promise<boo
   }
 }
 
-/** Block Kit for a message with zero or more action buttons. */
-function messageBlocks(title: string, body: string, buttons?: SlackButton[]): unknown[] {
-  const blocks: unknown[] = [{ type: "section", text: { type: "mrkdwn", text: `*${title}*\n${body}` } }];
+/**
+ * Per-notification-type visual identity: a leading emoji for the header and a
+ * severity color for the attachment's left bar. Green = informational, amber =
+ * needs attention, red = urgent, blue/orange = team/broadcast. Unknown types
+ * fall back to a neutral bell.
+ */
+const TYPE_META: Record<string, { emoji: string; color: string }> = {
+  assigned: { emoji: "✅", color: "#2eb67d" },
+  goal_change_requested: { emoji: "🎯", color: "#ecb22e" },
+  goal_change_resolved: { emoji: "🤝", color: "#2eb67d" },
+  delivery_logged: { emoji: "📦", color: "#36c5f0" },
+  stale_first_deliverable: { emoji: "⏱️", color: "#e01e5a" },
+  project_transferred: { emoji: "🔁", color: "#2f6fed" },
+  open_pool: { emoji: "📣", color: "#e8912d" },
+};
+const DEFAULT_META = { emoji: "🔔", color: "#616061" };
+
+/**
+ * Build the rich Slack message as a single colored attachment:
+ *  - a `header` block (large title, prefixed with the type's emoji),
+ *  - a `section` with the body copy,
+ *  - an optional `actions` row of buttons,
+ *  - a `context` footer with the CapTracker badge + a Slack-native relative time.
+ * The attachment's `color` draws the severity bar down the left edge.
+ * `nowMs` is injectable so tests get a deterministic timestamp.
+ */
+export function messageAttachments(
+  type: string | undefined,
+  title: string,
+  body: string,
+  buttons?: SlackButton[],
+  nowMs: number = Date.now()
+): unknown[] {
+  const meta = (type && TYPE_META[type]) || DEFAULT_META;
+  const blocks: unknown[] = [
+    // Header is plain_text only and capped at 150 chars by Slack.
+    { type: "header", text: { type: "plain_text", text: `${meta.emoji} ${title}`.slice(0, 150), emoji: true } },
+    { type: "section", text: { type: "mrkdwn", text: body } },
+  ];
   if (buttons && buttons.length) {
     blocks.push({
       type: "actions",
@@ -117,7 +153,12 @@ function messageBlocks(title: string, body: string, buttons?: SlackButton[]): un
       })),
     });
   }
-  return blocks;
+  const ts = Math.floor(nowMs / 1000);
+  blocks.push({
+    type: "context",
+    elements: [{ type: "mrkdwn", text: `📊 *CapTracker*  ·  <!date^${ts}^{time}|just now>` }],
+  });
+  return [{ color: meta.color, blocks }];
 }
 
 /** Slack Web API call (bot token). Guarded; returns the parsed JSON or null. */
@@ -159,6 +200,7 @@ async function slackGet<T>(pathWithQuery: string): Promise<T | null> {
  */
 export async function dmPerson(
   email: string,
+  type: string | undefined,
   title: string,
   body: string,
   buttons?: SlackButton[]
@@ -170,9 +212,12 @@ export async function dmPerson(
   );
   if (!look) return { ok: false, error: "lookup:no_response" };
   if (!look.ok || !look.user?.id) return { ok: false, error: `lookup:${look.error ?? "user_not_found"}` };
-  // Post with `text` always set (fallback/preview); blocks carry the buttons.
-  const payload: Record<string, unknown> = { channel: look.user.id, text: `${title}\n${body}` };
-  if (buttons && buttons.length) payload.blocks = messageBlocks(title, body, buttons);
+  // `text` is always the fallback/preview string; the rich card rides in attachments.
+  const payload: Record<string, unknown> = {
+    channel: look.user.id,
+    text: `${title}\n${body}`,
+    attachments: messageAttachments(type, title, body, buttons),
+  };
   const post = await slackApi<{ ok: boolean; error?: string }>("chat.postMessage", payload);
   if (!post) return { ok: false, error: "post:no_response" };
   return post.ok ? { ok: true } : { ok: false, error: `post:${post.error ?? "post_failed"}` };
@@ -188,7 +233,7 @@ export async function notifyChannel(type: string, title: string, body: string): 
   try {
     const settings = await getNotificationSettings();
     if (!slackEventEnabled(settings, type)) return;
-    await postToSlack(formatSlackMessage(title, body));
+    await postToSlack(formatSlackMessage(title, body), messageAttachments(type, title, body));
   } catch {
     // never let Slack delivery affect the in-app path
   }
@@ -218,12 +263,12 @@ export async function maybeNotifySlack(
     if (route === "dm") {
       const person = await findPersonById(personId);
       if (!person?.email) return;
-      await dmPerson(person.email, title, body, withButtons);
+      await dmPerson(person.email, type, title, body, withButtons);
       return;
     }
     // channel (legacy webhook mode)
     if (!slackConfigured()) return;
-    await postToSlack(formatSlackMessage(title, body), withButtons ? messageBlocks(title, body, withButtons) : undefined);
+    await postToSlack(formatSlackMessage(title, body), messageAttachments(type, title, body, withButtons));
   } catch {
     // never let Slack delivery affect the in-app notification path
   }
@@ -234,7 +279,7 @@ export async function maybeNotifySlack(
  * "Send a sample of each event" preview. Bypasses the per-event toggles on
  * purpose (it's a manual preview of every message the team could receive).
  */
-interface SampleMsg { title: string; body: string; buttons?: SlackButton[] }
+interface SampleMsg { type: string; title: string; body: string; buttons?: SlackButton[] }
 
 /**
  * The Accept / Amend / Decline buttons for a goal-change request Slack message.
@@ -254,20 +299,21 @@ export function goalChangeButtons(gcrId: string): SlackButton[] {
  * and the per-alert "DM me a test" buttons.
  */
 const SAMPLES: { key: string; sample: SampleMsg }[] = [
-  { key: "slackAssigned", sample: { title: "New project assigned to you", body: "Nadia Karim has staffed you on a new project with a goal of 3." } },
+  { key: "slackAssigned", sample: { type: "assigned", title: "New project assigned to you", body: "Nadia Karim has staffed you on a new project with a goal of 3." } },
   {
     key: "slackGoalChangeRequested",
     sample: {
+      type: "goal_change_requested",
       title: "Goal change requested",
       body: "Omar Rashid has requested a goal change on Project Client_Helios: Goal of 2 Status Second Deliverable. Explanation: pool is thin.",
       buttons: goalChangeButtons("sample"),
     },
   },
-  { key: "slackGoalChangeResolved", sample: { title: "Your goal change request was accepted", body: "Client_Helios: your goal change request was accepted — goal 2, status Second Deliverable." } },
-  { key: "slackDeliveryLogged", sample: { title: "Delivery logged — review", body: "Omar Rashid logged progress on Client_Helios: 4/8." } },
-  { key: "slackStaleFirstDeliverable", sample: { title: "First Deliverable due", body: "Client_Helios has been in First Deliverable 2+ hours with no progress logged." } },
-  { key: "slackProjectTransferred", sample: { title: "A project was transferred to you", body: "Client_Helios — Buy-side diligence is now yours to lead." } },
-  { key: "slackBroadcastUpForGrabs", sample: { title: "Project up for grabs", body: "Client_Helios has no one staffed — everyone's busy on fresh projects. First to accept takes a seat." } },
+  { key: "slackGoalChangeResolved", sample: { type: "goal_change_resolved", title: "Your goal change request was accepted", body: "Client_Helios: your goal change request was accepted — goal 2, status Second Deliverable." } },
+  { key: "slackDeliveryLogged", sample: { type: "delivery_logged", title: "Delivery logged — review", body: "Omar Rashid logged progress on Client_Helios: 4/8." } },
+  { key: "slackStaleFirstDeliverable", sample: { type: "stale_first_deliverable", title: "First Deliverable due", body: "Client_Helios has been in First Deliverable 2+ hours with no progress logged." } },
+  { key: "slackProjectTransferred", sample: { type: "project_transferred", title: "A project was transferred to you", body: "Client_Helios — Buy-side diligence is now yours to lead." } },
+  { key: "slackBroadcastUpForGrabs", sample: { type: "open_pool", title: "Project up for grabs", body: "Client_Helios has no one staffed — everyone's busy on fresh projects. First to accept takes a seat." } },
 ];
 
 /** The valid sample keys, for request validation. */
@@ -292,7 +338,7 @@ export async function postSampleNotifications(sentBy: string): Promise<number> {
     const withButtons = sample.buttons && config.slackSigningSecret ? sample.buttons : undefined;
     const ok = await postToSlack(
       formatSlackMessage(sample.title, sample.body),
-      withButtons ? messageBlocks(sample.title, sample.body, withButtons) : undefined
+      messageAttachments(sample.type, sample.title, sample.body, withButtons)
     );
     if (ok) sent += 1;
   }
@@ -311,7 +357,7 @@ export async function dmSampleToPerson(email: string, eventKey?: string): Promis
   let error: string | undefined;
   for (const { sample } of chosen) {
     const withButtons = sample.buttons && config.slackSigningSecret ? sample.buttons : undefined;
-    const r = await dmPerson(email, `[Test] ${sample.title}`, sample.body, withButtons);
+    const r = await dmPerson(email, sample.type, `[Test] ${sample.title}`, sample.body, withButtons);
     if (r.ok) sent += 1;
     else if (!error) error = r.error;
   }

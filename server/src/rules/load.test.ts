@@ -119,6 +119,22 @@ describe("assignmentLoad / personLoad — §5c", () => {
     expect(nearlyDone).toBe(1); // "regardless of profiles remaining" -- not scaled down as it nears completion either
   });
 
+  it("bug fix — a no-calls Pitch parked in Selling stops charging the flat pin (Selling always 0 load)", () => {
+    // Regression: parked no-calls Pitches (moved to Admin/Selling) were still
+    // charging PITCH_NO_CALLS_LOAD each, so a person carrying only these read
+    // as Load N while every goal was 0-of-0 ("Free · Load 2.0" bug).
+    const parkedPitch = assignmentLoad(
+      { goal: 0, delivered: 0, customDelivered: 0, stage: "Selling", projectExpertPool: "Global", projectType: "Pitch", projectCallsN: 0 },
+      10
+    );
+    expect(parkedPitch).toBe(0);
+    // Ten such parked pitches sum to zero, not 10.
+    const tenParked = Array.from({ length: 10 }, () => ({
+      goal: 0, delivered: 0, customDelivered: 0, stage: "Selling" as const, projectExpertPool: "Global" as const, projectType: "Pitch" as const, projectCallsN: 0,
+    }));
+    expect(personLoad(tenParked, 10)).toBe(0);
+  });
+
   it("§5c (domain change 4) — a Pitch converts to normal load the moment callsN > 0", () => {
     const stillPitchNoCalls = assignmentLoad(
       { goal: 8, delivered: 0, customDelivered: 0, stage: "First Deliverable", projectExpertPool: "Global", projectType: "Pitch", projectCallsN: 0 },

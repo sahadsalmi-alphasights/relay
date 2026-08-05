@@ -50,6 +50,13 @@ export interface WeightedAssignment extends AssignmentProgress {
  * so nothing needs to explicitly "convert" it.
  */
 export function assignmentLoad(a: WeightedAssignment, dubaiHourValue: number): number {
+  // Selling ("Admin") never consumes delivery capacity — checked BEFORE the
+  // no-calls-Pitch pin so a Pitch parked in Selling with calls_n still 0 stops
+  // charging the flat load. Without this, such an assignment reads as ongoing
+  // load (1.0 each) despite 0-of-0 goals and STAGE_WEIGHT.Selling === 0, so a
+  // person carrying only parked no-calls Pitches shows a phantom Load while
+  // every goal is 0 (the "Free · Load 2.0" bug).
+  if (a.stage === "Selling") return 0;
   if (a.projectType === "Pitch" && a.projectCallsN === 0) return PITCH_NO_CALLS_LOAD;
   return remaining(a) * STAGE_WEIGHT[a.stage] * poolWeight(a.projectExpertPool, dubaiHourValue);
 }

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import AnalyticsView from "../components/AnalyticsView";
 import CoverageSettings from "../components/CoverageSettings";
 import NotificationSettings from "../components/NotificationSettings";
 import HrIntegrationSettings from "../components/HrIntegrationSettings";
@@ -6,7 +7,7 @@ import WhoIsOut from "../components/WhoIsOut";
 import SundayRotaPlanner from "../components/SundayRotaPlanner";
 import UserManagementTab from "./UserManagementTab";
 
-type SettingsView = "coverage" | "notifications" | "integrations" | "whoout" | "rota" | "users";
+type SettingsView = "coverage" | "notifications" | "integrations" | "whoout" | "rota" | "users" | "analytics";
 
 /**
  * Settings — the former "User Management" tab, now a container with sections:
@@ -32,6 +33,7 @@ export default function SettingsTab({ reloadTick, onReload }: { reloadTick: numb
         {tab("whoout", "Who is out")}
         {tab("rota", "Sunday rota")}
         {tab("users", "User management")}
+        {tab("analytics", "Analytics")}
       </div>
 
       {view === "coverage" && <CoverageSettings onSaved={onReload} />}
@@ -40,6 +42,7 @@ export default function SettingsTab({ reloadTick, onReload }: { reloadTick: numb
       {view === "whoout" && <WhoIsOut />}
       {view === "rota" && <SundayRotaPlanner reloadTick={reloadTick} />}
       {view === "users" && <UserManagementTab reloadTick={reloadTick} />}
+      {view === "analytics" && <AnalyticsView />}
     </>
   );
 }

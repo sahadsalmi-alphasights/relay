@@ -46,6 +46,19 @@ describe("POST /usage-events", () => {
     expect(rows.every((r) => r.person_id === fx.delivererAlpha && r.team_id === fx.teamAlpha)).toBe(true);
   });
 
+  it("drops prototype-polluting context keys without polluting Object.prototype", async () => {
+    const cookie = await loginAs(app, fx.delivererAlpha);
+    const res = await post(app, cookie, "/usage-events", {
+      events: [{ event: "screen_view", context: { __proto__: { polluted: true }, screen: "PL" } }],
+    });
+    expect(res.statusCode).toBe(200);
+    // The malicious key never reaches a prototype.
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+    const { rows } = await pool.query(`SELECT context FROM usage_event WHERE event = 'screen_view'`);
+    // Only the safe key survives; __proto__ is stripped.
+    expect(rows[0].context).toEqual({ screen: "PL" });
+  });
+
   it("requires auth", async () => {
     const res = await app.inject({ method: "POST", url: "/usage-events", payload: { events: [{ event: "screen_view" }] } });
     expect(res.statusCode).toBe(401);

@@ -71,17 +71,19 @@ export async function insertUsageEvents(
  * telemetry contract is "generic dimensions, never content". Anything else is
  * dropped rather than stored.
  */
+// Keys that would pollute a prototype if assigned — never accept them from a
+// client-supplied object (prototype-pollution / property-injection guard).
+const UNSAFE_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+
 function sanitizeContext(context: Record<string, unknown> | null | undefined): string | null {
   if (!context || typeof context !== "object") return null;
-  const clean: Record<string, string | number | boolean> = {};
+  // Null-prototype accumulator so an unexpected key can't reach Object.prototype.
+  const clean: Record<string, string | number | boolean> = Object.create(null);
   let kept = 0;
   for (const [k, v] of Object.entries(context)) {
     if (kept >= 8) break;
-    if (typeof k !== "string" || k.length > 40) continue;
-    if (typeof v === "number" || typeof v === "boolean") {
-      clean[k] = v;
-      kept += 1;
-    } else if (typeof v === "string" && v.length <= 60) {
+    if (typeof k !== "string" || k.length > 40 || UNSAFE_KEYS.has(k)) continue;
+    if (typeof v === "number" || typeof v === "boolean" || (typeof v === "string" && v.length <= 60)) {
       clean[k] = v;
       kept += 1;
     }

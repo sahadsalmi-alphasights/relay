@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { CoverageSettings, Person } from "../api/types";
 import { DEFAULT_COVERAGE } from "../api/types";
 import { dubaiDateKey, dubaiMinute, isDubaiWeekend } from "../lib/time";
+import { track } from "../lib/track";
 import { useApp } from "../state/AppContext";
 
 /**
@@ -43,6 +44,7 @@ function PromptDialog({
   yesLabel,
   remindLabel,
   storageKey,
+  promptKind,
   inWindow,
   snoozeMs,
   onYes,
@@ -53,6 +55,8 @@ function PromptDialog({
   yesLabel: string;
   remindLabel: string;
   storageKey: string;
+  /** Telemetry dimension — which coverage prompt this is (lunch | evening). */
+  promptKind: string;
   inWindow: boolean;
   snoozeMs: number;
   onYes: () => Promise<void>;
@@ -67,10 +71,15 @@ function PromptDialog({
   const [, bump] = useState(0);
   // Re-read on every render, so a snooze also expires naturally as nowMs ticks.
   const state = readState(storageKey, today);
+  const hidden = !inWindow || !!state.done || (state.snoozeUntil != null && Date.now() < state.snoozeUntil);
 
-  if (!inWindow || state.done || (state.snoozeUntil != null && Date.now() < state.snoozeUntil)) {
-    return null;
-  }
+  // Telemetry: record when the prompt actually surfaces (fires on the false→
+  // true edge as `hidden` recomputes each render).
+  useEffect(() => {
+    if (!hidden) track("prompt_shown", { prompt: promptKind });
+  }, [hidden, promptKind]);
+
+  if (hidden) return null;
 
   const settle = (next: PromptState) => {
     writeState(storageKey, next);
@@ -81,6 +90,7 @@ function PromptDialog({
     setBusy(true);
     try {
       await onYes();
+      track("prompt_accepted", { prompt: promptKind });
       settle({ date: today, done: true });
     } finally {
       setBusy(false);
@@ -98,13 +108,23 @@ function PromptDialog({
           <button className="btn btn-pl" disabled={busy} onClick={yes}>
             {busy ? "Saving…" : yesLabel}
           </button>
-          <button className="btn btn-ghost" disabled={busy} onClick={() => settle({ date: today, done: true })}>
+          <button
+            className="btn btn-ghost"
+            disabled={busy}
+            onClick={() => {
+              track("prompt_dismissed", { prompt: promptKind });
+              settle({ date: today, done: true });
+            }}
+          >
             No
           </button>
           <button
             className="btn btn-ghost"
             disabled={busy}
-            onClick={() => settle({ date: today, snoozeUntil: Date.now() + snoozeMs })}
+            onClick={() => {
+              track("prompt_snoozed", { prompt: promptKind });
+              settle({ date: today, snoozeUntil: Date.now() + snoozeMs });
+            }}
           >
             {remindLabel}
           </button>
@@ -138,6 +158,7 @@ export function EveningCoveragePrompt({ settings }: { settings?: CoverageSetting
       yesLabel="Yes, I'm free"
       remindLabel={`Remind me in ${cov.eveningSnoozeMin} min`}
       storageKey={`ct-prompt-evening-${actor.id}`}
+      promptKind="evening"
       inWindow={inWindow}
       snoozeMs={cov.eveningSnoozeMin * 60 * 1000}
       onYes={async () => {
@@ -164,6 +185,7 @@ export function LunchPrompt({ settings }: { settings?: CoverageSettings | null }
       yesLabel="Yes, I'm off to lunch"
       remindLabel={`Remind me in ${cov.lunchSnoozeMin} min`}
       storageKey={`ct-prompt-lunch-${actor.id}`}
+      promptKind="lunch"
       inWindow={inWindow}
       snoozeMs={cov.lunchSnoozeMin * 60 * 1000}
       onYes={async () => {

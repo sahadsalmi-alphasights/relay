@@ -7,9 +7,11 @@ import cloudflareAccessPlugin from "./auth/cloudflareAccess";
 import { config } from "./config";
 import { pool } from "./db";
 import { HttpError } from "./errors";
+import analyticsRoutes from "./routes/analytics";
 import anglesRoutes from "./routes/angles";
 import assignmentsRoutes from "./routes/assignments";
 import auditLogRoutes from "./routes/auditLog";
+import usageEventsRoutes from "./routes/usageEvents";
 import usersRoutes from "./routes/users";
 import authRoutes from "./routes/auth";
 import capacityRankingRoutes from "./routes/capacityRanking";
@@ -119,6 +121,8 @@ export function buildApp(): FastifyInstance {
   app.register(usersRoutes, { prefix: "/users" });
   app.register(settingsRoutes, { prefix: "/settings" });
   app.register(slackRoutes, { prefix: "/slack" });
+  app.register(usageEventsRoutes, { prefix: "/usage-events" });
+  app.register(analyticsRoutes, { prefix: "/analytics" });
 
   const heartbeatTimer = startHeartbeat();
   const staleTimer = startStaleScheduler();

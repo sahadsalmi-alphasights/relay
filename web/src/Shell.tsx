@@ -17,6 +17,7 @@ import CallsSoldReminder from "./components/CallsSoldReminder";
 import { EveningCoveragePrompt, LunchPrompt } from "./sheets/DayPromptDialogs";
 import MoreSheet from "./sheets/MoreSheet";
 import NotesSheet from "./sheets/NotesSheet";
+import { track } from "./lib/track";
 import NotesTodoBox from "./components/NotesTodoBox";
 import SundayCoverageTab from "./tabs/SundayCoverageTab";
 import TeamEditSheet from "./sheets/TeamEditSheet";
@@ -46,6 +47,11 @@ export default function Shell() {
   const [plPendingCount, setPlPendingCount] = useState(0);
   const [fdCount, setFdCount] = useState(0);
   const [reloadTick, setReloadTick] = useState(0);
+
+  // Telemetry — which screen is in view (feeds the owner Analytics dashboard).
+  useEffect(() => {
+    track("screen_view", { screen: tab });
+  }, [tab]);
 
   const [intakeOpen, setIntakeOpen] = useState(false);
   const [teamOpen, setTeamOpen] = useState(false);

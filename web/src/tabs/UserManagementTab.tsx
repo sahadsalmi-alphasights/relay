@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { api, ApiError } from "../api/client";
 import type { AdminUser, PermissionMatrix, PermissionRole, PersonStatus, Role, Team } from "../api/types";
+import AnalyticsView from "../components/AnalyticsView";
 import UserGroupsView from "../components/UserGroupsView";
 import UserTeamsView from "../components/UserTeamsView";
 import { useViewport } from "../lib/useViewport";
@@ -47,7 +48,7 @@ export default function UserManagementTab({ reloadTick }: { reloadTick: number }
   const [matrix, setMatrix] = useState<PermissionMatrix | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [view, setView] = useState<"users" | "groups" | "teams">("users");
+  const [view, setView] = useState<"users" | "groups" | "teams" | "analytics">("users");
   const [search, setSearch] = useState("");
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState<{ email: string; name: string; role: Role; teamId: string }>({
@@ -304,6 +305,9 @@ export default function UserManagementTab({ reloadTick }: { reloadTick: number }
         <button className={"subtab" + (view === "teams" ? " on" : "")} onClick={() => setView("teams")}>
           Teams
         </button>
+        <button className={"subtab" + (view === "analytics" ? " on" : "")} onClick={() => setView("analytics")}>
+          Analytics
+        </button>
       </div>
       {view === "users" && (
         <div className="audit-filters">
@@ -385,6 +389,15 @@ export default function UserManagementTab({ reloadTick }: { reloadTick: number }
           matrix={matrix}
           onTogglePermission={togglePermission}
         />
+      </>
+    );
+  }
+
+  if (view === "analytics") {
+    return (
+      <>
+        {header}
+        <AnalyticsView />
       </>
     );
   }

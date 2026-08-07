@@ -7,6 +7,7 @@ import { barColor, entityName, initials, overDelivered, stageClass, stageLabel, 
 import CardNotes from "../components/CardNotes";
 import EntityLogo from "../components/EntityLogo";
 import { fmtElapsed, poolState, timerClass } from "../lib/time";
+import { track } from "../lib/track";
 import { useApp } from "../state/AppContext";
 import type { NotesTarget } from "../Shell";
 import type { Scope } from "../components/Header";
@@ -482,6 +483,7 @@ export default function DeliveryTab({
               currentStatus={a.stage}
               onSend={async (body, requestedGoal, requestedStatus) => {
                 await api.post(`/assignments/${a.id}/goal-change-requests`, { body, requestedGoal, requestedStatus });
+                track("goal_change_submitted");
                 onReload();
               }}
             />

@@ -3,6 +3,7 @@ import { api, ApiError } from "../api/client";
 import type { ExpertPool, RankedCandidate } from "../api/types";
 import Sheet from "../components/Sheet";
 import { CLIENT_ENTITY_IDS, entityName, initials, previewCustomGoal } from "../lib/format";
+import { track } from "../lib/track";
 import { useApp } from "../state/AppContext";
 
 const POOLS: ExpertPool[] = ["Global", "EU & MEA & India", "AUS / NZ / Sing / JP", "US only"];
@@ -125,6 +126,14 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
   // which can be well off-screen in a long ranked list. Scroll it into view
   // the moment it mounts, instead of leaving the user to find it themselves.
   const justificationRef = useRef<HTMLInputElement>(null);
+  // Telemetry: intake opened → started; unmounted without a create → abandoned.
+  const createdRef = useRef(false);
+  useEffect(() => {
+    track("intake_started");
+    return () => {
+      if (!createdRef.current) track("intake_abandoned");
+    };
+  }, []);
 
   useEffect(() => {
     if (overridingAngle !== null && overridingId) {
@@ -165,6 +174,7 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
       );
       setStep(2);
     } catch (err) {
+      track("intake_suggestion_error");
       setError(err instanceof ApiError ? err.message : "Could not compute a suggestion");
     }
   };
@@ -362,6 +372,8 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
           };
         }),
       });
+      createdRef.current = true;
+      track("intake_created", { angles: angles.length });
       onCreated();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not create the project");

@@ -71,21 +71,20 @@ export async function insertUsageEvents(
  * telemetry contract is "generic dimensions, never content". Anything else is
  * dropped rather than stored.
  */
-// Keys that would pollute a prototype if assigned — never accept them from a
-// client-supplied object (prototype-pollution / property-injection guard).
-const UNSAFE_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+// Telemetry dimensions are a fixed vocabulary — context keys are allowlisted
+// (not just denylisted). Anything else is dropped, which both keeps the data
+// clean and closes off property-injection: only these constant keys are ever
+// written into the accumulator.
+const ALLOWED_CONTEXT_KEYS = ["screen", "prompt", "step", "angles", "count", "kind"] as const;
 
 function sanitizeContext(context: Record<string, unknown> | null | undefined): string | null {
   if (!context || typeof context !== "object") return null;
-  // Null-prototype accumulator so an unexpected key can't reach Object.prototype.
-  const clean: Record<string, string | number | boolean> = Object.create(null);
-  let kept = 0;
-  for (const [k, v] of Object.entries(context)) {
-    if (kept >= 8) break;
-    if (typeof k !== "string" || k.length > 40 || UNSAFE_KEYS.has(k)) continue;
+  const clean: Record<string, string | number | boolean> = {};
+  for (const key of ALLOWED_CONTEXT_KEYS) {
+    if (!Object.prototype.hasOwnProperty.call(context, key)) continue;
+    const v = (context as Record<string, unknown>)[key];
     if (typeof v === "number" || typeof v === "boolean" || (typeof v === "string" && v.length <= 60)) {
-      clean[k] = v;
-      kept += 1;
+      clean[key] = v;
     }
   }
   return Object.keys(clean).length ? JSON.stringify(clean) : null;

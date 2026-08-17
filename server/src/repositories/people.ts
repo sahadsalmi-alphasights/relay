@@ -271,6 +271,8 @@ export async function createUser(email: string, name: string): Promise<PersonRow
 export interface AdminUserRow extends PersonRow {
   teamName: string | null;
   role: Role;
+  /** Instance memberships (which isolated BUs this person belongs to). */
+  instanceKeys: string[];
 }
 
 /** Full roster for the owner portal, with team name resolved and role derived. */
@@ -281,7 +283,9 @@ export async function listPeopleAdmin(): Promise<AdminUserRow[]> {
             p.practice_area AS "practiceArea", p.status,
             p.evening_coverage AS "eveningCoverage", p.is_ghost AS "isGhost",
             p.last_login_at AS "lastLoginAt", p.deactivated_at AS "deactivatedAt",
-            p.business_unit AS "businessUnit"
+            p.business_unit AS "businessUnit",
+            COALESCE((SELECT array_agg(pi.instance_key ORDER BY pi.instance_key)
+                      FROM person_instance pi WHERE pi.person_id = p.id), '{}') AS "instanceKeys"
      FROM person p LEFT JOIN team t ON t.id = p.team_id
      ORDER BY p.is_owner DESC, p.is_manager DESC, p.name`
   );

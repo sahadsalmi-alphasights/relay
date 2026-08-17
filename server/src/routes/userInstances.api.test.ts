@@ -3,6 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { buildApp } from "../app";
 import { pool } from "../db";
 import { findPersonById } from "../repositories/people";
+import { listInstanceKeysForPerson } from "../repositories/instances";
 import { loginAs, resetAndSeedFixture, type Fixture } from "../test/fixtures";
 
 let app: FastifyInstance;
@@ -21,39 +22,39 @@ beforeEach(async () => {
 
 const cookieOf = (c: string) => c.split("=")[1];
 const makeOwner = (id: string) => pool.query(`UPDATE person SET is_owner = true WHERE id = $1`, [id]);
-const patchBu = (cookie: string, id: string, businessUnit: unknown) =>
+const patch = (cookie: string, id: string, instanceKeys: unknown) =>
   app.inject({
     method: "PATCH",
-    url: `/users/${id}/business-unit`,
+    url: `/users/${id}/instances`,
     cookies: { relay_session: cookieOf(cookie) },
-    payload: { businessUnit },
+    payload: { instanceKeys },
   });
 
-describe("PATCH /users/:id/business-unit", () => {
+describe("PATCH /users/:id/instances (multi-instance membership)", () => {
   it("is owner-only", async () => {
-    const manager = await loginAs(app, fx.plAlpha); // manager, not owner
-    expect((await patchBu(manager, fx.delivererAlpha, "consulting")).statusCode).toBe(403);
+    const manager = await loginAs(app, fx.plAlpha);
+    expect((await patch(manager, fx.delivererAlpha, ["consulting"])).statusCode).toBe(403);
   });
 
-  it("an owner moves a user to consulting, and it bumps their session", async () => {
+  it("an owner sets a user's memberships to several instances", async () => {
     await makeOwner(fx.plAlpha);
     const owner = await loginAs(app, fx.plAlpha);
     const before = await findPersonById(fx.delivererAlpha);
-    expect(before?.businessUnit).toBe("non_consulting");
 
-    const res = await patchBu(owner, fx.delivererAlpha, "consulting");
+    const res = await patch(owner, fx.delivererAlpha, ["consulting", "non_consulting"]);
     expect(res.statusCode).toBe(200);
-    expect(res.json().businessUnit).toBe("consulting");
+    expect(res.json().instanceKeys.sort()).toEqual(["consulting", "non_consulting"]);
 
+    expect((await listInstanceKeysForPerson(fx.delivererAlpha)).sort()).toEqual(["consulting", "non_consulting"]);
+    // Membership change bumps the session so it re-scopes cleanly.
     const after = await findPersonById(fx.delivererAlpha);
-    expect(after?.businessUnit).toBe("consulting");
-    // Session bumped so a mid-session BU change re-scopes cleanly.
     expect(after!.sessionVersion).toBe(before!.sessionVersion + 1);
   });
 
-  it("rejects an invalid BU value", async () => {
+  it("rejects an unknown instance key and a non-array body", async () => {
     await makeOwner(fx.plAlpha);
     const owner = await loginAs(app, fx.plAlpha);
-    expect((await patchBu(owner, fx.delivererAlpha, "marketing")).statusCode).toBe(400);
+    expect((await patch(owner, fx.delivererAlpha, ["marketing"])).statusCode).toBe(400);
+    expect((await patch(owner, fx.delivererAlpha, "consulting")).statusCode).toBe(400);
   });
 });

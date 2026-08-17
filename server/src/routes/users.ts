@@ -11,13 +11,12 @@ import {
   listPeopleAdmin,
   roleOf,
   setDeactivated,
-  setPersonBusinessUnit,
   setRole,
   updateProfile,
   type Role,
 } from "../repositories/people";
 import { publish } from "../ws/hub";
-import { findInstanceByKey } from "../repositories/instances";
+import { listInstanceKeysForPerson, listInstances, setPersonInstances } from "../repositories/instances";
 import type { PersonStatus } from "../rules/types";
 import { getPermissionMatrix, PERMISSION_KEYS, type PermissionKey } from "../rules/permissionMatrix";
 import { hydratePermissionMatrix, savePermission } from "../repositories/rolePermissions";
@@ -110,37 +109,41 @@ const usersRoutes: FastifyPluginAsync = async (app) => {
     }
   );
 
-  // Move a user to a different isolated BU. Owner-only, audit-logged. Note:
-  // Okta's department claim re-stamps BU on the user's next login (source of
-  // truth), so this is an override that sticks only until they next sign in
-  // with a department that maps to a different BU. Also bumps their session so
-  // a mid-session BU change re-scopes cleanly once request-level isolation is
-  // wired (harmless today — nothing scopes by BU yet).
-  app.patch<{ Params: { id: string }; Body: { businessUnit?: string } }>(
-    "/:id/business-unit",
+  // Set which isolated instances a user belongs to (a checklist — a person can
+  // be in several). Owner-only, audit-logged. Bumps their session so a
+  // membership change re-scopes cleanly once request-level isolation is wired
+  // (harmless today — nothing scopes by BU yet). Okta's department still sets
+  // the home BU on login; this manages the full membership set.
+  app.patch<{ Params: { id: string }; Body: { instanceKeys?: unknown } }>(
+    "/:id/instances",
     { preHandler: [app.requireOwner] },
     async (request) => {
       const actor = request.actor!;
-      const bu = request.body?.businessUnit;
-      if (!bu || !(await findInstanceByKey(bu))) {
-        throw badRequest("businessUnit must be an existing instance key");
+      const raw = request.body?.instanceKeys;
+      if (!Array.isArray(raw) || raw.some((k) => typeof k !== "string")) {
+        throw badRequest("instanceKeys must be an array of instance keys");
+      }
+      const keys = [...new Set(raw as string[])];
+      // Every key must exist in the registry.
+      const known = new Set((await listInstances()).map((i) => i.key));
+      for (const k of keys) {
+        if (!known.has(k)) throw badRequest(`unknown instance: ${k}`);
       }
       const target = await findPersonById(request.params.id);
       if (!target) throw notFound("unknown person");
-      const before = target.businessUnit;
-      if (before !== bu) {
-        await setPersonBusinessUnit(target.id, bu);
-        await bumpSessionVersion(target.id);
-        await insertAuditLog({
-          entityType: "person",
-          entityId: target.id,
-          actorId: actor.id,
-          action: "business_unit_change",
-          oldValue: { businessUnit: before },
-          newValue: { businessUnit: bu },
-        });
-      }
-      return (await findPersonById(target.id))!;
+
+      const before = await listInstanceKeysForPerson(target.id);
+      await setPersonInstances(target.id, keys);
+      await bumpSessionVersion(target.id);
+      await insertAuditLog({
+        entityType: "person",
+        entityId: target.id,
+        actorId: actor.id,
+        action: "instances_change",
+        oldValue: { instanceKeys: before },
+        newValue: { instanceKeys: keys },
+      });
+      return { ok: true, instanceKeys: await listInstanceKeysForPerson(target.id) };
     }
   );
 

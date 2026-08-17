@@ -45,6 +45,9 @@ export async function resetAndSeedFixture(): Promise<Fixture> {
        VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
       [email, name, teamId, isManager, practiceArea, status, eveningCoverage]
     );
+    // Home-instance membership is created automatically by the person_instance
+    // trigger (business_unit defaults to non_consulting), so the membership-
+    // scoped candidate pool sees fixture people with no extra wiring here.
     return rows[0].id;
   }
 

@@ -33,7 +33,8 @@ async function compute(request: import("fastify").FastifyRequest, ghost: boolean
 > {
   const now = resolveNow(request);
   const hour = dubaiHour(now);
-  const people = await listAvailableCandidatesWithAssignments({ ghost });
+  // Scope the ranking to the viewer's BU so C and NC capacity never mix.
+  const people = await listAvailableCandidatesWithAssignments(request.actor!.businessUnit, { ghost });
   // On Sundays only the people rostered for THAT Sunday are online (§4 Rule 2).
   // Everyone else is flagged offline in the ranking (sundayOff) — Sunday
   // coverage is a schedule, not a preference. This is a separate flag from

@@ -11,6 +11,7 @@ import analyticsRoutes from "./routes/analytics";
 import anglesRoutes from "./routes/angles";
 import assignmentsRoutes from "./routes/assignments";
 import auditLogRoutes from "./routes/auditLog";
+import instancesRoutes from "./routes/instances";
 import usageEventsRoutes from "./routes/usageEvents";
 import usersRoutes from "./routes/users";
 import authRoutes from "./routes/auth";
@@ -123,6 +124,7 @@ export function buildApp(): FastifyInstance {
   app.register(slackRoutes, { prefix: "/slack" });
   app.register(usageEventsRoutes, { prefix: "/usage-events" });
   app.register(analyticsRoutes, { prefix: "/analytics" });
+  app.register(instancesRoutes, { prefix: "/instances" });
 
   const heartbeatTimer = startHeartbeat();
   const staleTimer = startStaleScheduler();

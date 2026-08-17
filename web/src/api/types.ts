@@ -43,12 +43,15 @@ export interface Person {
   businessUnit?: BusinessUnit;
 }
 
-/** Isolated business units (tenants). */
-export type BusinessUnit = "consulting" | "non_consulting";
-export const BUSINESS_UNIT_LABELS: Record<BusinessUnit, string> = {
-  consulting: "Consulting",
-  non_consulting: "Non-Consulting",
-};
+/** A BU key. Seeded 'consulting'/'non_consulting', but instances are a managed registry. */
+export type BusinessUnit = string;
+
+/** An isolated instance (BU) — the managed registry an owner can extend. */
+export interface Instance {
+  id: string;
+  key: string;
+  name: string;
+}
 
 /** User management portal — role tiers. owner > manager > member. */
 export type Role = "owner" | "manager" | "member";

@@ -11,17 +11,20 @@ import {
   listPeopleAdmin,
   roleOf,
   setDeactivated,
+  setPersonBusinessUnit,
   setRole,
   updateProfile,
   type Role,
 } from "../repositories/people";
 import { publish } from "../ws/hub";
+import type { BusinessUnit } from "../db";
 import type { PersonStatus } from "../rules/types";
 import { getPermissionMatrix, PERMISSION_KEYS, type PermissionKey } from "../rules/permissionMatrix";
 import { hydratePermissionMatrix, savePermission } from "../repositories/rolePermissions";
 
 const ROLES: Role[] = ["owner", "manager", "member"];
 const STATUSES: PersonStatus[] = ["Available", "On vacation", "Sick", "Offline"];
+const BUSINESS_UNITS: BusinessUnit[] = ["consulting", "non_consulting"];
 
 function isAllowlistedOwner(email: string): boolean {
   return config.ownerEmails.includes(email.toLowerCase());
@@ -105,6 +108,40 @@ const usersRoutes: FastifyPluginAsync = async (app) => {
         newValue: { role },
       });
       return updated;
+    }
+  );
+
+  // Move a user to a different isolated BU. Owner-only, audit-logged. Note:
+  // Okta's department claim re-stamps BU on the user's next login (source of
+  // truth), so this is an override that sticks only until they next sign in
+  // with a department that maps to a different BU. Also bumps their session so
+  // a mid-session BU change re-scopes cleanly once request-level isolation is
+  // wired (harmless today — nothing scopes by BU yet).
+  app.patch<{ Params: { id: string }; Body: { businessUnit?: string } }>(
+    "/:id/business-unit",
+    { preHandler: [app.requireOwner] },
+    async (request) => {
+      const actor = request.actor!;
+      const bu = request.body?.businessUnit;
+      if (!bu || !BUSINESS_UNITS.includes(bu as BusinessUnit)) {
+        throw badRequest("businessUnit must be one of consulting, non_consulting");
+      }
+      const target = await findPersonById(request.params.id);
+      if (!target) throw notFound("unknown person");
+      const before = target.businessUnit;
+      if (before !== bu) {
+        await setPersonBusinessUnit(target.id, bu as BusinessUnit);
+        await bumpSessionVersion(target.id);
+        await insertAuditLog({
+          entityType: "person",
+          entityId: target.id,
+          actorId: actor.id,
+          action: "business_unit_change",
+          oldValue: { businessUnit: before },
+          newValue: { businessUnit: bu },
+        });
+      }
+      return (await findPersonById(target.id))!;
     }
   );
 

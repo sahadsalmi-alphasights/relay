@@ -280,7 +280,8 @@ export async function listPeopleAdmin(): Promise<AdminUserRow[]> {
             p.is_manager AS "isManager", p.is_owner AS "isOwner",
             p.practice_area AS "practiceArea", p.status,
             p.evening_coverage AS "eveningCoverage", p.is_ghost AS "isGhost",
-            p.last_login_at AS "lastLoginAt", p.deactivated_at AS "deactivatedAt"
+            p.last_login_at AS "lastLoginAt", p.deactivated_at AS "deactivatedAt",
+            p.business_unit AS "businessUnit"
      FROM person p LEFT JOIN team t ON t.id = p.team_id
      ORDER BY p.is_owner DESC, p.is_manager DESC, p.name`
   );

@@ -39,7 +39,16 @@ export interface Person {
   deactivatedAt: string | null;
   /** Set by the BambooHR leave sync when it put this person Offline — lets "Who is out" mark BambooHR leave vs a manual Offline. */
   hrOfflineAt?: string | null;
+  /** Which isolated BU this person belongs to (from the Okta department claim; owner-overridable). */
+  businessUnit?: BusinessUnit;
 }
+
+/** Isolated business units (tenants). */
+export type BusinessUnit = "consulting" | "non_consulting";
+export const BUSINESS_UNIT_LABELS: Record<BusinessUnit, string> = {
+  consulting: "Consulting",
+  non_consulting: "Non-Consulting",
+};
 
 /** User management portal — role tiers. owner > manager > member. */
 export type Role = "owner" | "manager" | "member";

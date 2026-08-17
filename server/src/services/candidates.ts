@@ -40,16 +40,22 @@ export interface CandidateWithAssignments {
  * default behavior, unchanged); `true` is the ghost-only pool used for both
  * ghost allocation and the separate Ghost Ranking dashboard.
  */
-export async function listAvailableCandidatesWithAssignments(opts?: {
-  ghost?: boolean;
-}): Promise<CandidateWithAssignments[]> {
+export async function listAvailableCandidatesWithAssignments(
+  businessUnit: string,
+  opts?: { ghost?: boolean }
+): Promise<CandidateWithAssignments[]> {
+  // BU isolation — the candidate pool (and therefore the capacity ranking,
+  // median, and matching/allocation built on it) is scoped to ONE business
+  // unit, so people and load from a different BU can never mix into another
+  // BU's capacity picture. `businessUnit` is required precisely so no caller
+  // can forget and silently blend BUs.
   const { rows: people } = await pool.query(
     `SELECT id, status, evening_coverage AS "eveningCoverage", out_to_lunch AS "outToLunch",
             practice_area AS "practiceArea", team_id AS "teamId"
      FROM person
      WHERE status = 'Available' AND is_manager = false AND is_owner = false AND is_ghost = $1
-       AND deactivated_at IS NULL`,
-    [opts?.ghost ?? false]
+       AND deactivated_at IS NULL AND business_unit = $2`,
+    [opts?.ghost ?? false, businessUnit]
   );
 
   // Big structural change — a Pitch's flat-load pin (and the free/busy
@@ -68,7 +74,8 @@ export async function listAvailableCandidatesWithAssignments(opts?: {
             p.project_type AS "projectType", ang.calls_n AS "projectCallsN"
      FROM assignment a JOIN angle ang ON ang.id = a.angle_id JOIN project p ON p.id = ang.project_id
      WHERE p.status <> 'archived' AND p.deleted_at IS NULL AND ang.archived_at IS NULL
-       AND p.delivery_closed_at IS NULL`
+       AND p.delivery_closed_at IS NULL AND a.business_unit = $1`,
+    [businessUnit]
   );
 
   const byPerson = new Map<string, WeightedAssignment[]>();

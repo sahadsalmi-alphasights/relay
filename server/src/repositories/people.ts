@@ -1,4 +1,4 @@
-import { pool, withTransaction } from "../db";
+import { pool, withTransaction, type BusinessUnit } from "../db";
 import type { PersonStatus } from "../rules/types";
 
 export type Role = "owner" | "manager" | "member";
@@ -23,6 +23,8 @@ export interface PersonRow {
   hrOfflineAt: string | null;
   /** Server-side session revocation — bumped to invalidate all of this person's outstanding session cookies at once. */
   sessionVersion: number;
+  /** Which isolated BU this person belongs to — set from the Okta department claim at login. */
+  businessUnit: BusinessUnit;
 }
 
 /** role(person) = owner ? 'owner' : manager ? 'manager' : 'member'. */
@@ -36,7 +38,8 @@ const SELECT = `
          evening_coverage AS "eveningCoverage", out_to_lunch AS "outToLunch", is_ghost AS "isGhost",
          last_login_at AS "lastLoginAt", deactivated_at AS "deactivatedAt",
          hr_offline_at AS "hrOfflineAt",
-         session_version AS "sessionVersion"
+         session_version AS "sessionVersion",
+         business_unit AS "businessUnit"
   FROM person`;
 
 export async function findPersonById(id: string): Promise<PersonRow | null> {
@@ -63,6 +66,19 @@ export async function findOrCreatePersonByEmail(email: string, name: string): Pr
     name,
   ]);
   return (await findPersonById(rows[0].id))!;
+}
+
+/**
+ * Set a person's BU (from the Okta department claim at login). Identity/BU
+ * assignment is inherently cross-BU, so this runs on the shared pool, not a
+ * BU-scoped context. NOTE (glue phase): once the app connects as a
+ * non-superuser role, the auth person-resolution path (this + findByEmail +
+ * owner/deactivate updates) must run BU-agnostically — a plain UPDATE that
+ * flips NC→consulting would otherwise fail the RLS WITH CHECK. Fine today
+ * (prod app role bypasses RLS).
+ */
+export async function setPersonBusinessUnit(id: string, businessUnit: BusinessUnit): Promise<void> {
+  await pool.query(`UPDATE person SET business_unit = $2 WHERE id = $1`, [id, businessUnit]);
 }
 
 export async function listPeople(): Promise<PersonRow[]> {

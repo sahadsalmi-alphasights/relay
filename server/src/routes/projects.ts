@@ -336,7 +336,9 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
       // `ghost: true` ranks the ghost pool instead — same ranking machinery,
       // different candidates. Used by the wizard's per-angle ghost picker and
       // Edit team's change-ghost flow.
-      const candidates = await listAvailableCandidatesWithAssignments({ ghost: request.body?.ghost === true });
+      const candidates = await listAvailableCandidatesWithAssignments(request.actor!.businessUnit, {
+        ghost: request.body?.ghost === true,
+      });
       const context = {
         now,
         plPracticeArea: actor.practiceArea ?? "",
@@ -572,7 +574,7 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
           const now = resolveNow(request);
           const hour = dubaiHour(now);
           const ghostContext = { now, plPracticeArea: actor.practiceArea ?? "" };
-          const ghostCandidates = await listAvailableCandidatesWithAssignments({ ghost: true });
+          const ghostCandidates = await listAvailableCandidatesWithAssignments(actor.businessUnit, { ghost: true });
           const ghostRanked = applyFirstDeliverableBlock(rankCandidates(ghostCandidates, ghostContext), ghostCandidates, hour);
           // Ghost allocation stays pure lowest-load — team preference is for real deliverers only.
           const { perAngle } = allocateAcrossAngles(

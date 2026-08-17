@@ -60,6 +60,8 @@ export type Role = "owner" | "manager" | "member";
 export interface AdminUser extends Person {
   teamName: string | null;
   role: Role;
+  /** Instance memberships — which isolated BUs this person belongs to (can be several). */
+  instanceKeys: string[];
 }
 
 /** User groups → adjustable permission matrix. Owners aren't in it — they always hold every permission. */

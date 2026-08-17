@@ -26,11 +26,14 @@ export async function findInstanceByKey(key: string): Promise<InstanceRow | null
  * collapse to a single underscore, trimmed. "Non-Consulting" → "non_consulting".
  */
 export function slugifyInstanceKey(name: string): string {
+  // Split on runs of non-alphanumerics and rejoin — avoids anchored `_+$`
+  // trimming (a polynomial-ReDoS shape) while dropping leading/trailing/blank
+  // segments naturally. "Non-Consulting" → "non_consulting".
   return name
-    .trim()
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "");
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean)
+    .join("_");
 }
 
 /** Create an instance from a display name. Throws on a duplicate key (unique). */

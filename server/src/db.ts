@@ -11,7 +11,13 @@ export const pool = new Pool({ connectionString: config.databaseUrl });
  */
 export type Queryable = Pool | PoolClient;
 
-export type BusinessUnit = "consulting" | "non_consulting";
+/**
+ * A BU / "instance" key. Instances are a managed registry (see the `instance`
+ * table), so this is an open string — 'consulting' / 'non_consulting' are the
+ * seeded ones, but owners can create more. Assignments are validated against
+ * the registry at the app layer.
+ */
+export type BusinessUnit = string;
 
 /**
  * Multi-BU (Phase 1b) — the active-BU context. Postgres RLS filters every

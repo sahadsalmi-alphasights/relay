@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { api, ApiError } from "../api/client";
-import { BUSINESS_UNIT_LABELS, type AdminUser, type PermissionMatrix, type PermissionRole, type PersonStatus, type Role, type Team } from "../api/types";
+import type { AdminUser, Instance, PermissionMatrix, PermissionRole, PersonStatus, Role, Team } from "../api/types";
+import InstancesView from "../components/InstancesView";
 import UserGroupsView from "../components/UserGroupsView";
 import UserTeamsView from "../components/UserTeamsView";
 import { useViewport } from "../lib/useViewport";
@@ -44,10 +45,11 @@ export default function UserManagementTab({ reloadTick }: { reloadTick: number }
   const { isDesktop } = useViewport();
   const [users, setUsers] = useState<AdminUser[] | null>(null);
   const [teams, setTeams] = useState<Team[]>([]);
+  const [instances, setInstances] = useState<Instance[]>([]);
   const [matrix, setMatrix] = useState<PermissionMatrix | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [view, setView] = useState<"users" | "groups" | "teams">("users");
+  const [view, setView] = useState<"users" | "groups" | "teams" | "instances">("users");
   const [search, setSearch] = useState("");
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState<{ email: string; name: string; role: Role; teamId: string }>({
@@ -60,14 +62,16 @@ export default function UserManagementTab({ reloadTick }: { reloadTick: number }
   const load = async () => {
     setError(null);
     try {
-      const [u, t, p] = await Promise.all([
+      const [u, t, p, inst] = await Promise.all([
         api.get<AdminUser[]>("/users"),
         api.get<Team[]>("/teams"),
         api.get<{ matrix: PermissionMatrix }>("/users/permissions"),
+        api.get<Instance[]>("/instances"),
       ]);
       setUsers(u);
       setTeams(t);
       setMatrix(p.matrix);
+      setInstances(inst);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not load users");
     }
@@ -127,6 +131,15 @@ export default function UserManagementTab({ reloadTick }: { reloadTick: number }
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not create the team");
+    }
+  };
+  const createInstanceByName = async (name: string) => {
+    setError(null);
+    try {
+      await api.post("/instances", { name });
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not create the instance");
     }
   };
   // Delete flow: cascade removes the person's footprint (audit rows are kept,
@@ -250,9 +263,9 @@ export default function UserManagementTab({ reloadTick }: { reloadTick: number }
         run(u.id, () => api.patch(`/users/${u.id}/business-unit`, { businessUnit: e.target.value }))
       }
     >
-      {(Object.keys(BUSINESS_UNIT_LABELS) as (keyof typeof BUSINESS_UNIT_LABELS)[]).map((bu) => (
-        <option key={bu} value={bu}>
-          {BUSINESS_UNIT_LABELS[bu]}
+      {instances.map((i) => (
+        <option key={i.key} value={i.key}>
+          {i.name}
         </option>
       ))}
     </select>
@@ -319,6 +332,9 @@ export default function UserManagementTab({ reloadTick }: { reloadTick: number }
         </button>
         <button className={"subtab" + (view === "teams" ? " on" : "")} onClick={() => setView("teams")}>
           Teams
+        </button>
+        <button className={"subtab" + (view === "instances" ? " on" : "")} onClick={() => setView("instances")}>
+          Instances
         </button>
       </div>
       {view === "users" && (
@@ -401,6 +417,15 @@ export default function UserManagementTab({ reloadTick }: { reloadTick: number }
           matrix={matrix}
           onTogglePermission={togglePermission}
         />
+      </>
+    );
+  }
+
+  if (view === "instances") {
+    return (
+      <>
+        {header}
+        <InstancesView instances={instances} users={users} onCreate={createInstanceByName} />
       </>
     );
   }

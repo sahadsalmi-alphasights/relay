@@ -62,6 +62,8 @@ export interface AdminUser extends Person {
   role: Role;
   /** Instance memberships — which isolated BUs this person belongs to (can be several). */
   instanceKeys: string[];
+  /** Senior/Mid/Junior — drives vacation coverage requirements. */
+  seniority: string | null;
 }
 
 /** User groups → adjustable permission matrix. Owners aren't in it — they always hold every permission. */

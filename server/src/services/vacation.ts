@@ -15,7 +15,7 @@ export interface VacationBlock {
  */
 export async function vacationsByEmail(from: string, to: string): Promise<Map<string, VacationBlock[]>> {
   const out = new Map<string, VacationBlock[]>();
-  if (!hrConfigured()) return out;
+  if (!(await hrConfigured())) return out;
 
   const [requests, directory] = await Promise.all([fetchApprovedTimeOff(from, to), fetchDirectoryEmails()]);
   if (!requests || !directory) return out;

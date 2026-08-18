@@ -27,9 +27,28 @@ export default function HrIntegrationSettings({ onSaved }: { onSaved: () => void
   const [ok, setOk] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  // Credential inputs — write-only. apiKeyInput is never pre-filled.
+  const [apiKeyInput, setApiKeyInput] = useState("");
+  const [subdomainInput, setSubdomainInput] = useState("");
 
-  const load = () => api.get<HR>("/settings/hr-integration").then((s) => { setDraft(s); setSaved(s); });
+  const load = () => api.get<HR>("/settings/hr-integration").then((s) => { setDraft(s); setSaved(s); setSubdomainInput(s.subdomain ?? ""); });
   useEffect(() => { load(); }, []);
+
+  const saveCredentials = async (clear = false) => {
+    setBusy(true); setError(null); setMsg(null);
+    try {
+      const body: Record<string, unknown> = {};
+      if (clear) body.clearApiKey = true;
+      else if (apiKeyInput.trim()) body.apiKey = apiKeyInput.trim();
+      if (subdomainInput.trim()) body.subdomain = subdomainInput.trim();
+      const updated = await api.patch<HR>("/settings/hr-integration", body);
+      setDraft(updated); setSaved(updated); setApiKeyInput(""); setSubdomainInput(updated.subdomain ?? "");
+      setMsg(clear ? "Key cleared." : "Credentials saved (encrypted).");
+      onSaved();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not save credentials");
+    } finally { setBusy(false); }
+  };
 
   if (!draft || !saved) return <div className="empty">Loading…</div>;
 
@@ -83,12 +102,31 @@ export default function HrIntegrationSettings({ onSaved }: { onSaved: () => void
         <div className="cs-row">
           <div>
             <div className="cs-rl">Connection</div>
-            <div className="cs-rs">The API key + subdomain are set on the server (never shown here). Ask an admin to set <code>BAMBOOHR_API_KEY</code> and <code>BAMBOOHR_SUBDOMAIN</code> if this says Not configured.</div>
+            <div className="cs-rs">
+              {draft.hasKey ? <>Key stored (ends <code>••••{draft.hint}</code>), encrypted via <strong>{draft.secretStore === "kms" ? "Google Cloud KMS" : "local key"}</strong>.</> : "No key stored yet — paste one below."}
+              {draft.secretStore === "local" && <> <span style={{ color: "var(--amber, #a5770b)" }}>⚠ dev encryption — set <code>KMS_KEY_NAME</code> on the server for KMS.</span></>}
+            </div>
           </div>
           <div className="cs-controls">
             {draft.configured ? <span className="mini free">Configured</span> : <span className="mini off">Not configured</span>}
           </div>
         </div>
+        {!readOnly && (
+          <div className="cs-row">
+            <div>
+              <div className="cs-rl">BambooHR credentials</div>
+              <div className="cs-rs">The API key is encrypted before it's stored and is never shown again — only the last 4 digits. Subdomain is the <code>&lt;x&gt;</code> in <code>https://&lt;x&gt;.bamboohr.com</code>.</div>
+            </div>
+            <div className="cs-controls" style={{ flexDirection: "column", alignItems: "stretch", gap: 8, minWidth: 240 }}>
+              <input className="cs-time" value={subdomainInput} disabled={busy} onChange={(e) => setSubdomainInput(e.target.value)} placeholder="subdomain (e.g. alphasights)" />
+              <input className="cs-time" type="password" autoComplete="off" value={apiKeyInput} disabled={busy} onChange={(e) => setApiKeyInput(e.target.value)} placeholder={draft.hasKey ? "•••• enter a new key to replace" : "paste API key"} />
+              <div style={{ display: "flex", gap: 8 }}>
+                <button className="btn btn-pl" disabled={busy || (!apiKeyInput.trim() && subdomainInput.trim() === (saved.subdomain ?? ""))} onClick={() => saveCredentials(false)}>Save credentials</button>
+                {draft.hasKey && <button className="btn btn-ghost" disabled={busy} onClick={() => saveCredentials(true)}>Clear key</button>}
+              </div>
+            </div>
+          </div>
+        )}
         <div className="cs-row">
           <div>
             <div className="cs-rl">Sync leave → On vacation</div>

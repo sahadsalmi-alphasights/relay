@@ -54,7 +54,7 @@ export interface HrSyncResult {
  * System-actor audit rows (actorId: null) record every status flip.
  */
 export async function runHrLeaveSync(now: Date): Promise<HrSyncResult> {
-  if (!hrConfigured()) return { ran: false, setOnLeave: 0, restored: 0, summary: "BambooHR not configured." };
+  if (!(await hrConfigured())) return { ran: false, setOnLeave: 0, restored: 0, summary: "BambooHR not configured." };
   const settings = await getHrIntegrationSettings();
   if (!settings.enabled) return { ran: false, setOnLeave: 0, restored: 0, summary: "Sync disabled." };
 

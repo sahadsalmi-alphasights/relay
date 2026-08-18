@@ -37,6 +37,10 @@ export const config = {
   // only ever holds the non-secret settings (enabled, which leave types count).
   bamboohrApiKey: (process.env.BAMBOOHR_API_KEY ?? "").trim(),
   bamboohrSubdomain: (process.env.BAMBOOHR_SUBDOMAIN ?? "").trim(),
+  // Google Cloud KMS key for encrypting integration secrets at rest. NOT a
+  // secret — a resource path. When unset, secrets fall back to local AES
+  // (dev/test) and BambooHR creds fall back to the env vars above.
+  kmsKeyName: (process.env.KMS_KEY_NAME ?? "").trim(),
   // Cloudflare Access origin validation (defense in depth) — when BOTH are
   // set, the API re-verifies the Cf-Access-Jwt-Assertion header (signed by
   // Cloudflare at the edge) on every request, so even a request that somehow

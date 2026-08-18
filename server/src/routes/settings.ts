@@ -14,10 +14,15 @@ import {
 import { dmSampleToPerson, formatSlackMessage, postToSlack, postSampleNotifications, SAMPLE_EVENT_KEYS, slackConfigured, slackDmConfigured, slackInteractiveConfigured } from "../services/slack";
 import { findPersonById } from "../repositories/people";
 import {
+  clearHrApiKey,
+  getHrCredentialHint,
   getHrIntegrationSettings,
+  setHrApiKey,
+  setHrSubdomain,
   updateHrIntegrationSettings,
   type HrIntegrationSettingsPatch,
 } from "../repositories/hrIntegrationSettings";
+import { secretCrypto } from "../crypto/secretCrypto";
 import { hrConfigured, fetchDirectoryEmails } from "../services/bamboohr";
 import { runHrLeaveSync } from "../services/hrLeaveSync";
 import { badRequest } from "../errors";
@@ -170,11 +175,16 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
   // credentials are set (the key itself is never sent).
   app.get("/hr-integration", { preHandler: [app.requireAuth] }, async () => {
     const settings = await getHrIntegrationSettings();
-    return { ...settings, configured: hrConfigured() };
+    const hint = await getHrCredentialHint();
+    // `configured` = a usable key resolves (stored or env). The key itself is
+    // NEVER returned — only hasKey / last-4 hint / subdomain.
+    return { ...settings, configured: await hrConfigured(), ...hint, secretStore: secretCrypto().kind };
   });
 
-  // Owner-only, audit-logged. Only `enabled` and `leaveTypeKeywords` are editable.
-  app.patch<{ Body: HrIntegrationSettingsPatch }>(
+  // Owner-only, audit-logged. Editable: enabled, leaveTypeKeywords, and the
+  // BambooHR credentials (apiKey is write-only — encrypted at rest via
+  // secretCrypto, never echoed back or logged).
+  app.patch<{ Body: HrIntegrationSettingsPatch & { apiKey?: string; subdomain?: string; clearApiKey?: boolean } }>(
     "/hr-integration",
     { preHandler: [app.requireOwner] },
     async (request) => {
@@ -193,23 +203,42 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
       }
       const current = await getHrIntegrationSettings();
       const updated = await updateHrIntegrationSettings(patch);
+
+      // Credential changes — kept OUT of the audit oldValue/newValue (never log
+      // a secret); only a boolean "credentialsChanged" is recorded.
+      let credentialsChanged = false;
+      if (typeof body.subdomain === "string" && body.subdomain.trim()) {
+        await setHrSubdomain(body.subdomain.trim());
+        credentialsChanged = true;
+      }
+      if (body.clearApiKey) {
+        await clearHrApiKey();
+        credentialsChanged = true;
+      } else if (typeof body.apiKey === "string" && body.apiKey.trim()) {
+        const key = body.apiKey.trim();
+        const ciphertext = await secretCrypto().encrypt(key);
+        await setHrApiKey(ciphertext, key.slice(-4));
+        credentialsChanged = true;
+      }
+
       await insertAuditLog({
         entityType: "hr_integration_settings",
         entityId: "00000000-0000-0000-0000-000000000003",
         actorId: actor.id,
         action: "hr_integration_settings_updated",
         oldValue: current,
-        newValue: updated,
+        newValue: { ...updated, credentialsChanged },
       });
       publish({ type: "settings" });
-      return { ...updated, configured: hrConfigured() };
+      const hint = await getHrCredentialHint();
+      return { ...updated, configured: await hrConfigured(), ...hint, secretStore: secretCrypto().kind };
     }
   );
 
   // Owner-only "sync now" — runs a pass immediately and returns what it did.
   app.post("/hr-integration/sync", { preHandler: [app.requireOwner] }, async () => {
-    if (!hrConfigured()) {
-      throw badRequest("BambooHR is not configured (BAMBOOHR_API_KEY / BAMBOOHR_SUBDOMAIN are not set on the server)");
+    if (!(await hrConfigured())) {
+      throw badRequest("BambooHR is not configured — paste an API key + subdomain in Integrations");
     }
     const result = await runHrLeaveSync(new Date());
     return result;
@@ -218,8 +247,8 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
   // Owner-only connection test — hits the directory endpoint to prove the
   // credentials work, without changing anyone's status.
   app.post("/hr-integration/test", { preHandler: [app.requireOwner] }, async () => {
-    if (!hrConfigured()) {
-      throw badRequest("BambooHR is not configured (BAMBOOHR_API_KEY / BAMBOOHR_SUBDOMAIN are not set on the server)");
+    if (!(await hrConfigured())) {
+      throw badRequest("BambooHR is not configured — paste an API key + subdomain in Integrations");
     }
     const directory = await fetchDirectoryEmails();
     return { ok: directory !== null, employees: directory?.size ?? 0 };

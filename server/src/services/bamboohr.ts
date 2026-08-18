@@ -1,4 +1,6 @@
 import { config } from "../config";
+import { getHrStoredCredentials } from "../repositories/hrIntegrationSettings";
+import { secretCrypto } from "../crypto/secretCrypto";
 
 /**
  * BambooHR API client — read-only, used by the leave sync. The API key is a
@@ -17,25 +19,55 @@ export interface TimeOffRequest {
   end: string; // YYYY-MM-DD
 }
 
-/** True when both the API key and the company subdomain are set in env. */
-export function hrConfigured(): boolean {
-  return !!config.bamboohrApiKey && !!config.bamboohrSubdomain;
+/**
+ * Resolve the live BambooHR credentials. Preference order:
+ *  1. Encrypted key pasted in the Integrations UI (decrypted via secretCrypto —
+ *     GCP KMS in prod), with the subdomain stored alongside it.
+ *  2. Env fallback (BAMBOOHR_API_KEY / BAMBOOHR_SUBDOMAIN) — legacy / bootstrap.
+ * Returns null when neither yields a usable pair. Decryption failures (e.g. a
+ * KMS/IAM problem) surface as a thrown error to the detailed path, and as
+ * "null" (not configured) to the swallowing path.
+ */
+export async function getBambooCreds(): Promise<{ apiKey: string; subdomain: string } | null> {
+  const stored = await getHrStoredCredentials();
+  const subdomain = (stored.subdomain || config.bamboohrSubdomain || "").trim();
+  if (stored.apiKeyCiphertext) {
+    const apiKey = (await secretCrypto().decrypt(stored.apiKeyCiphertext)).trim();
+    if (apiKey && subdomain) return { apiKey, subdomain };
+  }
+  if (config.bamboohrApiKey && subdomain) return { apiKey: config.bamboohrApiKey, subdomain };
+  return null;
 }
 
-function authHeader(): string {
+/** True when a usable API key + subdomain can be resolved (stored or env). */
+export async function hrConfigured(): Promise<boolean> {
+  try {
+    return !!(await getBambooCreds());
+  } catch {
+    return false;
+  }
+}
+
+function authHeader(apiKey: string): string {
   // username = API key, password = anything (BambooHR ignores it).
-  return "Basic " + Buffer.from(`${config.bamboohrApiKey}:x`).toString("base64");
+  return "Basic " + Buffer.from(`${apiKey}:x`).toString("base64");
 }
 
-function baseUrl(): string {
-  return `https://api.bamboohr.com/api/gateway.php/${encodeURIComponent(config.bamboohrSubdomain)}/v1`;
+function baseUrl(subdomain: string): string {
+  return `https://api.bamboohr.com/api/gateway.php/${encodeURIComponent(subdomain)}/v1`;
 }
 
 async function getJson<T>(path: string): Promise<T | null> {
-  if (!hrConfigured()) return null;
+  let creds: { apiKey: string; subdomain: string } | null;
   try {
-    const res = await fetch(`${baseUrl()}${path}`, {
-      headers: { Authorization: authHeader(), Accept: "application/json" },
+    creds = await getBambooCreds();
+  } catch {
+    return null;
+  }
+  if (!creds) return null;
+  try {
+    const res = await fetch(`${baseUrl(creds.subdomain)}${path}`, {
+      headers: { Authorization: authHeader(creds.apiKey), Accept: "application/json" },
     });
     if (!res.ok) return null;
     return (await res.json()) as T;
@@ -50,10 +82,16 @@ async function getJson<T>(path: string): Promise<T | null> {
  * BambooHR blip never breaks the app; diagnostics needs to SEE them.
  */
 async function getJsonDetailed<T>(path: string): Promise<{ ok: boolean; error?: string; data?: T }> {
-  if (!hrConfigured()) return { ok: false, error: "BambooHR not configured (BAMBOOHR_API_KEY / BAMBOOHR_SUBDOMAIN unset)" };
+  let creds: { apiKey: string; subdomain: string } | null;
   try {
-    const res = await fetch(`${baseUrl()}${path}`, {
-      headers: { Authorization: authHeader(), Accept: "application/json" },
+    creds = await getBambooCreds();
+  } catch (e) {
+    return { ok: false, error: `credential decryption failed (KMS/IAM?): ${e instanceof Error ? e.message : "unknown"}` };
+  }
+  if (!creds) return { ok: false, error: "BambooHR not configured — paste a key in the Integrations tab (or set BAMBOOHR_* env)" };
+  try {
+    const res = await fetch(`${baseUrl(creds.subdomain)}${path}`, {
+      headers: { Authorization: authHeader(creds.apiKey), Accept: "application/json" },
     });
     if (!res.ok) return { ok: false, error: `HTTP ${res.status} ${res.statusText}` };
     return { ok: true, data: (await res.json()) as T };

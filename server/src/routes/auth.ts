@@ -14,7 +14,7 @@ import {
   setPersonBusinessUnit,
   type PersonRow,
 } from "../repositories/people";
-import { mapDepartmentToBu } from "../rules/businessUnit";
+import { deriveInstanceKey } from "../repositories/instances";
 
 const OIDC_TXN_COOKIE = "relay_oidc_txn";
 
@@ -84,14 +84,17 @@ const authRoutes: FastifyPluginAsync = async (app) => {
       const isOwnerEmail = config.ownerEmails.includes(identity.email.toLowerCase());
       let person = await findOrCreatePersonByEmail(identity.email, identity.name);
 
-      // BU assignment from Okta's department claim. Only stamp when Okta sends
-      // a RECOGNISED department and it actually differs — a missing/unknown
-      // department leaves the person's current BU untouched (never guess a
-      // move between isolated environments).
-      const mappedBu = mapDepartmentToBu(identity.department);
-      if (mappedBu && mappedBu !== person.businessUnit) {
-        await setPersonBusinessUnit(person.id, mappedBu);
-        person = { ...person, businessUnit: mappedBu };
+      // Instance assignment from Okta: the (city, department, board?) tuple
+      // resolves to an isolated instance (auto-created for a new office combo,
+      // or the matching existing one). Only act when BOTH city and department
+      // are present — a missing claim leaves the person's current instance
+      // untouched, so nothing changes until Okta actually sends the fields.
+      if (identity.city && identity.department) {
+        const key = await deriveInstanceKey(identity.city, identity.department, identity.board ?? null);
+        if (key !== person.businessUnit) {
+          await setPersonBusinessUnit(person.id, key); // trigger adds the membership
+          person = { ...person, businessUnit: key };
+        }
       }
 
       // Owner allowlist wins over everything: the founders can never be

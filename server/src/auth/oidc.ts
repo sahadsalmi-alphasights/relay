@@ -61,8 +61,10 @@ export async function buildAuthorizationUrl(): Promise<{ url: string; transactio
 export interface OidcIdentity {
   email: string;
   name: string;
-  /** Okta `department` claim — drives BU assignment. Undefined if Okta doesn't send it. */
+  /** Okta claims that define the isolated instance: city + department (+ optional board). Undefined if Okta doesn't send them. */
   department?: string;
+  city?: string;
+  board?: string;
 }
 
 /**
@@ -85,6 +87,12 @@ export async function exchangeCallback(
   if (!claims.email) {
     throw new Error("OIDC provider did not return an email claim");
   }
-  const department = typeof claims.department === "string" ? claims.department : undefined;
-  return { email: claims.email, name: (claims.name as string | undefined) ?? claims.email, department };
+  const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
+  return {
+    email: claims.email,
+    name: (claims.name as string | undefined) ?? claims.email,
+    department: str(claims.department),
+    city: str(claims.city),
+    board: str(claims.whiteboard_number),
+  };
 }

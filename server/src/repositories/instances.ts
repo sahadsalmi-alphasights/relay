@@ -4,6 +4,16 @@ export interface InstanceRow {
   id: string;
   key: string;
   name: string;
+  city: string | null;
+  department: string | null;
+  board: string | null;
+}
+
+const INSTANCE_COLS = `id, key, name, city, department, board`;
+
+/** Human display label for a (city, department, board) tuple. */
+function tupleName(city: string, department: string, board: string | null): string {
+  return [city, department, board].filter(Boolean).join(" · ");
 }
 
 /**
@@ -12,13 +22,57 @@ export interface InstanceRow {
  * assignment validates against.
  */
 export async function listInstances(): Promise<InstanceRow[]> {
-  const { rows } = await pool.query(`SELECT id, key, name FROM instance ORDER BY name`);
+  const { rows } = await pool.query(`SELECT ${INSTANCE_COLS} FROM instance ORDER BY name`);
   return rows;
 }
 
 export async function findInstanceByKey(key: string): Promise<InstanceRow | null> {
-  const { rows } = await pool.query(`SELECT id, key, name FROM instance WHERE key = $1`, [key]);
+  const { rows } = await pool.query(`SELECT ${INSTANCE_COLS} FROM instance WHERE key = $1`, [key]);
   return rows[0] ?? null;
+}
+
+/** Find the instance for a (city, department, board?) tuple — null board matches null board. */
+export async function findInstanceByTuple(
+  city: string,
+  department: string,
+  board: string | null
+): Promise<InstanceRow | null> {
+  const { rows } = await pool.query(
+    `SELECT ${INSTANCE_COLS} FROM instance
+     WHERE city = $1 AND department = $2 AND board IS NOT DISTINCT FROM $3`,
+    [city, department, board]
+  );
+  return rows[0] ?? null;
+}
+
+/**
+ * Resolve the instance key for an Okta identity tuple, auto-creating the
+ * instance the first time a new (city, department, board) combo appears. This
+ * is how the registry fills itself as offices come online — no manual setup.
+ * Existing instances (e.g. the Dubai ones) are matched by tuple and their
+ * original key is reused, so nothing already tagged is disturbed.
+ */
+export async function deriveInstanceKey(city: string, department: string, board: string | null): Promise<string> {
+  const existing = await findInstanceByTuple(city, department, board);
+  if (existing) return existing.key;
+
+  const key = slugifyInstanceKey([city, department, board].filter(Boolean).join(" "));
+  const name = tupleName(city, department, board);
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO instance (key, name, city, department, board) VALUES ($1, $2, $3, $4, $5) RETURNING key`,
+      [key, name, city, department, board]
+    );
+    return rows[0].key;
+  } catch (err) {
+    // Concurrent first-login for the same combo — the unique tuple index
+    // rejects the loser; just re-read the winner.
+    if ((err as { code?: string }).code === "23505") {
+      const row = await findInstanceByTuple(city, department, board);
+      if (row) return row.key;
+    }
+    throw err;
+  }
 }
 
 /**
@@ -40,7 +94,7 @@ export function slugifyInstanceKey(name: string): string {
 export async function createInstance(name: string): Promise<InstanceRow> {
   const key = slugifyInstanceKey(name);
   const { rows } = await pool.query(
-    `INSERT INTO instance (key, name) VALUES ($1, $2) RETURNING id, key, name`,
+    `INSERT INTO instance (key, name) VALUES ($1, $2) RETURNING ${INSTANCE_COLS}`,
     [key, name.trim()]
   );
   return rows[0];

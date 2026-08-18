@@ -31,7 +31,7 @@ export default function InstancesView({
   const [newName, setNewName] = useState("");
   const [creating, setCreating] = useState(false);
 
-  const memberCount = (key: string) => users.filter((u) => (u.businessUnit ?? "non_consulting") === key).length;
+  const memberCount = (key: string) => users.filter((u) => (u.instanceKeys ?? []).includes(key)).length;
 
   const create = async () => {
     if (!newName.trim()) return;

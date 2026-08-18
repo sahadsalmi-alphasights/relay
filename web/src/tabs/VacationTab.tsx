@@ -21,7 +21,7 @@ interface VacationData {
   teams: Team[];
 }
 
-/* ----------------------------- date helpers (ported from prototype) ----------------------------- */
+/* ----------------------------- date helpers ----------------------------- */
 const d = (s: string) => { const [y, m, day] = s.split("-").map(Number); return new Date(y, m - 1, day); };
 const fmt = (dt: Date) => dt.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 const fmtLong = (dt: Date) => dt.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
@@ -43,7 +43,10 @@ function halfPeriods(anchor: Date, weeks: number) {
 
 const card: CSSProperties = { background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 12, padding: "16px 18px", marginBottom: 16 };
 const swatch = (bg: string): CSSProperties => ({ width: 10, height: 10, borderRadius: 3, background: bg, display: "inline-block", flexShrink: 0 });
-const VAC = "#2a78d6", CLOSE = "#1baf7a", PUB = "#e87ba4", BUSY = "var(--status-serious, #ec835a)";
+const VAC = "#2a78d6", CLOSE = "#1baf7a", PUB = "#e87ba4", YOU = "#4a3aa7";
+const BUSY_TEXTURE = "repeating-linear-gradient(45deg, rgba(11,11,11,0.28) 0 1.5px, transparent 1.5px 5px)";
+const NOT_SUB_BG = "repeating-linear-gradient(45deg,#f3d9d9 0 4px,#fce8e8 4px 8px)";
+const BAMBOOHR_URL = "https://www.bamboohr.com/";
 const SUB_TABS = [
   { key: "mine", label: "My Vacation" },
   { key: "team", label: "Team View" },
@@ -59,6 +62,7 @@ export default function VacationTab({ reloadTick }: { reloadTick: number }) {
   const [sub, setSub] = useState<Sub>("mine");
   const [teamId, setTeamId] = useState<string>("");
   const [busy, setBusy] = useState(false);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
 
   const load = async () => {
     setError(null);
@@ -90,9 +94,19 @@ export default function VacationTab({ reloadTick }: { reloadTick: number }) {
   if (error && !data) return <div className="empty">{error}</div>;
   if (!data) return <div className="empty">Loading…</div>;
 
+  const me = data.members.find((m) => m.email.toLowerCase() === data.me.email.toLowerCase());
+  const open = openQuarter(data);
+  const meLoggedOpen = !!(open && me && me.vacations.some((v) => overlap(d(v.start), d(v.end), d(open.start), d(open.end))));
+
   return (
     <div>
       <div className="section-lbl" style={{ marginBottom: 4 }}>Vacation Planner</div>
+
+      {/* Persistent deadline banner */}
+      {open && !meLoggedOpen && !bannerDismissed && (
+        <DeadlineBanner quarter={open} onSeeTeam={() => setSub("team")} onDismiss={() => setBannerDismissed(true)} />
+      )}
+
       <div className="dl-view-switch settings-subnav" role="group" aria-label="Vacation section" style={{ marginBottom: 14 }}>
         {SUB_TABS.map((t) => (
           <button key={t.key} className={"btn-sm " + (sub === t.key ? "btn-pl" : "btn-ghost")} onClick={() => setSub(t.key)}>
@@ -102,10 +116,32 @@ export default function VacationTab({ reloadTick }: { reloadTick: number }) {
       </div>
       {error && <div className="err-line" style={{ marginBottom: 12 }}>{error}</div>}
 
-      {sub === "mine" && <MyVacation data={data} meEmail={data.me.email} />}
+      {sub === "mine" && <MyVacation data={data} me={me} />}
       {sub === "team" && <TeamView data={data} teamId={teamId} setTeamId={setTeamId} meId={actor.id} />}
       {sub === "plan" && <PlanTrip data={data} meEmail={data.me.email} />}
       {sub === "admin" && <AdminPanel data={data} busy={busy} mutate={mutate} />}
+    </div>
+  );
+}
+
+function DeadlineBanner({ quarter, onSeeTeam, onDismiss }: { quarter: Quarter; onSeeTeam: () => void; onDismiss: () => void }) {
+  const left = daysBetween(new Date(), d(quarter.deadline));
+  return (
+    <div style={{ display: "flex", gap: 12, alignItems: "flex-start", background: "#fff8ea", border: "1px solid #f2d799", borderRadius: 10, padding: "12px 14px", marginBottom: 16 }}>
+      <div style={{ fontSize: 18 }}>⏳</div>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontWeight: 700, marginBottom: 2, color: "#3a2c00" }}>
+          {quarter.label} vacation is due {left >= 0 ? `in ${left} days` : "— window closed"} — you haven't logged anything yet
+        </div>
+        <div style={{ color: "#6b5a1f", fontSize: 13 }}>
+          Submission window closes <strong>{fmtLong(d(quarter.deadline))}</strong>. Log your time off in BambooHR before then — late requests can be declined.
+        </div>
+        <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+          <a className="btn-sm btn-pl" href={BAMBOOHR_URL} target="_blank" rel="noopener noreferrer">Open BambooHR ↗</a>
+          <button className="btn-sm btn-ghost" onClick={onSeeTeam}>See who's off in your team</button>
+        </div>
+      </div>
+      <button className="btn-sm btn-ghost" style={{ border: "none" }} title="Dismiss" onClick={onDismiss}>✕</button>
     </div>
   );
 }
@@ -129,15 +165,13 @@ function whoOut(data: VacationData, s: Date, e: Date): string[] {
   const vacOut = data.members.filter((m) => m.vacations.some((v) => overlap(d(v.start), d(v.end), s, e))).map((m) => m.name);
   return Array.from(new Set([...closureOut, ...vacOut]));
 }
-/** The open planning window = earliest quarter whose deadline is today or later. */
 function openQuarter(data: VacationData): Quarter | null {
   const today = new Date();
   return data.quarters.find((q) => d(q.deadline) >= today) ?? null;
 }
 
 /* ----------------------------- My Vacation ----------------------------- */
-function MyVacation({ data, meEmail }: { data: VacationData; meEmail: string }) {
-  const me = data.members.find((m) => m.email.toLowerCase() === meEmail.toLowerCase());
+function MyVacation({ data, me }: { data: VacationData; me: Member | undefined }) {
   const mine = (me?.vacations ?? []).slice().sort((a, b) => d(a.start).getTime() - d(b.start).getTime());
   const today = new Date();
   return (
@@ -175,7 +209,7 @@ function MyVacation({ data, meEmail }: { data: VacationData; meEmail: string }) 
             })}
           </tbody>
         </table>
-        <p style={{ fontSize: 12, color: "var(--soft)", marginTop: 8 }}>Late submissions are flagged, not auto-declined.</p>
+        <p style={{ fontSize: 12, color: "var(--soft)", marginTop: 8 }}>Deadlines: Q2 → Jan 30 · Q3 → Mar 30 · Q4 → Jul 30 · Q1 → Sep 30 (year prior). Late submissions are flagged, not auto-declined.</p>
       </div>
       <div style={{ ...card, gridColumn: "1 / -1" }}>
         <h2 style={{ fontSize: 14, margin: "0 0 12px" }}>Company holidays</h2>
@@ -201,6 +235,8 @@ function MyVacation({ data, meEmail }: { data: VacationData; meEmail: string }) 
 function TeamView({ data, teamId, setTeamId, meId }: { data: VacationData; teamId: string; setTeamId: (s: string) => void; meId: string }) {
   const WEEKS = 5;
   const [anchor, setAnchor] = useState(() => startOfWeek(new Date()));
+  const [detail, setDetail] = useState<{ start: Date; end: Date } | null>(null);
+  const [showAlt, setShowAlt] = useState(false);
   const periods = useMemo(() => halfPeriods(anchor, WEEKS), [anchor]);
   const open = openQuarter(data);
   const notSubmitted = (m: Member) => open && !m.vacations.some((v) => overlap(d(v.start), d(v.end), d(open.start), d(open.end)));
@@ -211,7 +247,7 @@ function TeamView({ data, teamId, setTeamId, meId }: { data: VacationData; teamI
     if (open && s >= d(open.start) && s <= d(open.end) && notSubmitted(m)) return "not-submitted";
     return null;
   };
-  const badge = (n: number) => (n >= 4 ? "var(--red)" : n === 3 ? "#ec835a" : n === 2 ? "var(--amber, #fab219)" : "var(--soft)");
+  const badge = (n: number) => (n >= 4 ? "var(--red)" : n === 3 ? "#ec835a" : n === 2 ? "#fab219" : "var(--soft)");
 
   return (
     <>
@@ -226,56 +262,92 @@ function TeamView({ data, teamId, setTeamId, meId }: { data: VacationData; teamI
             <span style={{ fontWeight: 600, fontSize: 13, minWidth: 170, textAlign: "center" }}>{fmt(periods[0].start)} – {fmt(periods[periods.length - 1].end)}</span>
             <button className="btn-sm btn-ghost" onClick={() => setAnchor(addDays(anchor, 7 * WEEKS))}>›</button>
           </div>
+          <label style={{ fontSize: 12.5, color: "var(--soft)", display: "flex", alignItems: "center", gap: 6 }}>
+            <input type="checkbox" checked={showAlt} onChange={(e) => setShowAlt(e.target.checked)} /> Table view
+          </label>
         </div>
+        <div style={{ fontSize: 12, color: "var(--soft)", marginBottom: 10 }}>Time off is tracked in half-week blocks (Mon–Wed / Thu–Sun).</div>
+
         <div style={{ display: "flex", flexWrap: "wrap", gap: 14, fontSize: 12.5, color: "var(--soft)", marginBottom: 12 }}>
-          <span><span style={swatch(VAC)} /> Personal vacation</span>
-          <span><span style={swatch(CLOSE)} /> Closure (everyone off)</span>
-          <span><span style={{ ...swatch(PUB), borderRadius: "50%" }} /> Public holiday</span>
-          <span><span style={{ ...swatch("#ccc"), background: "repeating-linear-gradient(45deg,#f3d9d9 0 3px,#fce8e8 3px 6px)" }} /> Hasn't planned</span>
+          <span style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={swatch(VAC)} /> Personal vacation</span>
+          <span style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={swatch(CLOSE)} /> Closure (everyone off)</span>
+          <span style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ ...swatch(PUB), borderRadius: "50%" }} /> Public holiday</span>
+          <span style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ ...swatch("#ccc"), backgroundImage: BUSY_TEXTURE }} /> High-stakes / busy</span>
+          <span style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ width: 10, height: 10, borderRadius: "50%", border: `2px solid ${YOU}` }} /> You</span>
+          <span style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ ...swatch("#ccc"), background: NOT_SUB_BG }} /> Hasn't planned</span>
         </div>
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 900 }}>
-            <thead>
-              <tr>
-                <th style={{ textAlign: "left", padding: "0 10px", minWidth: 150, fontSize: 12.5 }}>Team member</th>
-                {periods.map((p, i) => {
-                  const h = holidayNote(data, p.start, p.end); const b = isBusy(data, p.start, p.end);
-                  return (
-                    <th key={i} style={{ fontSize: 10.5, color: "var(--soft)", fontWeight: 600, padding: "4px 2px", minWidth: 54, border: "1px solid var(--line)" }}>
-                      <div>{fmt(p.start)}</div><div style={{ fontWeight: 700 }}>{p.tag}</div>
-                      {h && <div style={{ fontSize: 9, marginTop: 2 }}><span style={{ ...swatch(h.type === "closure" ? CLOSE : PUB), borderRadius: "50%", width: 6, height: 6 }} /> {h.name.split(" (")[0]}</div>}
-                      {b && <div style={{ fontSize: 9, fontWeight: 700, color: "#ec835a", marginTop: 1 }}>🔥 busy</div>}
-                    </th>
-                  );
-                })}
-              </tr>
-            </thead>
-            <tbody>
-              {data.members.map((m) => (
-                <tr key={m.id}>
-                  <td style={{ textAlign: "left", padding: "0 10px", fontWeight: 600, fontSize: 12.5, whiteSpace: "nowrap", border: "1px solid var(--line)", color: m.id === meId ? "var(--pl)" : undefined }}>
-                    {m.name}{m.id === meId ? " (you)" : ""} <span style={{ fontWeight: 500, color: "var(--soft)", fontSize: 11 }}>· {m.seniority ?? "—"}</span>
-                  </td>
+
+        {!showAlt && (
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 900 }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign: "left", padding: "0 10px", minWidth: 150, fontSize: 12.5 }}>Team member</th>
                   {periods.map((p, i) => {
-                    const st = cellState(m, p.start, p.end); const b = isBusy(data, p.start, p.end);
-                    let bg = "transparent";
-                    if (st === "mandatory") bg = CLOSE; else if (st === "vacation") bg = VAC;
-                    const notSub = st === "not-submitted";
-                    return <td key={i} title={st ?? ""} style={{ border: "1px solid var(--line)", height: 32, background: notSub ? "repeating-linear-gradient(45deg,#f3d9d9 0 4px,#fce8e8 4px 8px)" : bg, backgroundImage: st === "vacation" && b ? "repeating-linear-gradient(45deg,rgba(0,0,0,0.28) 0 1.5px,transparent 1.5px 5px)" : undefined }} />;
+                    const h = holidayNote(data, p.start, p.end); const b = isBusy(data, p.start, p.end);
+                    return (
+                      <th key={i} style={{ fontSize: 10.5, color: "var(--soft)", fontWeight: 600, padding: "4px 2px", minWidth: 54, border: "1px solid var(--line)" }}>
+                        <div>{fmt(p.start)}</div><div style={{ fontWeight: 700 }}>{p.tag}</div>
+                        {h && <div style={{ fontSize: 9, marginTop: 2 }}><span style={{ ...swatch(h.type === "closure" ? CLOSE : PUB), borderRadius: "50%", width: 6, height: 6 }} /> {h.name.split(" (")[0]}</div>}
+                        {b && <div style={{ fontSize: 9, fontWeight: 700, color: "#ec835a", marginTop: 1 }}>🔥 busy</div>}
+                      </th>
+                    );
                   })}
                 </tr>
-              ))}
-              <tr>
-                <td style={{ padding: "0 10px", fontWeight: 700, fontSize: 12, borderTop: "2px solid var(--line)" }}>Out this half</td>
-                {periods.map((p, i) => {
-                  const n = whoOut(data, p.start, p.end).length;
-                  return <td key={i} style={{ textAlign: "center", borderTop: "2px solid var(--line)", border: "1px solid var(--line)" }}><span style={{ display: "inline-block", minWidth: 22, padding: "1px 5px", borderRadius: 999, fontWeight: 700, fontSize: 11.5, color: "#fff", background: badge(n) }}>{n}</span></td>;
-                })}
-              </tr>
+              </thead>
+              <tbody>
+                {data.members.map((m) => (
+                  <tr key={m.id}>
+                    <td style={{ textAlign: "left", padding: "0 10px", fontWeight: 600, fontSize: 12.5, whiteSpace: "nowrap", border: "1px solid var(--line)", color: m.id === meId ? YOU : undefined }}>
+                      {m.id === meId && <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", border: `2px solid ${YOU}`, marginRight: 6 }} />}
+                      {m.name}{m.id === meId ? " (you)" : ""} <span style={{ fontWeight: 500, color: "var(--soft)", fontSize: 11 }}>· {m.seniority ?? "—"}</span>
+                    </td>
+                    {periods.map((p, i) => {
+                      const st = cellState(m, p.start, p.end); const b = isBusy(data, p.start, p.end);
+                      let bg = "transparent";
+                      if (st === "mandatory") bg = CLOSE; else if (st === "vacation") bg = VAC;
+                      const notSub = st === "not-submitted";
+                      return <td key={i} title={st ?? ""} onClick={() => setDetail({ start: p.start, end: p.end })} style={{ cursor: "pointer", border: "1px solid var(--line)", height: 32, background: notSub ? NOT_SUB_BG : bg, backgroundImage: st === "vacation" && b ? BUSY_TEXTURE : undefined }} />;
+                    })}
+                  </tr>
+                ))}
+                <tr>
+                  <td style={{ padding: "0 10px", fontWeight: 700, fontSize: 12, borderTop: "2px solid var(--line)" }}>Out this half</td>
+                  {periods.map((p, i) => {
+                    const n = whoOut(data, p.start, p.end).length;
+                    return <td key={i} style={{ textAlign: "center", borderTop: "2px solid var(--line)", border: "1px solid var(--line)" }}><span onClick={() => setDetail({ start: p.start, end: p.end })} style={{ cursor: "pointer", display: "inline-block", minWidth: 22, padding: "1px 5px", borderRadius: 999, fontWeight: 700, fontSize: 11.5, color: "#fff", background: badge(n) }}>{n}</span></td>;
+                  })}
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {showAlt && (
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <thead><tr>{["Period", "Out", "Who", "Notes"].map((h) => <th key={h} style={{ textAlign: "left", padding: "6px 8px", borderBottom: "1px solid var(--line)", color: "var(--soft)" }}>{h}</th>)}</tr></thead>
+            <tbody>
+              {periods.map((p, i) => {
+                const out = whoOut(data, p.start, p.end);
+                const h = holidayNote(data, p.start, p.end); const b = isBusy(data, p.start, p.end);
+                const notes = [h ? `${h.type === "closure" ? "Closure" : "Public holiday"}: ${h.name}` : null, b ? "High-stakes" : null].filter(Boolean).join(" · ");
+                return <tr key={i}><td style={{ padding: "6px 8px", borderBottom: "1px solid var(--line)" }}>{fmtLong(p.start)} – {fmtLong(p.end)} ({p.tag})</td><td style={{ padding: "6px 8px", borderBottom: "1px solid var(--line)" }}>{out.length}</td><td style={{ padding: "6px 8px", borderBottom: "1px solid var(--line)" }}>{out.join(", ") || "—"}</td><td style={{ padding: "6px 8px", borderBottom: "1px solid var(--line)" }}>{notes || "—"}</td></tr>;
+              })}
             </tbody>
           </table>
-        </div>
+        )}
+
+        {detail && (
+          <div style={{ marginTop: 12, border: "1px solid var(--line)", borderRadius: 10, padding: "12px 14px", background: "var(--surface2, var(--surface))", fontSize: 13 }}>
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>{fmtLong(detail.start)} – {fmtLong(detail.end)}</div>
+            <div style={{ color: "var(--soft)" }}>
+              {whoOut(data, detail.start, detail.end).length} of {data.members.length} out{isClosure(data, detail.start, detail.end) ? " (includes a company closure)" : ""}: {whoOut(data, detail.start, detail.end).join(", ") || "no one"}
+            </div>
+            {isBusy(data, detail.start, detail.end) && <span style={{ color: "#ec835a", fontWeight: 600, marginTop: 6, display: "block" }}>⚠ Overlaps a high-stakes period — worth double-checking coverage.</span>}
+          </div>
+        )}
       </div>
+
       {open && (
         <div style={card}>
           <h2 style={{ fontSize: 14, margin: "0 0 12px" }}>Hasn't planned the open window yet <span style={{ color: "var(--soft)", fontWeight: 500 }}>· {open.label}, due {fmtLong(d(open.deadline))}</span></h2>
@@ -283,9 +355,11 @@ function TeamView({ data, teamId, setTeamId, meId }: { data: VacationData; teamI
             <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", fontSize: 13, borderBottom: "1px solid var(--line)" }}>
               <span style={{ fontWeight: 600, flex: 1 }}>{m.name}</span>
               <span className="mini off">Nothing logged</span>
+              <a className="btn-sm btn-ghost" href={`mailto:${m.email}?subject=${encodeURIComponent(`Reminder: log your ${open.label} vacation`)}&body=${encodeURIComponent(`Hi ${m.name.split(" ")[0]}, a reminder to log your ${open.label} time off in BambooHR before ${fmtLong(d(open.deadline))}.`)}`}>Send reminder</a>
             </div>
           ))}
           {data.members.filter(notSubmitted).length === 0 && <div style={{ fontSize: 13, color: "var(--soft)" }}>Everyone has logged something for {open.label}. 🎉</div>}
+          <p style={{ fontSize: 12, color: "var(--soft)", marginTop: 8 }}>Owner/PL view — surfaces gaps before the deadline instead of after.</p>
         </div>
       )}
     </>
@@ -295,8 +369,9 @@ function TeamView({ data, teamId, setTeamId, meId }: { data: VacationData; teamI
 /* ----------------------------- Plan My Trip ----------------------------- */
 function PlanTrip({ data, meEmail }: { data: VacationData; meEmail: string }) {
   const [from, setFrom] = useState(data.window.from);
-  const [to, setTo] = useState(data.window.to > data.window.from ? addDays(d(data.window.from), 4).toISOString().slice(0, 10) : data.window.from);
-  const fromD = d(from), toD = d(to);
+  const [to, setTo] = useState(addDays(d(data.window.from), 4).toISOString().slice(0, 10));
+  const [range, setRange] = useState<{ from: string; to: string }>({ from, to });
+  const fromD = d(range.from), toD = d(range.to);
   const out = data.members.filter((m) => m.email.toLowerCase() !== meEmail.toLowerCase() && m.vacations.some((v) => overlap(d(v.start), d(v.end), fromD, toD))).map((m) => m.name);
   const closureHit = data.closures.find((c) => overlap(d(c.startDate), d(c.endDate), fromD, toD));
   const busyHit = data.busyPeriods.find((b) => overlap(d(b.startDate), d(b.endDate), fromD, toD));
@@ -315,16 +390,17 @@ function PlanTrip({ data, meEmail }: { data: VacationData; meEmail: string }) {
   return (
     <>
       <div style={card}>
-        <h2 style={{ fontSize: 14, margin: "0 0 12px" }}>Who's off when? Check a date range</h2>
+        <h2 style={{ fontSize: 14, margin: "0 0 12px" }}>Who's off in my team, when?</h2>
         <div style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap", marginBottom: 14 }}>
           <label style={{ fontSize: 12 }}>From<br /><input type="date" value={from} onChange={(e) => setFrom(e.target.value)} style={{ font: "inherit", padding: "6px", borderRadius: 7, border: "1px solid var(--line)" }} /></label>
           <label style={{ fontSize: 12 }}>To<br /><input type="date" value={to} onChange={(e) => setTo(e.target.value)} style={{ font: "inherit", padding: "6px", borderRadius: 7, border: "1px solid var(--line)" }} /></label>
+          <button className="btn-sm btn-pl" onClick={() => setRange({ from, to })}>Check overlap</button>
         </div>
         <div style={{ border: "1px solid var(--line)", borderRadius: 10, padding: "14px 16px" }}>
           <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 8 }}>{label} — {n} teammate{n === 1 ? "" : "s"} already off {fmtLong(fromD)}–{fmtLong(toD)}</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{out.length ? out.map((nm) => <span key={nm} style={{ background: "rgba(42,120,214,0.1)", color: VAC, fontWeight: 600, fontSize: 12.5, padding: "3px 9px", borderRadius: 999 }}>{nm}</span>) : <span style={{ color: "var(--soft)", fontSize: 13 }}>No one else out.</span>}</div>
           {closureHit && <div style={{ fontSize: 12.5, color: "var(--soft)", marginTop: 8 }}>Includes a company closure ({closureHit.name}).</div>}
-          {busyHit && <div style={{ fontSize: 12.5, color: "#ec835a", fontWeight: 600, marginTop: 6 }}>⚠ Overlaps "{busyHit.label}" — a high-stakes period.</div>}
+          {busyHit && <div style={{ fontSize: 12.5, color: "#ec835a", fontWeight: 600, marginTop: 6 }}>⚠ Overlaps "{busyHit.label}" — a high-stakes period. Flag with your PL before submitting.</div>}
         </div>
       </div>
       <div style={card}>

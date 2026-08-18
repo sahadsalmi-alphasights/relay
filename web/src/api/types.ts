@@ -166,6 +166,14 @@ export interface HrIntegrationSettings {
   lastSyncAt: string | null;
   lastSyncSummary: string | null;
   configured: boolean;
+  /** A key is stored (encrypted) in the app. */
+  hasKey?: boolean;
+  /** Last 4 chars of the stored key, for display. The key itself is never sent. */
+  hint?: string | null;
+  /** BambooHR company subdomain (not secret). */
+  subdomain?: string | null;
+  /** Where the key is encrypted: 'kms' (GCP) or 'local' (dev fallback). */
+  secretStore?: "kms" | "local";
 }
 
 /** The actor's own still-open goal-change requests — drives the Delivery Poke button. */

@@ -26,7 +26,7 @@ class LocalCrypto implements SecretCrypto {
   private key = scryptSync(config.sessionSecret || "dev-secret", "captracker.secretbox.v1", 32);
   async encrypt(plaintext: string): Promise<string> {
     const iv = randomBytes(12);
-    const cipher = createCipheriv("aes-256-gcm", this.key, iv);
+    const cipher = createCipheriv("aes-256-gcm", this.key, iv, { authTagLength: 16 });
     const ct = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
     const tag = cipher.getAuthTag();
     return "local:" + Buffer.concat([iv, tag, ct]).toString("base64");
@@ -36,7 +36,7 @@ class LocalCrypto implements SecretCrypto {
     const iv = raw.subarray(0, 12);
     const tag = raw.subarray(12, 28);
     const ct = raw.subarray(28);
-    const decipher = createDecipheriv("aes-256-gcm", this.key, iv);
+    const decipher = createDecipheriv("aes-256-gcm", this.key, iv, { authTagLength: 16 });
     decipher.setAuthTag(tag);
     return Buffer.concat([decipher.update(ct), decipher.final()]).toString("utf8");
   }

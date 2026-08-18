@@ -62,6 +62,29 @@ export default function SlackIntegrationSettings({ onSaved }: { onSaved: () => v
 
   const hintFor = (k: string) => s.slackHints?.[k as keyof NonNullable<SlackState["slackHints"]>];
 
+  const DIAGS = [
+    { key: "webhook", label: "Channel webhook", hint: "Is a webhook URL set?" },
+    { key: "bot", label: "Bot token (auth.test)", hint: "Does the token authenticate with Slack?" },
+    { key: "signing", label: "Signing secret", hint: "Set, so inbound buttons verify?" },
+  ] as const;
+  const [diag, setDiag] = useState<Record<string, { ok: boolean; text: string }>>({});
+  const [diagBusy, setDiagBusy] = useState<string | null>(null);
+  const runDiag = async (key: string) => {
+    setDiagBusy(key);
+    try {
+      const r = await api.get<Record<string, unknown>>(`/settings/notifications/slack-diagnostics?check=${key}`);
+      const ok = r.ok === true;
+      let text: string;
+      if (key === "bot") text = ok ? `✓ Authenticated — team ${r.team ?? "?"}, bot ${r.botId ?? "?"}` : `✕ ${r.error}`;
+      else text = ok ? "✓ Configured" : `✕ ${r.error}`;
+      setDiag((p) => ({ ...p, [key]: { ok, text } }));
+    } catch (e) {
+      setDiag((p) => ({ ...p, [key]: { ok: false, text: `✕ ${e instanceof ApiError ? e.message : "request failed"}` } }));
+    } finally {
+      setDiagBusy(null);
+    }
+  };
+
   return (
     <div className="card cs-card">
       <div className="cs-head">Slack</div>
@@ -104,6 +127,25 @@ export default function SlackIntegrationSettings({ onSaved }: { onSaved: () => v
           <div><div className="cs-rl">Test</div><div className="cs-rs">Sends a test message to the channel to confirm the webhook works.</div></div>
           <div className="cs-controls"><button className="btn btn-ghost" disabled={busy || !s.slackConfigured} onClick={testConnection}>Send test</button></div>
         </div>
+      )}
+      {!readOnly && (
+        <>
+          <div className="cs-rl" style={{ marginTop: 10 }}>Diagnostics</div>
+          {DIAGS.map((dch) => {
+            const res = diag[dch.key];
+            return (
+              <div className="cs-row" key={dch.key}>
+                <div>
+                  <div className="cs-rl">{dch.label}</div>
+                  <div className="cs-rs">{dch.hint}{res && <div style={{ marginTop: 4, color: res.ok ? "var(--green)" : "var(--red)" }}>{res.text}</div>}</div>
+                </div>
+                <div className="cs-controls">
+                  <button className="btn btn-ghost" disabled={diagBusy === dch.key} onClick={() => runDiag(dch.key)}>{diagBusy === dch.key ? "Testing…" : "Test"}</button>
+                </div>
+              </div>
+            );
+          })}
+        </>
       )}
       {msg && <div className="cs-rs" style={{ marginTop: 6 }}>{msg}</div>}
       {error && <div className="err-line">{error}</div>}

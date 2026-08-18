@@ -59,4 +59,28 @@ describe("Slack credentials — encrypted, write-only", () => {
     const member = await loginAs(app, fx.delivererAlpha);
     expect((await patch(member, { webhookUrl: "https://hooks.slack.com/x" })).statusCode).toBe(403);
   });
+
+  it("diagnostics: owner-only, per-check, surfaces not-configured reasons", async () => {
+    const member = await loginAs(app, fx.delivererAlpha);
+    expect((await app.inject({ method: "GET", url: "/settings/notifications/slack-diagnostics?check=bot", cookies: { relay_session: ck(await loginAs(app, fx.delivererAlpha)) } })).statusCode).toBe(403);
+    void member;
+
+    const cookie = await owner();
+    const diag = (check: string) => app.inject({ method: "GET", url: `/settings/notifications/slack-diagnostics?check=${check}`, cookies: { relay_session: ck(cookie) } });
+
+    // Nothing configured → each check reports why (bot check does NOT hit the
+    // network when there's no token, so this stays deterministic offline).
+    const bot = (await diag("bot")).json();
+    expect(bot.ok).toBe(false);
+    expect(String(bot.error)).toMatch(/no bot token/i);
+    expect((await diag("webhook")).json().ok).toBe(false);
+    expect((await diag("signing")).json().ok).toBe(false);
+
+    // Configure webhook + signing → those two flip green.
+    await patch(cookie, { webhookUrl: "https://hooks.slack.com/services/T/B/xyz", signingSecret: "sign-1234" });
+    expect((await diag("webhook")).json().ok).toBe(true);
+    expect((await diag("signing")).json().ok).toBe(true);
+
+    expect((await diag("nope")).statusCode).toBe(400);
+  });
 });

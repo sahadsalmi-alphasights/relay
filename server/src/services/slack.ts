@@ -40,6 +40,29 @@ export async function slackDmConfigured(): Promise<boolean> {
   return !!(await getSlackBotToken());
 }
 
+/**
+ * Owner diagnostics for the bot token: calls Slack `auth.test`, surfacing the
+ * real reason (invalid_auth, not_authed, network) the normal path swallows.
+ * Also reports whether the token has the scopes DMs need can only be inferred
+ * on actual use, so this just proves the token authenticates.
+ */
+export async function diagnoseBotToken(): Promise<{ ok: boolean; team?: string; botId?: string; error?: string }> {
+  const token = await getSlackBotToken();
+  if (!token) return { ok: false, error: "No bot token set (paste one in Integrations)." };
+  try {
+    const res = await fetch("https://slack.com/api/auth.test", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/x-www-form-urlencoded" },
+    });
+    if (!res.ok) return { ok: false, error: `HTTP ${res.status} ${res.statusText}` };
+    const j = (await res.json()) as { ok: boolean; error?: string; team?: string; user_id?: string };
+    if (!j.ok) return { ok: false, error: j.error ?? "auth_failed" };
+    return { ok: true, team: j.team, botId: j.user_id };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "network error reaching Slack" };
+  }
+}
+
 /** Events that belong in the shared channel, not a personal DM. */
 const TEAM_EVENTS = new Set<string>(["open_pool"]);
 

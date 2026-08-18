@@ -3,6 +3,7 @@ import AnalyticsView from "../components/AnalyticsView";
 import CoverageSettings from "../components/CoverageSettings";
 import NotificationSettings from "../components/NotificationSettings";
 import HrIntegrationSettings from "../components/HrIntegrationSettings";
+import SlackIntegrationSettings from "../components/SlackIntegrationSettings";
 import WhoIsOut from "../components/WhoIsOut";
 import SundayRotaPlanner from "../components/SundayRotaPlanner";
 import UserManagementTab from "./UserManagementTab";
@@ -38,7 +39,12 @@ export default function SettingsTab({ reloadTick, onReload }: { reloadTick: numb
 
       {view === "coverage" && <CoverageSettings onSaved={onReload} />}
       {view === "notifications" && <NotificationSettings onSaved={onReload} />}
-      {view === "integrations" && <HrIntegrationSettings onSaved={onReload} />}
+      {view === "integrations" && (
+        <>
+          <HrIntegrationSettings onSaved={onReload} />
+          <SlackIntegrationSettings onSaved={onReload} />
+        </>
+      )}
       {view === "whoout" && <WhoIsOut />}
       {view === "rota" && <SundayRotaPlanner reloadTick={reloadTick} />}
       {view === "users" && <UserManagementTab reloadTick={reloadTick} />}

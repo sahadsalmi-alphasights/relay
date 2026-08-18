@@ -2,15 +2,42 @@ import { config } from "../config";
 import { getNotificationSettings, type NotificationSettings } from "../repositories/notificationSettings";
 import { findPersonById } from "../repositories/people";
 import { GOAL_CHANGE_TARGETS, goalChangeTargetLabel } from "../rules/goalChange";
+import { getSecret } from "./secretsVault";
 
-/** True when a Slack webhook is configured in env. The URL itself is never exposed. */
-export function slackConfigured(): boolean {
-  return !!config.slackWebhookUrl;
+/** Vault secret names for the Slack credentials. */
+export const SLACK_SECRET = {
+  webhookUrl: "slack.webhook_url",
+  signingSecret: "slack.signing_secret",
+  botToken: "slack.bot_token",
+} as const;
+
+/**
+ * Resolve each Slack credential: the value pasted in Integrations (decrypted
+ * via the vault) takes precedence, falling back to the env var so existing
+ * deployments keep working. Errors (e.g. KMS) resolve to null (treated as
+ * "not configured") — a Slack blip must never break the app.
+ */
+async function resolveSecret(name: string, envFallback: string): Promise<string> {
+  try {
+    const stored = await getSecret(name);
+    if (stored) return stored;
+  } catch {
+    /* fall through to env */
+  }
+  return envFallback;
+}
+export const getSlackWebhookUrl = () => resolveSecret(SLACK_SECRET.webhookUrl, config.slackWebhookUrl);
+export const getSlackSigningSecret = () => resolveSecret(SLACK_SECRET.signingSecret, config.slackSigningSecret);
+export const getSlackBotToken = () => resolveSecret(SLACK_SECRET.botToken, config.slackBotToken);
+
+/** True when a Slack webhook is configured (stored or env). The URL is never exposed. */
+export async function slackConfigured(): Promise<boolean> {
+  return !!(await getSlackWebhookUrl());
 }
 
 /** True when a bot token is configured — enables per-person DMs. The token is never exposed. */
-export function slackDmConfigured(): boolean {
-  return !!config.slackBotToken;
+export async function slackDmConfigured(): Promise<boolean> {
+  return !!(await getSlackBotToken());
 }
 
 /** Events that belong in the shared channel, not a personal DM. */
@@ -36,8 +63,8 @@ export function slackRouteFor(type: string, dmMode: boolean): SlackRoute {
  * the "Accept from Slack" button on goal-change messages can be verified and
  * acted on. The secret itself is never exposed.
  */
-export function slackInteractiveConfigured(): boolean {
-  return !!config.slackSigningSecret;
+export async function slackInteractiveConfigured(): Promise<boolean> {
+  return !!(await getSlackSigningSecret());
 }
 
 /**
@@ -86,12 +113,13 @@ export interface SlackButton {
  * notification. Returns true only on a 2xx.
  */
 export async function postToSlack(text: string, attachments?: unknown[]): Promise<boolean> {
-  if (!config.slackWebhookUrl) return false;
+  const webhookUrl = await getSlackWebhookUrl();
+  if (!webhookUrl) return false;
   try {
     // `text` is always sent as the notification/fallback string even when
     // attachments are present, so mobile push previews and a11y still read well.
     const payload = attachments ? { text, attachments } : { text };
-    const res = await fetch(config.slackWebhookUrl, {
+    const res = await fetch(webhookUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -163,11 +191,12 @@ export function messageAttachments(
 
 /** Slack Web API call (bot token). Guarded; returns the parsed JSON or null. */
 async function slackApi<T>(method: string, body: Record<string, unknown>): Promise<T | null> {
-  if (!config.slackBotToken) return null;
+  const botToken = await getSlackBotToken();
+  if (!botToken) return null;
   try {
     const res = await fetch(`https://slack.com/api/${method}`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${config.slackBotToken}`, "Content-Type": "application/json; charset=utf-8" },
+      headers: { Authorization: `Bearer ${botToken}`, "Content-Type": "application/json; charset=utf-8" },
       body: JSON.stringify(body),
     });
     if (!res.ok) return null;
@@ -179,11 +208,12 @@ async function slackApi<T>(method: string, body: Record<string, unknown>): Promi
 
 /** GET-style Slack Web API call (for methods that take query params, e.g. users.lookupByEmail). */
 async function slackGet<T>(pathWithQuery: string): Promise<T | null> {
-  if (!config.slackBotToken) return null;
+  const botToken = await getSlackBotToken();
+  if (!botToken) return null;
   try {
     const res = await fetch(`https://slack.com/api/${pathWithQuery}`, {
       method: "GET",
-      headers: { Authorization: `Bearer ${config.slackBotToken}` },
+      headers: { Authorization: `Bearer ${botToken}` },
     });
     if (!res.ok) return null;
     return (await res.json()) as T;
@@ -229,7 +259,7 @@ export async function dmPerson(
  * round), so "up for grabs" reaches the channel rather than DMing everyone.
  */
 export async function notifyChannel(type: string, title: string, body: string): Promise<void> {
-  if (!slackConfigured()) return;
+  if (!(await slackConfigured())) return;
   try {
     const settings = await getNotificationSettings();
     if (!slackEventEnabled(settings, type)) return;
@@ -257,8 +287,8 @@ export async function maybeNotifySlack(
     const settings = await getNotificationSettings();
     if (!slackEventEnabled(settings, type)) return;
     // Interactive buttons only work when a signing secret is set to verify the callback.
-    const withButtons = buttons && config.slackSigningSecret ? buttons : undefined;
-    const route = slackRouteFor(type, slackDmConfigured());
+    const withButtons = buttons && (await getSlackSigningSecret()) ? buttons : undefined;
+    const route = slackRouteFor(type, await slackDmConfigured());
     if (route === "skip") return;
     if (route === "dm") {
       const person = await findPersonById(personId);
@@ -267,7 +297,7 @@ export async function maybeNotifySlack(
       return;
     }
     // channel (legacy webhook mode)
-    if (!slackConfigured()) return;
+    if (!(await slackConfigured())) return;
     await postToSlack(formatSlackMessage(title, body), messageAttachments(type, title, body, withButtons));
   } catch {
     // never let Slack delivery affect the in-app notification path
@@ -325,7 +355,8 @@ export const SAMPLE_EVENT_KEYS = SAMPLES.map((s) => s.key);
  * many messages were accepted (2xx). Never throws.
  */
 export async function postSampleNotifications(sentBy: string): Promise<number> {
-  if (!slackConfigured()) return 0;
+  if (!(await slackConfigured())) return 0;
+  const signingSecret = await getSlackSigningSecret();
   let sent = 0;
   const intro = await postToSlack(
     formatSlackMessage(
@@ -335,7 +366,7 @@ export async function postSampleNotifications(sentBy: string): Promise<number> {
   );
   if (intro) sent += 1;
   for (const { sample } of SAMPLES) {
-    const withButtons = sample.buttons && config.slackSigningSecret ? sample.buttons : undefined;
+    const withButtons = sample.buttons && signingSecret ? sample.buttons : undefined;
     const ok = await postToSlack(
       formatSlackMessage(sample.title, sample.body),
       messageAttachments(sample.type, sample.title, sample.body, withButtons)
@@ -351,12 +382,13 @@ export async function postSampleNotifications(sentBy: string): Promise<number> {
  * individual receives. Requires a bot token. Returns how many DMs were sent.
  */
 export async function dmSampleToPerson(email: string, eventKey?: string): Promise<{ sent: number; error?: string }> {
-  if (!slackDmConfigured()) return { sent: 0, error: "not_configured" };
+  if (!(await slackDmConfigured())) return { sent: 0, error: "not_configured" };
+  const signingSecret = await getSlackSigningSecret();
   const chosen = eventKey ? SAMPLES.filter((s) => s.key === eventKey) : SAMPLES;
   let sent = 0;
   let error: string | undefined;
   for (const { sample } of chosen) {
-    const withButtons = sample.buttons && config.slackSigningSecret ? sample.buttons : undefined;
+    const withButtons = sample.buttons && signingSecret ? sample.buttons : undefined;
     const r = await dmPerson(email, sample.type, `[Test] ${sample.title}`, sample.body, withButtons);
     if (r.ok) sent += 1;
     else if (!error) error = r.error;

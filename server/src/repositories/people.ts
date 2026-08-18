@@ -273,6 +273,8 @@ export interface AdminUserRow extends PersonRow {
   role: Role;
   /** Instance memberships (which isolated BUs this person belongs to). */
   instanceKeys: string[];
+  /** Senior/Mid/Junior — drives vacation coverage requirements. */
+  seniority: string | null;
 }
 
 /** Full roster for the owner portal, with team name resolved and role derived. */
@@ -283,7 +285,7 @@ export async function listPeopleAdmin(): Promise<AdminUserRow[]> {
             p.practice_area AS "practiceArea", p.status,
             p.evening_coverage AS "eveningCoverage", p.is_ghost AS "isGhost",
             p.last_login_at AS "lastLoginAt", p.deactivated_at AS "deactivatedAt",
-            p.business_unit AS "businessUnit",
+            p.business_unit AS "businessUnit", p.seniority,
             COALESCE((SELECT array_agg(pi.instance_key ORDER BY pi.instance_key)
                       FROM person_instance pi WHERE pi.person_id = p.id), '{}') AS "instanceKeys"
      FROM person p LEFT JOIN team t ON t.id = p.team_id

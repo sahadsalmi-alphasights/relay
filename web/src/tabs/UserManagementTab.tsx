@@ -245,6 +245,24 @@ export default function UserManagementTab({ reloadTick }: { reloadTick: number }
       ))}
     </select>
   );
+  const SENIORITIES = ["Senior", "Mid", "Junior"];
+  const senioritySelect = (u: AdminUser) => (
+    <select
+      className="stage-select"
+      value={u.seniority ?? ""}
+      disabled={busyId === u.id}
+      onChange={(e) =>
+        run(u.id, () => api.patch(`/vacation/people/${u.id}/seniority`, { seniority: e.target.value || null }))
+      }
+    >
+      <option value="">—</option>
+      {SENIORITIES.map((s) => (
+        <option key={s} value={s}>
+          {s}
+        </option>
+      ))}
+    </select>
+  );
   const statusSelect = (u: AdminUser) => (
     <select className="stage-select" value={u.status} disabled={busyId === u.id} onChange={(e) => patchField(u, { status: e.target.value })}>
       {STATUSES.map((s) => (
@@ -470,6 +488,7 @@ export default function UserManagementTab({ reloadTick }: { reloadTick: number }
               <th>Instances</th>
               <th>Team</th>
               <th>Status</th>
+              <th>Seniority</th>
               <th>Practice</th>
               <th>Last login</th>
               <th>Access</th>
@@ -484,6 +503,7 @@ export default function UserManagementTab({ reloadTick }: { reloadTick: number }
                 <td>{buChecklist(u)}</td>
                 <td>{teamSelect(u)}</td>
                 <td>{statusSelect(u)}</td>
+                <td>{senioritySelect(u)}</td>
                 <td style={{ minWidth: 120 }}>{practiceInput(u)}</td>
                 <td>{lastLogin(u.lastLoginAt)}</td>
                 <td>{accessBtn(u)}</td>
@@ -522,6 +542,8 @@ export default function UserManagementTab({ reloadTick }: { reloadTick: number }
           <div className="cov-row">
             <span className="cov-lbl">Status</span>
             {statusSelect(u)}
+            <span className="cov-lbl">Seniority</span>
+            {senioritySelect(u)}
           </div>
           <div className="cov-row">
             <span className="cov-lbl">Practice</span>

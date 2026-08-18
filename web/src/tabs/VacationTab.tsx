@@ -13,6 +13,7 @@ interface Team { id: string; name: string }
 interface VacationData {
   me: { id: string; email: string };
   window: { from: string; to: string };
+  bambooConfigured: boolean;
   quarters: Quarter[];
   members: Member[];
   closures: Closure[];
@@ -292,7 +293,9 @@ function TeamView({ data, teamId, setTeamId, meId }: { data: VacationData; teamI
   const [showAlt, setShowAlt] = useState(false);
   const periods = useMemo(() => halfPeriods(anchor, WEEKS), [anchor]);
   const open = openQuarter(data);
-  const notSubmitted = (m: Member) => open && !m.vacations.some((v) => overlap(d(v.start), d(v.end), d(open.start), d(open.end)));
+  // "Hasn't planned" is only meaningful once BambooHR is connected — otherwise
+  // there's no data to plan against and we'd wrongly flag the whole BU.
+  const notSubmitted = (m: Member) => data.bambooConfigured && open && !m.vacations.some((v) => overlap(d(v.start), d(v.end), d(open.start), d(open.end)));
 
   const cellState = (m: Member, s: Date, e: Date): "mandatory" | "vacation" | "not-submitted" | null => {
     if (isClosure(data, s, e)) return "mandatory";
@@ -404,15 +407,23 @@ function TeamView({ data, teamId, setTeamId, meId }: { data: VacationData; teamI
       {open && (
         <div style={card}>
           <h2 style={{ fontSize: 14, margin: "0 0 12px" }}>Hasn't planned the open window yet <span style={{ color: "var(--soft)", fontWeight: 500 }}>· {open.label}, due {fmtLong(d(open.deadline))}</span></h2>
-          {data.members.filter(notSubmitted).map((m) => (
-            <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", fontSize: 13, borderBottom: "1px solid var(--line)" }}>
-              <span style={{ fontWeight: 600, flex: 1 }}>{m.name}</span>
-              <span className="mini off">Nothing logged</span>
-              <a className="btn-sm btn-ghost" href={`mailto:${m.email}?subject=${encodeURIComponent(`Reminder: log your ${open.label} vacation`)}&body=${encodeURIComponent(`Hi ${m.name.split(" ")[0]}, a reminder to log your ${open.label} time off in BambooHR before ${fmtLong(d(open.deadline))}.`)}`}>Send reminder</a>
+          {!data.bambooConfigured ? (
+            <div style={{ fontSize: 13, color: "var(--soft)" }}>
+              BambooHR isn't connected, so there's no vacation data to check against yet. Connect it in <strong>Settings → Integrations</strong> — until then this can't tell who has or hasn't planned.
             </div>
-          ))}
-          {data.members.filter(notSubmitted).length === 0 && <div style={{ fontSize: 13, color: "var(--soft)" }}>Everyone has logged something for {open.label}. 🎉</div>}
-          <p style={{ fontSize: 12, color: "var(--soft)", marginTop: 8 }}>Owner/PL view — surfaces gaps before the deadline instead of after.</p>
+          ) : (
+            <>
+              {data.members.filter(notSubmitted).map((m) => (
+                <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", fontSize: 13, borderBottom: "1px solid var(--line)" }}>
+                  <span style={{ fontWeight: 600, flex: 1 }}>{m.name}</span>
+                  <span className="mini off">Nothing logged</span>
+                  <a className="btn-sm btn-ghost" href={`mailto:${m.email}?subject=${encodeURIComponent(`Reminder: log your ${open.label} vacation`)}&body=${encodeURIComponent(`Hi ${m.name.split(" ")[0]}, a reminder to log your ${open.label} time off in BambooHR before ${fmtLong(d(open.deadline))}.`)}`}>Send reminder</a>
+                </div>
+              ))}
+              {data.members.filter(notSubmitted).length === 0 && <div style={{ fontSize: 13, color: "var(--soft)" }}>Everyone has logged something for {open.label}. 🎉</div>}
+              <p style={{ fontSize: 12, color: "var(--soft)", marginTop: 8 }}>Owner/PL view — surfaces gaps before the deadline instead of after.</p>
+            </>
+          )}
         </div>
       )}
     </>

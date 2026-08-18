@@ -47,6 +47,26 @@ describe("vacation planner API (owner-only)", () => {
     expect(body.closures.map((x: { name: string }) => x.name)).toContain("Winter Break");
   });
 
+  it("diagnostics: owner-only, per-check, surfaces the BambooHR-not-configured reason", async () => {
+    const member = await loginAs(app, fx.delivererAlpha);
+    expect((await get(member, "/vacation/diagnostics?check=connection")).statusCode).toBe(403);
+
+    const cookie = await owner();
+    // Not configured in tests → connection/timeoff report the reason (not a crash).
+    const conn = (await get(cookie, "/vacation/diagnostics?check=connection")).json();
+    expect(conn.ok).toBe(false);
+    expect(String(conn.error)).toMatch(/not configured/i);
+    const tof = (await get(cookie, "/vacation/diagnostics?check=timeoff")).json();
+    expect(tof.ok).toBe(false);
+    // Matching still runs (empty BambooHR → 0 matched), and counts BU people.
+    const match = (await get(cookie, "/vacation/diagnostics?check=matching")).json();
+    expect(match.ok).toBe(true);
+    expect(match.matched).toBe(0);
+    expect(match.peopleInBu).toBeGreaterThan(0);
+    // Unknown check → 400.
+    expect((await get(cookie, "/vacation/diagnostics?check=nope")).statusCode).toBe(400);
+  });
+
   it("owner creates a public holiday, assigns coverage, and validates dates", async () => {
     const cookie = await owner();
     const created = await post(cookie, "/vacation/public-holidays", { name: "Founders' Day", holidayDate: "2026-09-25", reqTotal: 1 });

@@ -292,6 +292,44 @@ export async function listPeopleAdmin(): Promise<AdminUserRow[]> {
   return rows.map((r) => ({ ...r, role: roleOf(r) }));
 }
 
+export interface VacationPerson {
+  id: string;
+  name: string;
+  email: string;
+  teamId: string | null;
+  teamName: string | null;
+  seniority: string | null;
+}
+
+/**
+ * Active people in a BU (by instance membership) for the Vacation Planner,
+ * optionally narrowed to one team. Includes managers (they take leave too);
+ * excludes deactivated accounts. Ordered for a stable heatmap.
+ */
+export async function listPeopleForVacation(businessUnit: string, teamId?: string | null): Promise<VacationPerson[]> {
+  const params: unknown[] = [businessUnit];
+  let teamClause = "";
+  if (teamId) {
+    params.push(teamId);
+    teamClause = `AND p.team_id = $${params.length}`;
+  }
+  const { rows } = await pool.query(
+    `SELECT p.id, p.name, p.email, p.team_id AS "teamId", t.name AS "teamName", p.seniority
+     FROM person p
+     LEFT JOIN team t ON t.id = p.team_id
+     WHERE p.deactivated_at IS NULL ${teamClause}
+       AND EXISTS (SELECT 1 FROM person_instance pi WHERE pi.person_id = p.id AND pi.instance_key = $1)
+     ORDER BY p.name`,
+    params
+  );
+  return rows;
+}
+
+/** Owner-only: set a person's seniority (used by public-holiday coverage). */
+export async function setSeniority(id: string, seniority: string | null): Promise<void> {
+  await pool.query(`UPDATE person SET seniority = $2 WHERE id = $1`, [id, seniority]);
+}
+
 /** People not yet on any team — candidates a manager can add to their own team. */
 export async function listUnassignedPeople(): Promise<PersonRow[]> {
   const { rows } = await pool.query(`${SELECT} WHERE team_id IS NULL ORDER BY name`);

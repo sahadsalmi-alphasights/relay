@@ -5,6 +5,7 @@ import { listPeopleForVacation, setSeniority } from "../repositories/people";
 import { listTeams } from "../repositories/teams";
 import { upcomingQuarters } from "../rules/quarters";
 import { vacationsByEmail } from "../services/vacation";
+import { diagnoseDirectory, diagnoseTimeOff } from "../services/bamboohr";
 import {
   createBusyPeriod,
   createClosure,
@@ -70,6 +71,44 @@ const vacationRoutes: FastifyPluginAsync = async (app) => {
         busyPeriods,
         teams,
       };
+    }
+  );
+
+  // Owner diagnostics — a "test" per data source so a blank planner can be
+  // debugged (is BambooHR reachable? is there time-off? do emails match?).
+  // Read-only; surfaces the real error the normal sync path swallows.
+  app.get<{ Querystring: { check?: string; from?: string; to?: string } }>(
+    "/diagnostics",
+    { preHandler: [app.requireOwner] },
+    async (request) => {
+      const actor = request.actor!;
+      const today = new Date();
+      const from = isDate(request.query.from) ? request.query.from : today.toISOString().slice(0, 10);
+      const to = isDate(request.query.to) ? request.query.to : new Date(today.getTime() + 200 * 86400000).toISOString().slice(0, 10);
+      const check = request.query.check;
+
+      if (check === "connection") return diagnoseDirectory();
+      if (check === "timeoff") return diagnoseTimeOff(from, to);
+      if (check === "matching") {
+        const [byEmail, people] = await Promise.all([
+          vacationsByEmail(from, to),
+          listPeopleForVacation(actor.businessUnit),
+        ]);
+        const peopleEmails = new Set(people.map((p) => p.email.toLowerCase()));
+        const matched = people.filter((p) => byEmail.has(p.email.toLowerCase()));
+        // BambooHR people who have time-off but no matching CapTracker person in this BU.
+        const unmatchedBamboo = [...byEmail.keys()].filter((e) => !peopleEmails.has(e));
+        return {
+          ok: true,
+          window: { from, to },
+          peopleInBu: people.length,
+          bambooWithTimeOff: byEmail.size,
+          matched: matched.length,
+          matchedNames: matched.map((p) => p.name),
+          unmatchedBambooEmails: unmatchedBamboo,
+        };
+      }
+      throw badRequest("check must be one of connection, timeoff, matching");
     }
   );
 

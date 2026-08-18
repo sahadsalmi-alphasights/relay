@@ -45,6 +45,39 @@ async function getJson<T>(path: string): Promise<T | null> {
 }
 
 /**
+ * Like getJson but keeps the failure reason (HTTP status / network error) for
+ * the owner diagnostics — the normal path deliberately swallows errors so a
+ * BambooHR blip never breaks the app; diagnostics needs to SEE them.
+ */
+async function getJsonDetailed<T>(path: string): Promise<{ ok: boolean; error?: string; data?: T }> {
+  if (!hrConfigured()) return { ok: false, error: "BambooHR not configured (BAMBOOHR_API_KEY / BAMBOOHR_SUBDOMAIN unset)" };
+  try {
+    const res = await fetch(`${baseUrl()}${path}`, {
+      headers: { Authorization: authHeader(), Accept: "application/json" },
+    });
+    if (!res.ok) return { ok: false, error: `HTTP ${res.status} ${res.statusText}` };
+    return { ok: true, data: (await res.json()) as T };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "network error reaching BambooHR" };
+  }
+}
+
+/** Owner diagnostics — directory reachability + how many people carry a work email. */
+export async function diagnoseDirectory(): Promise<{ ok: boolean; error?: string; employees?: number; withEmail?: number }> {
+  const r = await getJsonDetailed<{ employees?: { workEmail?: string | null }[] }>("/employees/directory");
+  if (!r.ok) return { ok: false, error: r.error };
+  const employees = r.data?.employees ?? [];
+  return { ok: true, employees: employees.length, withEmail: employees.filter((e) => e.workEmail).length };
+}
+
+/** Owner diagnostics — approved time-off in [start, end]: reachable + how many rows. */
+export async function diagnoseTimeOff(start: string, end: string): Promise<{ ok: boolean; error?: string; count?: number }> {
+  const r = await getJsonDetailed<unknown[]>(`/time_off/requests/?start=${start}&end=${end}&status=approved`);
+  if (!r.ok) return { ok: false, error: r.error };
+  return { ok: true, count: Array.isArray(r.data) ? r.data.length : 0 };
+}
+
+/**
  * Approved time-off requests overlapping [start, end] (YYYY-MM-DD). Each row
  * carries the leave-type NAME (e.g. "Vacation", "Sick") which the sync filters
  * on. Returns null on any failure (so the caller can distinguish "couldn't

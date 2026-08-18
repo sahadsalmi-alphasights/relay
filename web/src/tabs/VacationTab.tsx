@@ -124,6 +124,59 @@ export default function VacationTab({ reloadTick }: { reloadTick: number }) {
   );
 }
 
+/* ----------------------------- Diagnostics (owner test buttons) ----------------------------- */
+function Diagnostics() {
+  const CHECKS = [
+    { key: "connection", label: "BambooHR connection", hint: "Can we reach the employee directory?" },
+    { key: "timeoff", label: "Time-off fetch", hint: "Approved time-off in the sync window." },
+    { key: "matching", label: "People matching", hint: "Do BambooHR emails match CapTracker people?" },
+  ] as const;
+  const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [results, setResults] = useState<Record<string, { ok: boolean; text: string }>>({});
+
+  const run = async (key: string) => {
+    setBusyKey(key);
+    try {
+      const r = await api.get<Record<string, unknown>>(`/vacation/diagnostics?check=${key}`);
+      const ok = r.ok !== false && !r.error;
+      let text: string;
+      if (key === "connection") text = ok ? `✓ Reachable — ${r.employees} employees, ${r.withEmail} with a work email` : `✕ ${r.error}`;
+      else if (key === "timeoff") text = ok ? `✓ ${r.count} approved time-off request(s) in window` : `✕ ${r.error}`;
+      else text = ok
+        ? `✓ ${r.matched}/${r.peopleInBu} people matched · ${r.bambooWithTimeOff} BambooHR people have time-off` +
+          ((r.unmatchedBambooEmails as string[])?.length ? ` · unmatched BambooHR emails: ${(r.unmatchedBambooEmails as string[]).join(", ")}` : "")
+        : `✕ ${r.error}`;
+      setResults((p) => ({ ...p, [key]: { ok, text } }));
+    } catch (e) {
+      setResults((p) => ({ ...p, [key]: { ok: false, text: `✕ ${e instanceof ApiError ? e.message : "request failed"}` } }));
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  return (
+    <div style={card}>
+      <h2 style={{ fontSize: 14, margin: "0 0 4px" }}>BambooHR sync diagnostics</h2>
+      <p style={{ fontSize: 12, color: "var(--soft)", margin: "0 0 12px" }}>Test each data source and see the exact result or error the sync would hit.</p>
+      {CHECKS.map((c) => {
+        const res = results[c.key];
+        return (
+          <div key={c.key} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "8px 0", borderBottom: "1px solid var(--line)" }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 600 }}>{c.label}</div>
+              <div style={{ fontSize: 12, color: "var(--soft)" }}>{c.hint}</div>
+              {res && <div style={{ fontSize: 12.5, marginTop: 4, color: res.ok ? "var(--green)" : "var(--red)", wordBreak: "break-word" }}>{res.text}</div>}
+            </div>
+            <button className="btn-sm btn-ghost" disabled={busyKey === c.key} onClick={() => run(c.key)}>
+              {busyKey === c.key ? "Testing…" : "Test"}
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function DeadlineBanner({ quarter, onSeeTeam, onDismiss }: { quarter: Quarter; onSeeTeam: () => void; onDismiss: () => void }) {
   const left = daysBetween(new Date(), d(quarter.deadline));
   return (
@@ -437,6 +490,7 @@ function AdminPanel({ data, busy, mutate }: { data: VacationData; busy: boolean;
 
   return (
     <>
+      <Diagnostics />
       <div style={card}>
         <h2 style={{ fontSize: 14, margin: "0 0 12px" }}>Company closures <span style={{ color: "var(--soft)", fontWeight: 500 }}>· everyone off</span></h2>
         {data.closures.map((c) => (

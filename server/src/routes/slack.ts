@@ -5,7 +5,7 @@ import { findAssignmentById } from "../repositories/assignments";
 import { findGoalChangeRequestById } from "../repositories/goalChangeRequests";
 import { findProjectById } from "../repositories/projects";
 import { applyAndResolveGoalChange } from "../services/goalChangeResolve";
-import { AMEND_CALLBACK_ID, openGoalChangeAmendModal } from "../services/slack";
+import { AMEND_CALLBACK_ID, getSlackSigningSecret, openGoalChangeAmendModal } from "../services/slack";
 import type { GoalChangeRequestRow } from "../repositories/goalChangeRequests";
 
 /**
@@ -23,14 +23,14 @@ import type { GoalChangeRequestRow } from "../repositories/goalChangeRequests";
  */
 const SLACK_REPLAY_WINDOW_SECONDS = 60 * 5;
 
-function verifySignature(rawBody: string, timestamp: string | undefined, signature: string | undefined): boolean {
-  if (!config.slackSigningSecret || !timestamp || !signature) return false;
+function verifySignature(signingSecret: string, rawBody: string, timestamp: string | undefined, signature: string | undefined): boolean {
+  if (!signingSecret || !timestamp || !signature) return false;
   const ts = Number(timestamp);
   if (!Number.isFinite(ts)) return false;
   // Reject stale/replayed requests.
   if (Math.abs(Date.now() / 1000 - ts) > SLACK_REPLAY_WINDOW_SECONDS) return false;
   const base = `v0:${timestamp}:${rawBody}`;
-  const expected = "v0=" + crypto.createHmac("sha256", config.slackSigningSecret).update(base).digest("hex");
+  const expected = "v0=" + crypto.createHmac("sha256", signingSecret).update(base).digest("hex");
   const a = Buffer.from(expected);
   const b = Buffer.from(signature);
   return a.length === b.length && crypto.timingSafeEqual(a, b);
@@ -88,7 +88,8 @@ const slackRoutes: FastifyPluginAsync = async (app) => {
     const rawBody = typeof request.body === "string" ? request.body : "";
     const signature = request.headers["x-slack-signature"] as string | undefined;
     const timestamp = request.headers["x-slack-request-timestamp"] as string | undefined;
-    if (!verifySignature(rawBody, timestamp, signature)) {
+    const signingSecret = await getSlackSigningSecret();
+    if (!verifySignature(signingSecret, rawBody, timestamp, signature)) {
       return reply.code(401).send({ error: "invalid_signature" });
     }
 

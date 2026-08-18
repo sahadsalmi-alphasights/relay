@@ -11,7 +11,7 @@ import {
   NOTIFICATION_SETTING_KEYS,
   type NotificationSettings,
 } from "../repositories/notificationSettings";
-import { dmSampleToPerson, formatSlackMessage, postToSlack, postSampleNotifications, SAMPLE_EVENT_KEYS, slackConfigured, slackDmConfigured, slackInteractiveConfigured, SLACK_SECRET } from "../services/slack";
+import { diagnoseBotToken, dmSampleToPerson, formatSlackMessage, postToSlack, postSampleNotifications, SAMPLE_EVENT_KEYS, slackConfigured, slackDmConfigured, slackInteractiveConfigured, SLACK_SECRET } from "../services/slack";
 import { clearSecret, getHints, setSecret } from "../services/secretsVault";
 import { findPersonById } from "../repositories/people";
 import {
@@ -197,6 +197,28 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
           botToken: hints2[SLACK_SECRET.botToken],
         },
       };
+    }
+  );
+
+  // Owner-only Slack diagnostics — a "test" per capability so a silent
+  // failure can be debugged. Read-only (bot check hits auth.test; webhook /
+  // signing report configured, since neither can be probed without side effects
+  // — the webhook "Send test" below is the active channel check).
+  app.get<{ Querystring: { check?: string } }>(
+    "/notifications/slack-diagnostics",
+    { preHandler: [app.requireOwner] },
+    async (request) => {
+      const check = request.query.check;
+      if (check === "bot") return diagnoseBotToken();
+      if (check === "webhook") {
+        const ok = await slackConfigured();
+        return { ok, error: ok ? undefined : "No webhook URL set." };
+      }
+      if (check === "signing") {
+        const ok = await slackInteractiveConfigured();
+        return { ok, error: ok ? undefined : "No signing secret set — interactive buttons won't verify." };
+      }
+      throw badRequest("check must be one of webhook, bot, signing");
     }
   );
 

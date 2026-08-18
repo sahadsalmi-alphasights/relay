@@ -24,6 +24,14 @@ export async function resetAndSeedFixture(): Promise<Fixture> {
     TRUNCATE TABLE audit_log, goal_change_request, note, assignment, project,
       sunday_swap_request, sunday_rota, person, team RESTART IDENTITY CASCADE
   `);
+  // Reset integration credential stores so every test starts "not configured"
+  // (these singletons/side tables aren't in the TRUNCATE above; stored secrets
+  // from one test would otherwise leak into another's "is Slack/BambooHR
+  // configured?" assertions).
+  await pool.query(`DELETE FROM integration_secret`);
+  await pool.query(
+    `UPDATE hr_integration_settings SET api_key_ciphertext = NULL, api_key_hint = NULL, subdomain = NULL WHERE id = 1`
+  );
 
   const { rows: teams } = await pool.query<{ id: string; name: string }>(
     `INSERT INTO team (name) VALUES ('Team_Alpha'), ('Team_Beta') RETURNING id, name`

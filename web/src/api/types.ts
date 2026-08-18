@@ -46,11 +46,14 @@ export interface Person {
 /** A BU key. Seeded 'consulting'/'non_consulting', but instances are a managed registry. */
 export type BusinessUnit = string;
 
-/** An isolated instance (BU) — the managed registry an owner can extend. */
+/** An isolated instance — a (city, department, board?) tuple derived from Okta. */
 export interface Instance {
   id: string;
   key: string;
   name: string;
+  city?: string | null;
+  department?: string | null;
+  board?: string | null;
 }
 
 /** User management portal — role tiers. owner > manager > member. */

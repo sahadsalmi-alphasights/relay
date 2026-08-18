@@ -36,7 +36,7 @@ export async function notifyBroadcastRecipients(project: ProjectRow, now: Date):
   // open_pool (it's a team event) — so post it to the shared channel ONCE here,
   // rather than DMing every eligible person. In legacy webhook mode each
   // recipient's notify() already channels it, so we don't double up.
-  if (slackDmConfigured()) {
+  if (await slackDmConfigured()) {
     await notifyChannel(
       "open_pool",
       "Project up for grabs",

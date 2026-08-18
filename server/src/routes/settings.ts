@@ -11,7 +11,8 @@ import {
   NOTIFICATION_SETTING_KEYS,
   type NotificationSettings,
 } from "../repositories/notificationSettings";
-import { dmSampleToPerson, formatSlackMessage, postToSlack, postSampleNotifications, SAMPLE_EVENT_KEYS, slackConfigured, slackDmConfigured, slackInteractiveConfigured } from "../services/slack";
+import { dmSampleToPerson, formatSlackMessage, postToSlack, postSampleNotifications, SAMPLE_EVENT_KEYS, slackConfigured, slackDmConfigured, slackInteractiveConfigured, SLACK_SECRET } from "../services/slack";
+import { clearSecret, getHints, setSecret } from "../services/secretsVault";
 import { findPersonById } from "../repositories/people";
 import {
   clearHrApiKey,
@@ -95,8 +96,69 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
   // boolean saying whether a Slack webhook is configured in env (never the URL).
   app.get("/notifications", { preHandler: [app.requireAuth] }, async () => {
     const settings = await getNotificationSettings();
-    return { ...settings, slackConfigured: slackConfigured(), slackInteractiveConfigured: slackInteractiveConfigured(), slackDmConfigured: slackDmConfigured() };
+    const [sc, si, sd, hints] = await Promise.all([
+      slackConfigured(),
+      slackInteractiveConfigured(),
+      slackDmConfigured(),
+      getHints([SLACK_SECRET.webhookUrl, SLACK_SECRET.signingSecret, SLACK_SECRET.botToken]),
+    ]);
+    return {
+      ...settings,
+      slackConfigured: sc,
+      slackInteractiveConfigured: si,
+      slackDmConfigured: sd,
+      slackSecretStore: secretCrypto().kind,
+      slackHints: {
+        webhookUrl: hints[SLACK_SECRET.webhookUrl],
+        signingSecret: hints[SLACK_SECRET.signingSecret],
+        botToken: hints[SLACK_SECRET.botToken],
+      },
+    };
   });
+
+  // Owner-only: set/clear the Slack credentials (write-only, encrypted at rest
+  // via secretCrypto). Never echoed back; kept out of the audit values.
+  app.patch<{ Body: { webhookUrl?: string; signingSecret?: string; botToken?: string; clear?: string } }>(
+    "/notifications/slack-credentials",
+    { preHandler: [app.requireOwner] },
+    async (request) => {
+      const b = request.body ?? {};
+      const changed: string[] = [];
+      const apply = async (val: string | undefined, name: string, label: string) => {
+        if (typeof val === "string" && val.trim()) {
+          await setSecret(name, val.trim());
+          changed.push(label);
+        }
+      };
+      if (b.clear === "webhookUrl") { await clearSecret(SLACK_SECRET.webhookUrl); changed.push("cleared webhookUrl"); }
+      else await apply(b.webhookUrl, SLACK_SECRET.webhookUrl, "webhookUrl");
+      if (b.clear === "signingSecret") { await clearSecret(SLACK_SECRET.signingSecret); changed.push("cleared signingSecret"); }
+      else await apply(b.signingSecret, SLACK_SECRET.signingSecret, "signingSecret");
+      if (b.clear === "botToken") { await clearSecret(SLACK_SECRET.botToken); changed.push("cleared botToken"); }
+      else await apply(b.botToken, SLACK_SECRET.botToken, "botToken");
+
+      await insertAuditLog({
+        entityType: "notification_settings",
+        entityId: "00000000-0000-0000-0000-000000000002",
+        actorId: request.actor!.id,
+        action: "slack_credentials_updated",
+        newValue: { changed },
+      });
+      publish({ type: "settings" });
+      const hints = await getHints([SLACK_SECRET.webhookUrl, SLACK_SECRET.signingSecret, SLACK_SECRET.botToken]);
+      return {
+        slackConfigured: await slackConfigured(),
+        slackInteractiveConfigured: await slackInteractiveConfigured(),
+        slackDmConfigured: await slackDmConfigured(),
+        slackSecretStore: secretCrypto().kind,
+        slackHints: {
+          webhookUrl: hints[SLACK_SECRET.webhookUrl],
+          signingSecret: hints[SLACK_SECRET.signingSecret],
+          botToken: hints[SLACK_SECRET.botToken],
+        },
+      };
+    }
+  );
 
   app.patch<{ Body: Partial<NotificationSettings> }>(
     "/notifications",
@@ -122,13 +184,25 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
         newValue: updated,
       });
       publish({ type: "settings" });
-      return { ...updated, slackConfigured: slackConfigured(), slackInteractiveConfigured: slackInteractiveConfigured(), slackDmConfigured: slackDmConfigured() };
+      const hints2 = await getHints([SLACK_SECRET.webhookUrl, SLACK_SECRET.signingSecret, SLACK_SECRET.botToken]);
+      return {
+        ...updated,
+        slackConfigured: await slackConfigured(),
+        slackInteractiveConfigured: await slackInteractiveConfigured(),
+        slackDmConfigured: await slackDmConfigured(),
+        slackSecretStore: secretCrypto().kind,
+        slackHints: {
+          webhookUrl: hints2[SLACK_SECRET.webhookUrl],
+          signingSecret: hints2[SLACK_SECRET.signingSecret],
+          botToken: hints2[SLACK_SECRET.botToken],
+        },
+      };
     }
   );
 
   // Owner-only "send a test message" — proves the webhook works end to end.
   app.post("/notifications/test", { preHandler: [app.requireOwner] }, async (request) => {
-    if (!slackConfigured()) throw badRequest("Slack is not configured (SLACK_WEBHOOK_URL is not set on the server)");
+    if (!(await slackConfigured())) throw badRequest("Slack is not configured — paste a webhook URL in Integrations");
     const ok = await postToSlack(formatSlackMessage("CapTracker test message", `Sent by ${request.actor!.name}. If you can see this, Slack is wired up correctly.`));
     return { ok };
   });
@@ -137,7 +211,7 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
   // notification type to the channel so the team can preview them. Ignores the
   // per-event toggles (it's a manual preview).
   app.post("/notifications/sample-all", { preHandler: [app.requireOwner] }, async (request) => {
-    if (!slackConfigured()) throw badRequest("Slack is not configured (SLACK_WEBHOOK_URL is not set on the server)");
+    if (!(await slackConfigured())) throw badRequest("Slack is not configured — paste a webhook URL in Integrations");
     const sent = await postSampleNotifications(request.actor!.name);
     return { ok: sent > 0, sent };
   });
@@ -149,7 +223,7 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
     "/notifications/sample-dm",
     { preHandler: [app.requireOwner] },
     async (request) => {
-      if (!slackDmConfigured()) {
+      if (!(await slackDmConfigured())) {
         throw badRequest("Per-person DMs aren't configured (SLACK_BOT_TOKEN is not set on the server)");
       }
       const event = request.body?.event;

@@ -35,6 +35,7 @@ import {
 import { countAssignmentsForAngle, seatTargetForAngle } from "../repositories/angles";
 import { findPersonById, listPeopleByTeam } from "../repositories/people";
 import { listAvailableCandidatesWithAssignments, sundayRotaPersonIdsForDate } from "../services/candidates";
+import { activeInstanceKey } from "../auth/activeInstance";
 import { badRequest, conflict, forbidden, notFound } from "../errors";
 import { isEligible } from "../rules/eligibility";
 import { allocateAcrossAngles, applyFirstDeliverableBlock, applySundayRotaBlock, rankCandidates } from "../rules/matching";
@@ -336,7 +337,7 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
       // `ghost: true` ranks the ghost pool instead — same ranking machinery,
       // different candidates. Used by the wizard's per-angle ghost picker and
       // Edit team's change-ghost flow.
-      const candidates = await listAvailableCandidatesWithAssignments(request.actor!.businessUnit, {
+      const candidates = await listAvailableCandidatesWithAssignments(activeInstanceKey(request), {
         ghost: request.body?.ghost === true,
       });
       const context = {
@@ -574,7 +575,7 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
           const now = resolveNow(request);
           const hour = dubaiHour(now);
           const ghostContext = { now, plPracticeArea: actor.practiceArea ?? "" };
-          const ghostCandidates = await listAvailableCandidatesWithAssignments(actor.businessUnit, { ghost: true });
+          const ghostCandidates = await listAvailableCandidatesWithAssignments(activeInstanceKey(request), { ghost: true });
           const ghostRanked = applyFirstDeliverableBlock(rankCandidates(ghostCandidates, ghostContext), ghostCandidates, hour);
           // Ghost allocation stays pure lowest-load — team preference is for real deliverers only.
           const { perAngle } = allocateAcrossAngles(

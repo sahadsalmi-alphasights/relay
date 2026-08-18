@@ -8,6 +8,6 @@ useDefault = true
 # encryption round-trip fixture, an owner pasting a dummy BambooHR key). These
 # are never real secrets — real credentials live only in env / KMS — so exempt
 # *.test.ts from the generic-secret heuristics to avoid false positives.
-[[allowlist]]
+[allowlist]
 description = "Fake secrets in test fixtures"
 paths = ['''.*\.test\.ts$''']

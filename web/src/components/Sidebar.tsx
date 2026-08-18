@@ -195,6 +195,13 @@ export default function Sidebar({
               <span className="nav-label">Settings</span>
             </button>
           )}
+          {/* Owner-only for now — hidden from normal users. */}
+          {actor.isOwner && (
+            <button className={tab === "Vacation" ? "active" : ""} onClick={() => setTab("Vacation")}>
+              <span aria-hidden="true" style={{ fontSize: 15, width: 18, textAlign: "center" }}>🏖️</span>
+              <span className="nav-label">Vacation</span>
+            </button>
+          )}
         </div>
       </div>
 

@@ -20,6 +20,7 @@ import NotesSheet from "./sheets/NotesSheet";
 import { track } from "./lib/track";
 import NotesTodoBox from "./components/NotesTodoBox";
 import SundayCoverageTab from "./tabs/SundayCoverageTab";
+import VacationTab from "./tabs/VacationTab";
 import TeamEditSheet from "./sheets/TeamEditSheet";
 import TransferPlSheet from "./sheets/TransferPlSheet";
 import TeamSheet from "./sheets/TeamSheet";
@@ -279,6 +280,7 @@ export default function Shell() {
       {tab === "AuditLog" && <AuditLogTab reloadTick={reloadTick} />}
       {tab === "Users" && <SettingsTab reloadTick={reloadTick} onReload={bumpReload} />}
       {tab === "SundayRota" && <SundayCoverageTab reloadTick={reloadTick} />}
+      {tab === "Vacation" && <VacationTab reloadTick={reloadTick} />}
     </>
   );
 

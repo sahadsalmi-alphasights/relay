@@ -5,7 +5,7 @@ import { listPeopleForVacation, setSeniority } from "../repositories/people";
 import { listTeams } from "../repositories/teams";
 import { upcomingQuarters } from "../rules/quarters";
 import { vacationsByEmail } from "../services/vacation";
-import { diagnoseDirectory, diagnoseTimeOff } from "../services/bamboohr";
+import { diagnoseDirectory, diagnoseTimeOff, hrConfigured } from "../services/bamboohr";
 import {
   createBusyPeriod,
   createClosure,
@@ -41,19 +41,24 @@ const vacationRoutes: FastifyPluginAsync = async (app) => {
     async (request) => {
       const actor = request.actor!;
       const today = new Date();
-      const from = isDate(request.query.from) ? request.query.from : today.toISOString().slice(0, 10);
-      const to = isDate(request.query.to)
-        ? request.query.to
-        : new Date(today.getTime() + 200 * 86400000).toISOString().slice(0, 10);
+      const quarters = upcomingQuarters(today);
+      // Default window must fully span the open/upcoming quarters (so the
+      // "hasn't planned this quarter" check is accurate) and reach ~30 days
+      // back so recent taken trips show. Callers can still override.
+      const from = isDate(request.query.from)
+        ? request.query.from
+        : new Date(today.getTime() - 30 * 86400000).toISOString().slice(0, 10);
+      const to = isDate(request.query.to) ? request.query.to : quarters[quarters.length - 1].end;
       const teamId = request.query.teamId || null;
 
-      const [people, byEmail, closures, publicHolidays, busyPeriods, teams] = await Promise.all([
+      const [people, byEmail, closures, publicHolidays, busyPeriods, teams, bambooConfigured] = await Promise.all([
         listPeopleForVacation(actor.businessUnit, teamId),
         vacationsByEmail(from, to),
         listClosures(),
         listPublicHolidays(),
         listBusyPeriods(),
         listTeams(),
+        hrConfigured(),
       ]);
 
       const members = people.map((p) => ({
@@ -64,7 +69,10 @@ const vacationRoutes: FastifyPluginAsync = async (app) => {
       return {
         me: { id: actor.id, email: actor.email },
         window: { from, to },
-        quarters: upcomingQuarters(today),
+        // Whether BambooHR is connected — the UI uses this so a not-connected
+        // integration reads as "no data yet" instead of flagging everyone.
+        bambooConfigured,
+        quarters,
         members,
         closures,
         publicHolidays,

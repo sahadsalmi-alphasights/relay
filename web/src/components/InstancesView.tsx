@@ -62,8 +62,10 @@ export default function InstancesView({
   type Applied = { ok: boolean; error?: string; instancesCreated?: number; instancesTotal?: number; usersCreated?: number; usersReassigned?: number; skippedNoEmail?: number; skippedNoTuple?: number };
   const [importOpen, setImportOpen] = useState(false);
   const [preview, setPreview] = useState<Preview | null>(null);
-  const [importBusy, setImportBusy] = useState<"preview" | "apply" | null>(null);
+  const [importBusy, setImportBusy] = useState<"preview" | "apply" | "fields" | null>(null);
   const [applied, setApplied] = useState<Applied | null>(null);
+  type Fields = { ok: boolean; error?: string; boardFieldDetected?: string | null; allFields?: { id: string; name: string }[]; values?: Record<string, { value: string; count: number }[]> };
+  const [fields, setFields] = useState<Fields | null>(null);
 
   // Members of the selected instance (paginated, searchable).
   const [members, setMembers] = useState<AdminUser[]>([]);
@@ -169,6 +171,12 @@ export default function InstancesView({
     catch (err) { setError(err instanceof ApiError ? err.message : "Could not reach BambooHR"); }
     finally { setImportBusy(null); }
   };
+  const runFields = async () => {
+    setImportBusy("fields"); setError(null);
+    try { setFields(await api.get<Fields>("/instances/import/fields")); }
+    catch (err) { setError(err instanceof ApiError ? err.message : "Could not inspect BambooHR fields"); }
+    finally { setImportBusy(null); }
+  };
   const runApply = async () => {
     setImportBusy("apply"); setError(null);
     try {
@@ -199,10 +207,48 @@ export default function InstancesView({
           <button className="btn-sm btn-ghost" disabled={importBusy !== null} onClick={() => { setImportOpen((o) => !o); if (!importOpen && !preview) runPreview(); }}>
             {importOpen ? "Hide" : "Import from BambooHR"}
           </button>
+          <button className="btn-sm btn-ghost" disabled={importBusy !== null} onClick={() => { setImportOpen(true); runFields(); }}>
+            {importBusy === "fields" ? "Inspecting…" : "Inspect fields"}
+          </button>
         </div>
 
         {importOpen && (
           <div style={{ marginTop: 12, borderTop: "1px solid var(--line)", paddingTop: 12 }}>
+            {fields && (
+              <div style={{ marginBottom: 14, padding: 12, border: "1px solid var(--line)", borderRadius: 8, background: "var(--bg)" }}>
+                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>BambooHR field inspector</div>
+                {!fields.ok && <div className="err-line">{fields.error}</div>}
+                {fields.ok && (
+                  <>
+                    <div style={{ fontSize: 12, color: "var(--soft)", marginBottom: 8 }}>
+                      Detected board field: <b style={{ color: fields.boardFieldDetected ? "var(--green)" : "var(--amber)" }}>{fields.boardFieldDetected ?? "none found"}</b>.
+                      Compare the value sets below — pick which field holds the office (Consulting/Non-Consulting) and which holds the board.
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
+                      {Object.entries(fields.values ?? {}).map(([field, vals]) => (
+                        <div key={field} style={{ border: "1px solid var(--line)", borderRadius: 8, overflow: "hidden" }}>
+                          <div style={{ fontSize: 12, fontWeight: 700, padding: "6px 8px", background: "var(--surface)", borderBottom: "1px solid var(--line)" }}>{field} <span style={{ color: "var(--soft)", fontWeight: 400 }}>({vals.length})</span></div>
+                          <div style={{ maxHeight: 180, overflow: "auto" }}>
+                            {vals.map((v) => (
+                              <div key={v.value} style={{ display: "flex", justifyContent: "space-between", gap: 8, padding: "3px 8px", fontSize: 12 }}>
+                                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{v.value}</span>
+                                <span style={{ color: "var(--soft)", fontVariantNumeric: "tabular-nums" }}>{v.count}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <details style={{ marginTop: 8 }}>
+                      <summary style={{ fontSize: 12, color: "var(--soft)", cursor: "pointer" }}>All BambooHR fields ({fields.allFields?.length ?? 0})</summary>
+                      <div style={{ fontSize: 11, color: "var(--soft)", marginTop: 6, maxHeight: 160, overflow: "auto", fontFamily: "var(--mono, monospace)" }}>
+                        {fields.allFields?.map((f) => <div key={f.id}>{f.id} — {f.name}</div>)}
+                      </div>
+                    </details>
+                  </>
+                )}
+              </div>
+            )}
             {importBusy === "preview" && <div style={{ fontSize: 13, color: "var(--soft)" }}>Reading the BambooHR directory…</div>}
             {preview && !preview.ok && <div className="err-line">{preview.error}</div>}
             {preview && preview.ok && (

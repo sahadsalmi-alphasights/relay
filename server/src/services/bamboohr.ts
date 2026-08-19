@@ -123,6 +123,52 @@ async function getJsonDetailed<T>(path: string): Promise<{ ok: boolean; error?: 
   }
 }
 
+/**
+ * Owner diagnostics — the BambooHR FIELD LANDSCAPE, so we can map the right
+ * fields to (city, department, board) instead of guessing. Returns every field
+ * BambooHR exposes (id + name), which field we auto-detected as the board, and
+ * the DISTINCT values (with counts) actually present for the candidate fields —
+ * location, department, division, and the detected board field. Seeing the
+ * value sets side by side reveals which field holds Consulting/Non-Consulting
+ * vs the sub-team vs the board. Read-only.
+ */
+export async function diagnoseImportFields(): Promise<{
+  ok: boolean;
+  error?: string;
+  allFields?: { id: string; name: string }[];
+  boardFieldDetected?: string | null;
+  values?: Record<string, { value: string; count: number }[]>;
+}> {
+  const metaRes = await getJsonDetailed<{ id?: string | number; name?: string | null; alias?: string | null }[]>("/meta/fields");
+  if (!metaRes.ok) return { ok: false, error: metaRes.error };
+  const meta = Array.isArray(metaRes.data) ? metaRes.data : [];
+  const allFields = meta
+    .map((f) => ({ id: f.alias ? String(f.alias) : f.id != null ? String(f.id) : "", name: String(f.name ?? f.alias ?? f.id ?? "") }))
+    .filter((f) => f.id);
+
+  const boardField = await findBoardFieldId();
+  const candidateFields = ["location", "department", "division", ...(boardField ? [boardField] : [])];
+  const report = await postJson<{ employees?: Record<string, string | null>[] }>(
+    "/reports/custom?format=JSON&onlyCurrent=true",
+    { fields: candidateFields }
+  );
+  const employees = report?.employees ?? [];
+
+  const values: Record<string, { value: string; count: number }[]> = {};
+  for (const field of candidateFields) {
+    const counts = new Map<string, number>();
+    for (const e of employees) {
+      const v = (e[field] ?? "").trim() || "(empty)";
+      counts.set(v, (counts.get(v) ?? 0) + 1);
+    }
+    values[field === boardField ? `board (${boardField})` : field] = [...counts.entries()]
+      .map(([value, count]) => ({ value, count }))
+      .sort((a, b) => b.count - a.count);
+  }
+
+  return { ok: true, allFields, boardFieldDetected: boardField, values };
+}
+
 /** Owner diagnostics — directory reachability + how many people carry a work email. */
 export async function diagnoseDirectory(): Promise<{ ok: boolean; error?: string; employees?: number; withEmail?: number }> {
   const r = await getJsonDetailed<{ employees?: { workEmail?: string | null }[] }>("/employees/directory");

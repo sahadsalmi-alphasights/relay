@@ -3,6 +3,7 @@ import { badRequest, conflict } from "../errors";
 import { insertAuditLog } from "../repositories/auditLog";
 import { createInstance, findInstanceByKey, listInstances, slugifyInstanceKey } from "../repositories/instances";
 import { applyImport, previewImport } from "../services/instanceImport";
+import { diagnoseImportFields } from "../services/bamboohr";
 import { publish } from "../ws/hub";
 
 /**
@@ -34,6 +35,10 @@ const instancesRoutes: FastifyPluginAsync = async (app) => {
   // Seed instances + users from BambooHR, using the SAME (city, department)
   // derivation Okta uses. Preview is read-only (nothing written) so an owner
   // can review the plan; apply performs it, idempotently, and is audit-logged.
+  // Read-only field landscape — what BambooHR actually returns, so we can map
+  // the right fields to (city, department, board).
+  app.get("/import/fields", { preHandler: [app.requireOwner] }, async () => diagnoseImportFields());
+
   app.get("/import/preview", { preHandler: [app.requireOwner] }, async () => previewImport());
 
   app.post("/import/apply", { preHandler: [app.requireOwner] }, async (request) => {

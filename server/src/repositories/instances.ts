@@ -7,6 +7,7 @@ export interface InstanceRow {
   city: string | null;
   department: string | null;
   board: string | null;
+  memberCount?: number;
 }
 
 const INSTANCE_COLS = `id, key, name, city, department, board`;
@@ -22,7 +23,13 @@ function tupleName(city: string, department: string, board: string | null): stri
  * assignment validates against.
  */
 export async function listInstances(): Promise<InstanceRow[]> {
-  const { rows } = await pool.query(`SELECT ${INSTANCE_COLS} FROM instance ORDER BY name`);
+  // Member count computed server-side so the UI never has to load every person
+  // to count them (matters at multi-thousand-user scale).
+  const { rows } = await pool.query(
+    `SELECT i.id, i.key, i.name, i.city, i.department, i.board,
+            (SELECT COUNT(*)::int FROM person_instance pi WHERE pi.instance_key = i.key) AS "memberCount"
+     FROM instance i ORDER BY i.name`
+  );
   return rows;
 }
 

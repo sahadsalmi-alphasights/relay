@@ -1,5 +1,5 @@
 import { useState, type CSSProperties } from "react";
-import type { AdminUser, Instance } from "../api/types";
+import type { Instance } from "../api/types";
 
 const inputStyle: CSSProperties = {
   flex: 1,
@@ -21,17 +21,13 @@ const inputStyle: CSSProperties = {
  */
 export default function InstancesView({
   instances,
-  users,
   onCreate,
 }: {
   instances: Instance[];
-  users: AdminUser[];
   onCreate: (name: string) => Promise<void>;
 }) {
   const [newName, setNewName] = useState("");
   const [creating, setCreating] = useState(false);
-
-  const memberCount = (key: string) => users.filter((u) => (u.instanceKeys ?? []).includes(key)).length;
 
   const create = async () => {
     if (!newName.trim()) return;
@@ -72,7 +68,7 @@ export default function InstancesView({
             <tr key={i.id}>
               <td style={{ fontWeight: 600 }}>{i.name}</td>
               <td style={{ fontSize: 11, color: "var(--soft)", fontFamily: "var(--mono, monospace)" }}>{i.key}</td>
-              <td>{memberCount(i.key)}</td>
+              <td>{i.memberCount ?? 0}</td>
             </tr>
           ))}
         </tbody>

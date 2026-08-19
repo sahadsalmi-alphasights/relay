@@ -6,7 +6,7 @@ import { listTeams } from "../repositories/teams";
 import { upcomingQuarters } from "../rules/quarters";
 import { vacationsByEmail } from "../services/vacation";
 import { diagnoseDirectory, diagnoseHolidays, diagnoseTimeOff, hrConfigured } from "../services/bamboohr";
-import { dmPerson, slackDmConfigured } from "../services/slack";
+import { dmPerson, postToSlack, slackConfigured, slackDmConfigured } from "../services/slack";
 import {
   createBusyPeriod,
   createClosure,
@@ -243,24 +243,37 @@ const vacationRoutes: FastifyPluginAsync = async (app) => {
     async (request) => {
       const { email, name, quarter, deadline } = request.body ?? {};
       if (!email || typeof email !== "string") throw badRequest("email is required");
-      if (!slackDmConfigured()) return { ok: false, error: "Slack DMs aren't set up (no bot token)." };
 
       const first = (name ?? "there").split(" ")[0];
       const q = quarter || "the open quarter";
       const by = deadline ? ` before ${deadline}` : "";
-      const r = await dmPerson(
-        email,
-        "vacation_reminder",
-        `Reminder: log your ${q} time off`,
-        `Hi ${first}, a quick reminder to log your ${q} time off in BambooHR${by} so the team can plan coverage.`
-      );
-      await audit(request.actor!.id, "person", request.actor!.id, "vacation_reminder_sent", {
-        email,
-        quarter: q,
-        via: "slack",
-        ok: r.ok,
-      });
-      return r.ok ? { ok: true } : { ok: false, error: `Slack: ${r.error ?? "failed"}` };
+      const title = `Reminder: log your ${q} time off`;
+      const body = `Hi ${first}, a quick reminder to log your ${q} time off in BambooHR${by} so the team can plan coverage.`;
+
+      // Deliver via Slack using whatever's configured: a direct message when a
+      // bot token is set, otherwise fall back to the shared channel webhook so
+      // the nudge still goes out. (slackDmConfigured/slackConfigured are async.)
+      let ok = false;
+      let via = "none";
+      let err: string | undefined;
+      if (await slackDmConfigured()) {
+        const r = await dmPerson(email, "vacation_reminder", title, body);
+        ok = r.ok;
+        via = "slack-dm";
+        err = r.error;
+      }
+      if (!ok && (await slackConfigured())) {
+        const posted = await postToSlack(`⏰ ${title} — ${name ?? email}\n${body}`);
+        if (posted) {
+          ok = true;
+          via = "slack-channel";
+          err = undefined;
+        }
+      }
+      if (!ok && via === "none") err = "Slack isn't configured — set a bot token (DMs) or webhook (channel) in Integrations.";
+
+      await audit(request.actor!.id, "person", request.actor!.id, "vacation_reminder_sent", { email, quarter: q, via, ok });
+      return ok ? { ok: true, via } : { ok: false, error: err ? `Slack: ${err}` : "Slack send failed" };
     }
   );
 };

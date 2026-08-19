@@ -149,10 +149,12 @@ function Diagnostics() {
           : `✕ ${r.error}`;
       else if (key === "holidays") {
         const hs = (r.holidays as { name: string; start: string }[] | undefined) ?? [];
+        const scope = r.location ? ` for ${r.location}` : "";
+        const filtered = typeof r.total === "number" && r.total !== r.count ? ` (of ${r.total} company-wide)` : "";
         text = ok
           ? hs.length
-            ? `✓ ${r.count} holiday(s): ${hs.map((h) => `${h.name} (${h.start})`).join(", ")}`
-            : "✓ Reachable, but BambooHR returned no public holidays in the next 12 months"
+            ? `✓ ${r.count} holiday(s)${scope}${filtered}: ${hs.map((h) => `${h.name} (${h.start})`).join(", ")}`
+            : `✓ Reachable, but no public holidays${scope} in the next 12 months`
           : `✕ ${r.error}`;
       }
       else text = ok

@@ -158,17 +158,37 @@ export async function diagnoseTimeOff(
  */
 export async function diagnoseHolidays(
   start: string,
-  end: string
-): Promise<{ ok: boolean; error?: string; count?: number; holidays?: { name: string; start: string; end: string }[] }> {
+  end: string,
+  location?: string | null
+): Promise<{ ok: boolean; error?: string; count?: number; total?: number; location?: string | null; holidays?: { name: string; start: string; end: string }[] }> {
   const r = await getJsonDetailed<{ type?: string; name?: string; start?: string; end?: string }[]>(
     `/time_off/whos_out/?start=${start}&end=${end}`
   );
   if (!r.ok) return { ok: false, error: r.error };
   const rows = Array.isArray(r.data) ? r.data : [];
-  const holidays = rows
+  const all = rows
     .filter((h) => h.type === "holiday")
     .map((h) => ({ name: h.name ?? "Holiday", start: h.start ?? "", end: h.end ?? h.start ?? "" }));
-  return { ok: true, count: holidays.length, holidays: holidays.slice(0, 50) };
+  const holidays = filterHolidaysByLocation(all, location);
+  return { ok: true, count: holidays.length, total: all.length, location: location ?? null, holidays: holidays.slice(0, 50) };
+}
+
+/**
+ * BambooHR's who's-out holiday feed is company-wide: every office's closures
+ * come back together, with the office encoded in the NAME (e.g. "[DUB] …",
+ * "London …", "LON …"). There's no structured location field, so we scope to a
+ * single office by name-token match: keep a holiday when its name mentions the
+ * office (full city name or its 3-letter abbreviation, case-insensitive). With
+ * no location we return everything (legacy behaviour).
+ */
+export function filterHolidaysByLocation<T extends { name: string }>(holidays: T[], location?: string | null): T[] {
+  const loc = (location ?? "").trim().toLowerCase();
+  if (!loc) return holidays;
+  const tokens = [loc, loc.slice(0, 3)].filter(Boolean);
+  return holidays.filter((h) => {
+    const name = h.name.toLowerCase();
+    return tokens.some((t) => name.includes(t));
+  });
 }
 
 /**

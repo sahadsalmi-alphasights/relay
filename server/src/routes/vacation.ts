@@ -6,6 +6,8 @@ import { listTeams } from "../repositories/teams";
 import { upcomingQuarters } from "../rules/quarters";
 import { vacationsByEmail } from "../services/vacation";
 import { diagnoseDirectory, diagnoseHolidays, diagnoseTimeOff, hrConfigured } from "../services/bamboohr";
+import { activeInstanceKey } from "../auth/activeInstance";
+import { findInstanceByKey } from "../repositories/instances";
 import { dmPerson, postToSlack, slackConfigured, slackDmConfigured } from "../services/slack";
 import {
   createBusyPeriod,
@@ -106,8 +108,11 @@ const vacationRoutes: FastifyPluginAsync = async (app) => {
       if (check === "holidays") {
         // Holidays are sparse — look a full year ahead so the test actually
         // surfaces upcoming ones (e.g. Prophet's Birthday), not just this month.
+        // Scope to the active instance's office: BambooHR returns every office's
+        // closures together, so we keep only the ones for this location.
         const yearAhead = new Date(today.getTime() + 365 * 86400000).toISOString().slice(0, 10);
-        return diagnoseHolidays(today.toISOString().slice(0, 10), yearAhead);
+        const instance = await findInstanceByKey(activeInstanceKey(request));
+        return diagnoseHolidays(today.toISOString().slice(0, 10), yearAhead, instance?.city ?? null);
       }
       if (check === "matching") {
         const [byEmail, people] = await Promise.all([

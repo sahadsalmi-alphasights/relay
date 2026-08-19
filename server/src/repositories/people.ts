@@ -268,6 +268,46 @@ export async function createUser(email: string, name: string): Promise<PersonRow
   return (await findPersonById(rows[0].id))!;
 }
 
+/** email (lower-cased) -> { id, businessUnit } for every person — the join
+ *  the BambooHR import uses to tell existing users from new ones in one query. */
+export async function emailBusinessUnitMap(): Promise<Map<string, { id: string; businessUnit: string }>> {
+  const { rows } = await pool.query<{ id: string; email: string; businessUnit: string }>(
+    `SELECT id, lower(email) AS email, business_unit AS "businessUnit" FROM person`
+  );
+  const m = new Map<string, { id: string; businessUnit: string }>();
+  for (const r of rows) m.set(r.email, { id: r.id, businessUnit: r.businessUnit });
+  return m;
+}
+
+/** Bulk-insert new people with their home instance already set (the
+ *  person_home_instance trigger adds the membership). Chunked to stay well
+ *  under Postgres' parameter limit. Callers must exclude existing emails. */
+export async function bulkCreatePeopleWithBu(
+  rows: { email: string; name: string; businessUnit: string }[]
+): Promise<number> {
+  let created = 0;
+  for (let i = 0; i < rows.length; i += 500) {
+    const chunk = rows.slice(i, i + 500);
+    const values: string[] = [];
+    const params: unknown[] = [];
+    chunk.forEach((r, j) => {
+      const b = j * 3;
+      values.push(`($${b + 1}, $${b + 2}, $${b + 3})`);
+      params.push(r.email, r.name, r.businessUnit);
+    });
+    const res = await pool.query(`INSERT INTO person (email, name, business_unit) VALUES ${values.join(",")}`, params);
+    created += res.rowCount ?? 0;
+  }
+  return created;
+}
+
+/** Set business_unit for many people at once (the trigger adds each new home
+ *  membership). Used by the BambooHR import to re-home existing users. */
+export async function bulkSetBusinessUnit(ids: string[], businessUnit: string): Promise<void> {
+  if (!ids.length) return;
+  await pool.query(`UPDATE person SET business_unit = $1 WHERE id = ANY($2::uuid[])`, [businessUnit, ids]);
+}
+
 export interface AdminUserRow extends PersonRow {
   teamName: string | null;
   role: Role;

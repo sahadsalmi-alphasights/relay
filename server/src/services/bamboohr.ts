@@ -225,6 +225,38 @@ export async function fetchPlannedTimeOff(
     }));
 }
 
+/** A person from the BambooHR company directory, with the fields we derive an
+ *  instance (office) from. `board` isn't exposed by the directory feed, so it's
+ *  always null here — the (city, department) tuple is what BambooHR gives us. */
+export interface DirectoryPerson {
+  employeeId: string;
+  email: string; // lower-cased work email ("" if none)
+  name: string;
+  location: string | null; // office → instance city
+  department: string | null; // → instance department
+}
+
+/**
+ * The full BambooHR company directory as DirectoryPerson rows. Used by the
+ * instance-seed import to derive offices and assign people. Returns null on any
+ * failure (so the caller can tell "couldn't reach BambooHR" from "empty").
+ */
+export async function fetchDirectory(): Promise<DirectoryPerson[] | null> {
+  const raw = await getJson<{
+    employees?: { id?: string | number; workEmail?: string | null; displayName?: string | null; firstName?: string | null; lastName?: string | null; location?: string | null; department?: string | null }[];
+  }>("/employees/directory");
+  if (!raw?.employees) return null;
+  return raw.employees
+    .filter((e) => e.id != null)
+    .map((e) => ({
+      employeeId: String(e.id),
+      email: (e.workEmail ?? "").trim().toLowerCase(),
+      name: (e.displayName?.trim() || [e.firstName, e.lastName].filter(Boolean).join(" ").trim() || e.workEmail || "").trim(),
+      location: e.location?.trim() || null,
+      department: e.department?.trim() || null,
+    }));
+}
+
 /**
  * Map of BambooHR employeeId -> work email (lower-cased), from the company
  * directory. Time-off requests only carry employeeId, so this is how we join

@@ -56,6 +56,15 @@ export default function InstancesView({
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // BambooHR seed import (preview-then-apply).
+  type Group = { city: string; department: string; key: string | null; existing: boolean; people: number };
+  type Preview = { ok: boolean; error?: string; totalEmployees?: number; skippedNoEmail?: number; skippedNoTuple?: number; withTuple?: number; groups?: Group[]; newInstances?: number; existingInstances?: number; matchedUsers?: number; newUsers?: number };
+  type Applied = { ok: boolean; error?: string; instancesCreated?: number; instancesTotal?: number; usersCreated?: number; usersReassigned?: number; skippedNoEmail?: number; skippedNoTuple?: number };
+  const [importOpen, setImportOpen] = useState(false);
+  const [preview, setPreview] = useState<Preview | null>(null);
+  const [importBusy, setImportBusy] = useState<"preview" | "apply" | null>(null);
+  const [applied, setApplied] = useState<Applied | null>(null);
+
   // Members of the selected instance (paginated, searchable).
   const [members, setMembers] = useState<AdminUser[]>([]);
   const [memberTotal, setMemberTotal] = useState(0);
@@ -154,12 +163,88 @@ export default function InstancesView({
     finally { setCreating(false); }
   };
 
+  const runPreview = async () => {
+    setImportBusy("preview"); setError(null); setApplied(null);
+    try { setPreview(await api.get<Preview>("/instances/import/preview")); }
+    catch (err) { setError(err instanceof ApiError ? err.message : "Could not reach BambooHR"); }
+    finally { setImportBusy(null); }
+  };
+  const runApply = async () => {
+    setImportBusy("apply"); setError(null);
+    try {
+      const res = await api.post<Applied>("/instances/import/apply");
+      setApplied(res);
+      onChanged();
+      await loadMembers();
+    } catch (err) { setError(err instanceof ApiError ? err.message : "Import failed"); }
+    finally { setImportBusy(null); }
+  };
+
   const shown = instances.filter((i) => i.name.toLowerCase().includes(instFilter.toLowerCase()));
   const pageCount = Math.max(1, Math.ceil(memberTotal / PAGE));
 
   return (
     <>
       {error && <div className="err-line">{error}</div>}
+
+      {/* ---- BambooHR seed import ---- */}
+      <div className="card" style={{ padding: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <div style={{ fontSize: 13, fontWeight: 700 }}>Seed from BambooHR</div>
+            <div style={{ fontSize: 12, color: "var(--soft)" }}>
+              Creates instances and users from the BambooHR directory — the same (city · department) mapping Okta uses at login. Preview first; nothing is written until you apply.
+            </div>
+          </div>
+          <button className="btn-sm btn-ghost" disabled={importBusy !== null} onClick={() => { setImportOpen((o) => !o); if (!importOpen && !preview) runPreview(); }}>
+            {importOpen ? "Hide" : "Import from BambooHR"}
+          </button>
+        </div>
+
+        {importOpen && (
+          <div style={{ marginTop: 12, borderTop: "1px solid var(--line)", paddingTop: 12 }}>
+            {importBusy === "preview" && <div style={{ fontSize: 13, color: "var(--soft)" }}>Reading the BambooHR directory…</div>}
+            {preview && !preview.ok && <div className="err-line">{preview.error}</div>}
+            {preview && preview.ok && (
+              <>
+                <div style={{ display: "flex", gap: 18, flexWrap: "wrap", fontSize: 13, marginBottom: 10 }}>
+                  <span><b style={{ fontVariantNumeric: "tabular-nums" }}>{preview.totalEmployees}</b> in directory</span>
+                  <span><b style={{ color: "var(--green)" }}>{preview.newInstances}</b> new instance(s), {preview.existingInstances} existing</span>
+                  <span><b style={{ color: "var(--green)" }}>{preview.newUsers}</b> user(s) to create, {preview.matchedUsers} already here</span>
+                  {(preview.skippedNoTuple || preview.skippedNoEmail) ? (
+                    <span style={{ color: "var(--amber)" }}>skipped {preview.skippedNoTuple} without office, {preview.skippedNoEmail} without email</span>
+                  ) : null}
+                </div>
+                <div style={{ maxHeight: 240, overflow: "auto", border: "1px solid var(--line)", borderRadius: 8 }}>
+                  <table className="admin-table">
+                    <thead><tr><th>Office (city · department)</th><th>Status</th><th style={{ textAlign: "right" }}>People</th></tr></thead>
+                    <tbody>
+                      {preview.groups?.map((g) => (
+                        <tr key={g.city + g.department}>
+                          <td style={{ fontWeight: 600 }}>{g.city} · {g.department}</td>
+                          <td>{g.existing ? <span className="mini busy">existing</span> : <span className="mini free">new</span>}</td>
+                          <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{g.people}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 12 }}>
+                  <button className="btn-sm btn-pl" disabled={importBusy !== null} onClick={runApply}>
+                    {importBusy === "apply" ? "Applying…" : `Apply — create ${preview.newInstances} instance(s) & ${preview.newUsers} user(s)`}
+                  </button>
+                  <button className="btn-sm btn-ghost" disabled={importBusy !== null} onClick={runPreview}>Refresh preview</button>
+                </div>
+              </>
+            )}
+            {applied && applied.ok && (
+              <div style={{ marginTop: 12, fontSize: 13, color: "var(--green)" }}>
+                ✓ Imported — {applied.instancesCreated} instance(s) created ({applied.instancesTotal} total), {applied.usersCreated} user(s) created, {applied.usersReassigned} re-homed.
+              </div>
+            )}
+          </div>
+        )}
+      </div>
       <div style={{ display: "grid", gridTemplateColumns: "minmax(240px, 300px) 1fr", gap: 14, alignItems: "start" }} className="inst-grid">
         {/* ---- left rail: instance list ---- */}
         <aside className="card" style={{ padding: 0, overflow: "hidden" }}>

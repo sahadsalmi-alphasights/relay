@@ -30,6 +30,12 @@ export default function SlackIntegrationSettings({ onSaved }: { onSaved: () => v
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  // Diagnostics state — declared here with the other hooks (NOT after the
+  // `if (!s) return null` early return below), so the hook count is stable
+  // across renders. Placing these after the early return changed the number
+  // of hooks once `s` loaded, which crashed the whole app to a white screen.
+  const [diag, setDiag] = useState<Record<string, { ok: boolean; text: string }>>({});
+  const [diagBusy, setDiagBusy] = useState<string | null>(null);
 
   const load = () => api.get<SlackState>("/settings/notifications").then(setS);
   useEffect(() => { load(); }, []);
@@ -67,8 +73,6 @@ export default function SlackIntegrationSettings({ onSaved }: { onSaved: () => v
     { key: "bot", label: "Bot token (auth.test)", hint: "Does the token authenticate with Slack?" },
     { key: "signing", label: "Signing secret", hint: "Set, so inbound buttons verify?" },
   ] as const;
-  const [diag, setDiag] = useState<Record<string, { ok: boolean; text: string }>>({});
-  const [diagBusy, setDiagBusy] = useState<string | null>(null);
   const runDiag = async (key: string) => {
     setDiagBusy(key);
     try {

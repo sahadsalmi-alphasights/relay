@@ -300,6 +300,9 @@ export interface AdminRosterFilter {
   location?: string;
   department?: string;
   board?: string;
+  /** Exclude people who are already a member of this instance — powers the
+   *  "Add members" candidate search (everyone NOT yet in the instance). */
+  excludeInstanceKey?: string;
   /** Free-text match on name or email. */
   q?: string;
   limit: number;
@@ -330,6 +333,12 @@ export async function listPeopleAdminPage(
     conds.push(
       `EXISTS (SELECT 1 FROM person_instance pi JOIN instance i ON i.key = pi.instance_key
                WHERE pi.person_id = p.id AND ${instConds.join(" AND ")})`
+    );
+  }
+  if (f.excludeInstanceKey) {
+    params.push(f.excludeInstanceKey);
+    conds.push(
+      `NOT EXISTS (SELECT 1 FROM person_instance pi WHERE pi.person_id = p.id AND pi.instance_key = $${params.length})`
     );
   }
   if (f.q && f.q.trim()) {

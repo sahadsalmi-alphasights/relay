@@ -46,6 +46,20 @@ describe("GET /users/roster (scalable owner roster)", () => {
     expect(res.json().users[0].id).toBe(fx.delivererAlpha);
   });
 
+  it("excludeInstance returns everyone NOT in that instance (add-members candidate search)", async () => {
+    const cookie = await owner();
+    // The whole fixture is in 'non_consulting', so excluding it yields no one…
+    let res = await get(cookie, "/users/roster?excludeInstance=non_consulting");
+    expect(res.json().total).toBe(0);
+    // …put delivererAlpha into 'consulting', then exclude 'consulting' and they
+    // are still there (they're not in it uniquely — everyone else lacks it too).
+    await pool.query(`INSERT INTO person_instance (person_id, instance_key) VALUES ($1, 'consulting')`, [fx.delivererAlpha]);
+    res = await get(cookie, "/users/roster?excludeInstance=consulting");
+    const ids = res.json().users.map((u: { id: string }) => u.id);
+    expect(ids).not.toContain(fx.delivererAlpha);
+    expect(res.json().total).toBeGreaterThan(0);
+  });
+
   it("searches by name/email and paginates", async () => {
     const cookie = await owner();
     const s = await get(cookie, "/users/roster?q=Deliverer");

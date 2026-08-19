@@ -332,32 +332,6 @@ export default function UserManagementTab({ reloadTick }: { reloadTick: number }
       ))}
     </select>
   );
-  // A person can belong to several instances — a checklist, not a single pick.
-  // Toggling one PATCHes the full membership set.
-  const buChecklist = (u: AdminUser) => {
-    const current = new Set(u.instanceKeys ?? []);
-    const toggle = (key: string) => {
-      const next = new Set(current);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      run(u.id, () => api.patch(`/users/${u.id}/instances`, { instanceKeys: [...next] }));
-    };
-    return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-        {instances.map((i) => (
-          <label key={i.key} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, whiteSpace: "nowrap" }}>
-            <input
-              type="checkbox"
-              checked={current.has(i.key)}
-              disabled={busyId === u.id}
-              onChange={() => toggle(i.key)}
-            />
-            {i.name}
-          </label>
-        ))}
-      </div>
-    );
-  };
   const nameInput = (u: AdminUser) => (
     <input
       style={inputStyle}
@@ -529,7 +503,7 @@ export default function UserManagementTab({ reloadTick }: { reloadTick: number }
     return (
       <>
         {header}
-        <InstancesView instances={instances} onCreate={createInstanceByName} />
+        <InstancesView instances={instances} teams={teams} onCreate={createInstanceByName} onChanged={load} />
       </>
     );
   }
@@ -561,7 +535,6 @@ export default function UserManagementTab({ reloadTick }: { reloadTick: number }
               <th>Name</th>
               <th>Email</th>
               <th>Role</th>
-              <th>Instances</th>
               <th>Team</th>
               <th>Status</th>
               <th>Seniority</th>
@@ -576,7 +549,6 @@ export default function UserManagementTab({ reloadTick }: { reloadTick: number }
                 <td style={{ minWidth: 140 }}>{nameInput(u)}</td>
                 <td style={{ fontSize: 11, color: "var(--soft)" }}>{u.email}</td>
                 <td>{roleSelect(u)}</td>
-                <td>{buChecklist(u)}</td>
                 <td>{teamSelect(u)}</td>
                 <td>{statusSelect(u)}</td>
                 <td>{senioritySelect(u)}</td>
@@ -609,8 +581,6 @@ export default function UserManagementTab({ reloadTick }: { reloadTick: number }
           <div className="cov-row">
             <span className="cov-lbl">Role</span>
             {roleSelect(u)}
-            <span className="cov-lbl">Instances</span>
-            {buChecklist(u)}
           </div>
           <div className="cov-row">
             <span className="cov-lbl">Team</span>

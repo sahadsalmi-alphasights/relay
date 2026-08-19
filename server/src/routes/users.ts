@@ -40,17 +40,20 @@ const usersRoutes: FastifyPluginAsync = async (app) => {
   // Defaults to the caller's active instance so you never load everyone at
   // once; Location/Department/Board/search narrow it further.
   app.get<{
-    Querystring: { instance?: string; location?: string; department?: string; board?: string; q?: string; page?: string; limit?: string };
+    Querystring: { instance?: string; excludeInstance?: string; location?: string; department?: string; board?: string; q?: string; page?: string; limit?: string };
   }>("/roster", { preHandler: [app.requireOwner] }, async (request) => {
     const qy = request.query;
     const limit = Math.min(Math.max(parseInt(qy.limit ?? "50", 10) || 50, 1), 200);
     const page = Math.max(parseInt(qy.page ?? "1", 10) || 1, 1);
-    // If no explicit instance/location filter is given, scope to the active
-    // instance so the default view is one instance, not the whole company.
-    const anyFilter = qy.instance || qy.location || qy.department || qy.board;
+    // If no explicit filter is given, scope to the active instance so the
+    // default view is one instance, not the whole company. excludeInstance
+    // (the "add members" candidate search) is company-wide by design, so it
+    // counts as an explicit filter too.
+    const anyFilter = qy.instance || qy.excludeInstance || qy.location || qy.department || qy.board;
     const instanceKey = qy.instance || (anyFilter ? undefined : activeInstanceKey(request));
     const { rows, total } = await listPeopleAdminPage({
       instanceKey,
+      excludeInstanceKey: qy.excludeInstance,
       location: qy.location,
       department: qy.department,
       board: qy.board,

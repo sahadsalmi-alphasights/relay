@@ -8,12 +8,12 @@ import { fetchDirectory } from "./bamboohr";
 import { applyImport, previewImport } from "./instanceImport";
 
 const dir = (rows: Partial<DirectoryPerson>[]): DirectoryPerson[] =>
-  rows.map((r, i) => ({ employeeId: String(i + 1), email: "", name: "", location: null, department: null, ...r }));
+  rows.map((r, i) => ({ employeeId: String(i + 1), email: "", name: "", location: null, department: null, board: null, ...r }));
 
 const SAMPLE = dir([
   { email: "kai@x.test", name: "Kai", location: "Dubai", department: "DUB - Consulting" }, // existing person, existing instance
-  { email: "new1@x.test", name: "New One", location: "London", department: "LON - PE" }, // new user, new instance
-  { email: "new2@x.test", name: "New Two", location: "London", department: "LON - PE" }, // new user, same new instance
+  { email: "new1@x.test", name: "New One", location: "London", department: "LON - PE", board: "Board 3" }, // new user, board-specific instance
+  { email: "new2@x.test", name: "New Two", location: "London", department: "LON - PE", board: "Board 3" }, // new user, same board instance
   { email: "", name: "No Email", location: "London", department: "LON - PE" }, // skipped — no email
   { email: "notuple@x.test", name: "No Office", location: null, department: null }, // skipped — no tuple
 ]);
@@ -22,7 +22,7 @@ let actorId: string;
 beforeEach(async () => {
   await pool.query(`TRUNCATE TABLE person, audit_log RESTART IDENTITY CASCADE`);
   // Remove any London instance a prior run created so instance state is clean.
-  await pool.query(`DELETE FROM instance WHERE key = 'london_lon_pe'`);
+  await pool.query(`DELETE FROM instance WHERE key = 'london_lon_pe_board_3'`);
   // An existing Dubai Consulting user (home = 'non_consulting' after the swap)
   // that also serves as the audit actor.
   const { rows } = await pool.query<{ id: string }>(
@@ -46,6 +46,7 @@ describe("BambooHR instance/user import (same tuple derivation as Okta)", () => 
     expect(p.existingInstances).toBe(1);
     expect(p.matchedUsers).toBe(1);
     expect(p.newUsers).toBe(2);
+    expect(p.withBoard).toBe(2); // the two London people carry a board
     // Read-only: no rows added.
     const after = await pool.query(`SELECT count(*)::int n FROM person`);
     expect(after.rows[0].n).toBe(before.rows[0].n);
@@ -59,13 +60,13 @@ describe("BambooHR instance/user import (same tuple derivation as Okta)", () => 
     expect(r.usersCreated).toBe(2);
     expect(r.usersReassigned).toBe(0); // kai's derived key equals his current home
 
-    const inst = await pool.query(`SELECT key, city, department FROM instance WHERE key = 'london_lon_pe'`);
-    expect(inst.rows[0]).toMatchObject({ city: "London", department: "LON - PE" });
+    const inst = await pool.query(`SELECT key, city, department, board FROM instance WHERE key = 'london_lon_pe_board_3'`);
+    expect(inst.rows[0]).toMatchObject({ city: "London", department: "LON - PE", board: "Board 3" });
 
     // New users are members of the London instance via the home trigger.
     const members = await pool.query(
       `SELECT p.email FROM person p JOIN person_instance pi ON pi.person_id = p.id
-       WHERE pi.instance_key = 'london_lon_pe' ORDER BY p.email`
+       WHERE pi.instance_key = 'london_lon_pe_board_3' ORDER BY p.email`
     );
     expect(members.rows.map((x) => x.email)).toEqual(["new1@x.test", "new2@x.test"]);
   });

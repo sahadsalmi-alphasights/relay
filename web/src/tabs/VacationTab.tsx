@@ -143,7 +143,10 @@ function Diagnostics() {
       const ok = r.ok !== false && !r.error;
       let text: string;
       if (key === "connection") text = ok ? `✓ Reachable — ${r.employees} employees, ${r.withEmail} with a work email` : `✕ ${r.error}`;
-      else if (key === "timeoff") text = ok ? `✓ ${r.count} approved time-off request(s) in window` : `✕ ${r.error}`;
+      else if (key === "timeoff")
+        text = ok
+          ? `✓ ${r.count} request(s) — ${r.approved} approved, ${r.pending} pending${r.other ? `, ${r.other} other` : ""} · dates ${r.earliest ?? "—"} → ${r.latest ?? "—"}`
+          : `✕ ${r.error}`;
       else if (key === "holidays") {
         const hs = (r.holidays as { name: string; start: string }[] | undefined) ?? [];
         text = ok

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { api, ApiError } from "../api/client";
 import { useApp } from "../state/AppContext";
 
-interface Hint { hasValue: boolean; hint: string | null }
+interface Hint { hasValue: boolean; hint: string | null; source?: "in-app" | "env" | null }
 interface SlackState {
   slackConfigured: boolean;
   slackInteractiveConfigured: boolean;
@@ -110,7 +110,7 @@ export default function SlackIntegrationSettings({ onSaved }: { onSaved: () => v
         return (
           <div className="cs-row" key={f.key}>
             <div>
-              <div className="cs-rl">{f.label} {h?.hasValue && <span className="mini free">set ••••{h.hint}</span>}</div>
+              <div className="cs-rl">{f.label} {h?.hasValue && <span className="mini free">set ••••{h.hint}{h.source === "env" ? " · from env" : ""}</span>}</div>
               <div className="cs-rs">{f.hint} <em>Enables {f.enables}.</em></div>
             </div>
             <div className="cs-controls" style={{ flexDirection: "column", alignItems: "stretch", gap: 6, minWidth: 240 }}>

@@ -11,8 +11,8 @@ import {
   NOTIFICATION_SETTING_KEYS,
   type NotificationSettings,
 } from "../repositories/notificationSettings";
-import { diagnoseBotToken, dmSampleToPerson, formatSlackMessage, postToSlack, postSampleNotifications, SAMPLE_EVENT_KEYS, slackConfigured, slackDmConfigured, slackInteractiveConfigured, SLACK_SECRET } from "../services/slack";
-import { clearSecret, getHints, setSecret } from "../services/secretsVault";
+import { diagnoseBotToken, dmSampleToPerson, formatSlackMessage, postToSlack, postSampleNotifications, SAMPLE_EVENT_KEYS, slackConfigured, slackDmConfigured, slackInteractiveConfigured, getSlackHints, SLACK_SECRET } from "../services/slack";
+import { clearSecret, setSecret } from "../services/secretsVault";
 import { findPersonById } from "../repositories/people";
 import {
   clearHrApiKey,
@@ -96,11 +96,11 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
   // boolean saying whether a Slack webhook is configured in env (never the URL).
   app.get("/notifications", { preHandler: [app.requireAuth] }, async () => {
     const settings = await getNotificationSettings();
-    const [sc, si, sd, hints] = await Promise.all([
+    const [sc, si, sd, sh] = await Promise.all([
       slackConfigured(),
       slackInteractiveConfigured(),
       slackDmConfigured(),
-      getHints([SLACK_SECRET.webhookUrl, SLACK_SECRET.signingSecret, SLACK_SECRET.botToken]),
+      getSlackHints(),
     ]);
     return {
       ...settings,
@@ -108,11 +108,7 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
       slackInteractiveConfigured: si,
       slackDmConfigured: sd,
       slackSecretStore: secretCrypto().kind,
-      slackHints: {
-        webhookUrl: hints[SLACK_SECRET.webhookUrl],
-        signingSecret: hints[SLACK_SECRET.signingSecret],
-        botToken: hints[SLACK_SECRET.botToken],
-      },
+      slackHints: sh,
     };
   });
 
@@ -145,17 +141,13 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
         newValue: { changed },
       });
       publish({ type: "settings" });
-      const hints = await getHints([SLACK_SECRET.webhookUrl, SLACK_SECRET.signingSecret, SLACK_SECRET.botToken]);
+      const sh = await getSlackHints();
       return {
         slackConfigured: await slackConfigured(),
         slackInteractiveConfigured: await slackInteractiveConfigured(),
         slackDmConfigured: await slackDmConfigured(),
         slackSecretStore: secretCrypto().kind,
-        slackHints: {
-          webhookUrl: hints[SLACK_SECRET.webhookUrl],
-          signingSecret: hints[SLACK_SECRET.signingSecret],
-          botToken: hints[SLACK_SECRET.botToken],
-        },
+        slackHints: sh,
       };
     }
   );
@@ -184,18 +176,14 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
         newValue: updated,
       });
       publish({ type: "settings" });
-      const hints2 = await getHints([SLACK_SECRET.webhookUrl, SLACK_SECRET.signingSecret, SLACK_SECRET.botToken]);
+      const sh2 = await getSlackHints();
       return {
         ...updated,
         slackConfigured: await slackConfigured(),
         slackInteractiveConfigured: await slackInteractiveConfigured(),
         slackDmConfigured: await slackDmConfigured(),
         slackSecretStore: secretCrypto().kind,
-        slackHints: {
-          webhookUrl: hints2[SLACK_SECRET.webhookUrl],
-          signingSecret: hints2[SLACK_SECRET.signingSecret],
-          botToken: hints2[SLACK_SECRET.botToken],
-        },
+        slackHints: sh2,
       };
     }
   );

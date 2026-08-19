@@ -1,4 +1,4 @@
-import { fetchApprovedTimeOff, fetchDirectoryEmails, hrConfigured } from "./bamboohr";
+import { fetchPlannedTimeOff, fetchDirectoryEmails, hrConfigured } from "./bamboohr";
 
 export interface VacationBlock {
   start: string; // YYYY-MM-DD
@@ -17,7 +17,7 @@ export async function vacationsByEmail(from: string, to: string): Promise<Map<st
   const out = new Map<string, VacationBlock[]>();
   if (!(await hrConfigured())) return out;
 
-  const [requests, directory] = await Promise.all([fetchApprovedTimeOff(from, to), fetchDirectoryEmails()]);
+  const [requests, directory] = await Promise.all([fetchPlannedTimeOff(from, to), fetchDirectoryEmails()]);
   if (!requests || !directory) return out;
 
   for (const r of requests) {

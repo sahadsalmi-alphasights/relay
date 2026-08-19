@@ -2,6 +2,8 @@ import type { FastifyPluginAsync } from "fastify";
 import { badRequest, conflict } from "../errors";
 import { insertAuditLog } from "../repositories/auditLog";
 import { createInstance, findInstanceByKey, listInstances, slugifyInstanceKey } from "../repositories/instances";
+import { applyImport, previewImport } from "../services/instanceImport";
+import { publish } from "../ws/hub";
 
 /**
  * BU / instance registry — owner-only. GET is readable by any signed-in user
@@ -27,6 +29,20 @@ const instancesRoutes: FastifyPluginAsync = async (app) => {
       newValue: { key: instance.key, name: instance.name },
     });
     return instance;
+  });
+
+  // Seed instances + users from BambooHR, using the SAME (city, department)
+  // derivation Okta uses. Preview is read-only (nothing written) so an owner
+  // can review the plan; apply performs it, idempotently, and is audit-logged.
+  app.get("/import/preview", { preHandler: [app.requireOwner] }, async () => previewImport());
+
+  app.post("/import/apply", { preHandler: [app.requireOwner] }, async (request) => {
+    const result = await applyImport(request.actor!.id);
+    if (result.ok && ((result.usersCreated ?? 0) > 0 || (result.usersReassigned ?? 0) > 0)) {
+      publish({ type: "people" });
+      publish({ type: "capacity-ranking" });
+    }
+    return result;
   });
 };
 

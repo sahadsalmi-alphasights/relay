@@ -116,6 +116,28 @@ export async function diagnoseTimeOff(start: string, end: string): Promise<{ ok:
 }
 
 /**
+ * Owner diagnostics — reads the company **public holidays** BambooHR reports
+ * for [start, end]. BambooHR's who's-out feed returns both time-off and
+ * holiday entries; we keep the `type: "holiday"` ones. This is the "read the
+ * Dubai office public holidays from BambooHR" test — it proves the feed is
+ * reachable and shows exactly which holidays (name + date) would flow in.
+ */
+export async function diagnoseHolidays(
+  start: string,
+  end: string
+): Promise<{ ok: boolean; error?: string; count?: number; holidays?: { name: string; start: string; end: string }[] }> {
+  const r = await getJsonDetailed<{ type?: string; name?: string; start?: string; end?: string }[]>(
+    `/time_off/whos_out/?start=${start}&end=${end}`
+  );
+  if (!r.ok) return { ok: false, error: r.error };
+  const rows = Array.isArray(r.data) ? r.data : [];
+  const holidays = rows
+    .filter((h) => h.type === "holiday")
+    .map((h) => ({ name: h.name ?? "Holiday", start: h.start ?? "", end: h.end ?? h.start ?? "" }));
+  return { ok: true, count: holidays.length, holidays: holidays.slice(0, 50) };
+}
+
+/**
  * Approved time-off requests overlapping [start, end] (YYYY-MM-DD). Each row
  * carries the leave-type NAME (e.g. "Vacation", "Sick") which the sync filters
  * on. Returns null on any failure (so the caller can distinguish "couldn't

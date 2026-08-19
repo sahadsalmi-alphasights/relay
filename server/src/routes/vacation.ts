@@ -97,7 +97,12 @@ const vacationRoutes: FastifyPluginAsync = async (app) => {
       const check = request.query.check;
 
       if (check === "connection") return diagnoseDirectory();
-      if (check === "timeoff") return diagnoseTimeOff(from, to);
+      if (check === "timeoff") {
+        // Look ~13 months ahead so the breakdown covers the upcoming planning
+        // quarters (e.g. Q1 next year), not just the near-term window.
+        const wideTo = new Date(today.getTime() + 400 * 86400000).toISOString().slice(0, 10);
+        return diagnoseTimeOff(new Date(today.getTime() - 30 * 86400000).toISOString().slice(0, 10), wideTo);
+      }
       if (check === "holidays") {
         // Holidays are sparse — look a full year ahead so the test actually
         // surfaces upcoming ones (e.g. Prophet's Birthday), not just this month.

@@ -108,11 +108,45 @@ export async function diagnoseDirectory(): Promise<{ ok: boolean; error?: string
   return { ok: true, employees: employees.length, withEmail: employees.filter((e) => e.workEmail).length };
 }
 
-/** Owner diagnostics — approved time-off in [start, end]: reachable + how many rows. */
-export async function diagnoseTimeOff(start: string, end: string): Promise<{ ok: boolean; error?: string; count?: number }> {
-  const r = await getJsonDetailed<unknown[]>(`/time_off/requests/?start=${start}&end=${end}&status=approved`);
+/**
+ * Owner diagnostics — time-off in [start, end], broken down so we can see WHY
+ * the planner might be empty for a future quarter: total rows, how many are
+ * approved vs pending (the sync only counts approved), and the earliest/latest
+ * request dates actually returned (reveals a feed that truncates far-future
+ * dates). Fetched WITHOUT the status filter so pending requests are visible.
+ */
+export async function diagnoseTimeOff(
+  start: string,
+  end: string
+): Promise<{ ok: boolean; error?: string; count?: number; approved?: number; pending?: number; other?: number; earliest?: string | null; latest?: string | null }> {
+  const r = await getJsonDetailed<{ start?: string; status?: { status?: string } | string }[]>(
+    `/time_off/requests/?start=${start}&end=${end}`
+  );
   if (!r.ok) return { ok: false, error: r.error };
-  return { ok: true, count: Array.isArray(r.data) ? r.data.length : 0 };
+  const rows = Array.isArray(r.data) ? r.data : [];
+  const statusOf = (x: { status?: { status?: string } | string }) =>
+    (typeof x.status === "string" ? x.status : x.status?.status ?? "").toLowerCase();
+  let approved = 0,
+    pending = 0,
+    other = 0;
+  const dates: string[] = [];
+  for (const x of rows) {
+    const st = statusOf(x);
+    if (st === "approved") approved += 1;
+    else if (st === "requested") pending += 1;
+    else other += 1;
+    if (x.start) dates.push(x.start);
+  }
+  dates.sort();
+  return {
+    ok: true,
+    count: rows.length,
+    approved,
+    pending,
+    other,
+    earliest: dates[0] ?? null,
+    latest: dates[dates.length - 1] ?? null,
+  };
 }
 
 /**

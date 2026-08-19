@@ -130,6 +130,7 @@ function Diagnostics() {
   const CHECKS = [
     { key: "connection", label: "BambooHR connection", hint: "Can we reach the employee directory?" },
     { key: "timeoff", label: "Time-off fetch", hint: "Approved time-off in the sync window." },
+    { key: "holidays", label: "Public holidays", hint: "Read the office's public holidays from BambooHR (next 12 months)." },
     { key: "matching", label: "People matching", hint: "Do BambooHR emails match CapTracker people?" },
   ] as const;
   const [busyKey, setBusyKey] = useState<string | null>(null);
@@ -143,6 +144,14 @@ function Diagnostics() {
       let text: string;
       if (key === "connection") text = ok ? `✓ Reachable — ${r.employees} employees, ${r.withEmail} with a work email` : `✕ ${r.error}`;
       else if (key === "timeoff") text = ok ? `✓ ${r.count} approved time-off request(s) in window` : `✕ ${r.error}`;
+      else if (key === "holidays") {
+        const hs = (r.holidays as { name: string; start: string }[] | undefined) ?? [];
+        text = ok
+          ? hs.length
+            ? `✓ ${r.count} holiday(s): ${hs.map((h) => `${h.name} (${h.start})`).join(", ")}`
+            : "✓ Reachable, but BambooHR returned no public holidays in the next 12 months"
+          : `✕ ${r.error}`;
+      }
       else text = ok
         ? `✓ ${r.matched}/${r.peopleInBu} people matched · ${r.bambooWithTimeOff} BambooHR people have time-off` +
           ((r.unmatchedBambooEmails as string[])?.length ? ` · unmatched BambooHR emails: ${(r.unmatchedBambooEmails as string[]).join(", ")}` : "")

@@ -81,6 +81,18 @@ describe("vacation planner API (owner-only)", () => {
     expect((await post(cookie, "/vacation/closures", { name: "x", startDate: "nope", endDate: "2026-01-01" })).statusCode).toBe(400);
   });
 
+  it("GET /vacation/diagnostics?check=holidays is owner-only and reports cleanly when BambooHR is unset", async () => {
+    const member = await loginAs(app, fx.delivererAlpha);
+    expect((await get(member, "/vacation/diagnostics?check=holidays")).statusCode).toBe(403);
+
+    const cookie = await owner();
+    const res = await get(cookie, "/vacation/diagnostics?check=holidays");
+    expect(res.statusCode).toBe(200);
+    // No BAMBOOHR_* in the test env → clean {ok:false} with a reason, not a crash.
+    expect(res.json().ok).toBe(false);
+    expect(String(res.json().error)).toMatch(/bamboohr|not configured/i);
+  });
+
   it("POST /vacation/remind is owner-only and reports when Slack isn't configured", async () => {
     const member = await loginAs(app, fx.delivererAlpha);
     expect((await post(member, "/vacation/remind", { email: "a@b.co" })).statusCode).toBe(403);

@@ -5,7 +5,7 @@ import { listPeopleForVacation, setSeniority } from "../repositories/people";
 import { listTeams } from "../repositories/teams";
 import { upcomingQuarters } from "../rules/quarters";
 import { vacationsByEmail } from "../services/vacation";
-import { diagnoseDirectory, diagnoseTimeOff, hrConfigured } from "../services/bamboohr";
+import { diagnoseDirectory, diagnoseHolidays, diagnoseTimeOff, hrConfigured } from "../services/bamboohr";
 import { dmPerson, slackDmConfigured } from "../services/slack";
 import {
   createBusyPeriod,
@@ -98,6 +98,12 @@ const vacationRoutes: FastifyPluginAsync = async (app) => {
 
       if (check === "connection") return diagnoseDirectory();
       if (check === "timeoff") return diagnoseTimeOff(from, to);
+      if (check === "holidays") {
+        // Holidays are sparse — look a full year ahead so the test actually
+        // surfaces upcoming ones (e.g. Prophet's Birthday), not just this month.
+        const yearAhead = new Date(today.getTime() + 365 * 86400000).toISOString().slice(0, 10);
+        return diagnoseHolidays(today.toISOString().slice(0, 10), yearAhead);
+      }
       if (check === "matching") {
         const [byEmail, people] = await Promise.all([
           vacationsByEmail(from, to),

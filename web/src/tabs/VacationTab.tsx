@@ -236,7 +236,7 @@ function MyVacation({ data, me }: { data: VacationData; me: Member | undefined }
         {mine.map((v, i) => (
           <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: "1px solid var(--line)" }}>
             <span style={swatch(VAC)} />
-            <span style={{ fontWeight: 600 }}>{fmtLong(d(v.start))} – {fmtLong(d(v.end))}</span>
+            <span style={{ fontWeight: 600, fontSize: 13.5 }}>{fmtLong(d(v.start))} – {fmtLong(d(v.end))}</span>
             <span style={{ marginLeft: "auto", color: "var(--soft)", fontSize: 12 }}>{d(v.end) < today ? "Taken" : "Upcoming"} · {v.type}</span>
           </div>
         ))}
@@ -269,13 +269,13 @@ function MyVacation({ data, me }: { data: VacationData; me: Member | undefined }
         <h2 style={{ fontSize: 14, margin: "0 0 12px" }}>Company holidays</h2>
         {data.closures.map((c) => (
           <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0" }}>
-            <span style={swatch(CLOSE)} /><span style={{ fontWeight: 600 }}>{fmtLong(d(c.startDate))}{c.endDate !== c.startDate ? ` – ${fmtLong(d(c.endDate))}` : ""} — {c.name}</span>
+            <span style={swatch(CLOSE)} /><span style={{ fontWeight: 600, fontSize: 13.5 }}>{fmtLong(d(c.startDate))}{c.endDate !== c.startDate ? ` – ${fmtLong(d(c.endDate))}` : ""} — {c.name}</span>
             <span style={{ marginLeft: "auto", color: "var(--soft)", fontSize: 12 }}>Closure · everyone off</span>
           </div>
         ))}
         {data.publicHolidays.map((h) => (
           <div key={h.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0" }}>
-            <span style={swatch(PUB)} /><span style={{ fontWeight: 600 }}>{fmtLong(d(h.holidayDate))} — {h.name}</span>
+            <span style={swatch(PUB)} /><span style={{ fontWeight: 600, fontSize: 13.5 }}>{fmtLong(d(h.holidayDate))} — {h.name}</span>
             <span style={{ marginLeft: "auto", color: "var(--soft)", fontSize: 12 }}>Public holiday · coverage: {h.reqTotal} needed</span>
           </div>
         ))}
@@ -290,7 +290,6 @@ function TeamView({ data, teamId, setTeamId, meId }: { data: VacationData; teamI
   const WEEKS = 5;
   const [anchor, setAnchor] = useState(() => startOfWeek(new Date()));
   const [detail, setDetail] = useState<{ start: Date; end: Date } | null>(null);
-  const [showAlt, setShowAlt] = useState(false);
   const periods = useMemo(() => halfPeriods(anchor, WEEKS), [anchor]);
   const open = openQuarter(data);
   // "Hasn't planned" is only meaningful once BambooHR is connected — otherwise
@@ -305,6 +304,23 @@ function TeamView({ data, teamId, setTeamId, meId }: { data: VacationData; teamI
   };
   const badge = (n: number) => (n >= 4 ? "var(--red)" : n === 3 ? "#ec835a" : n === 2 ? "#fab219" : "var(--soft)");
 
+  // Slack reminder to log vacation — replaces the old mailto nudge.
+  const [reminded, setReminded] = useState<Record<string, string>>({});
+  const sendReminder = async (m: Member) => {
+    setReminded((p) => ({ ...p, [m.id]: "Sending…" }));
+    try {
+      const r = await api.post<{ ok: boolean; error?: string }>("/vacation/remind", {
+        email: m.email,
+        name: m.name,
+        quarter: open?.label,
+        deadline: open ? fmtLong(d(open.deadline)) : undefined,
+      });
+      setReminded((p) => ({ ...p, [m.id]: r.ok ? "Reminded on Slack ✓" : r.error || "Couldn't send" }));
+    } catch (e) {
+      setReminded((p) => ({ ...p, [m.id]: e instanceof ApiError ? e.message : "Couldn't send" }));
+    }
+  };
+
   return (
     <>
       <div style={card}>
@@ -318,9 +334,6 @@ function TeamView({ data, teamId, setTeamId, meId }: { data: VacationData; teamI
             <span style={{ fontWeight: 600, fontSize: 13, minWidth: 170, textAlign: "center" }}>{fmt(periods[0].start)} – {fmt(periods[periods.length - 1].end)}</span>
             <button className="btn-sm btn-ghost" onClick={() => setAnchor(addDays(anchor, 7 * WEEKS))}>›</button>
           </div>
-          <label style={{ fontSize: 12.5, color: "var(--soft)", display: "flex", alignItems: "center", gap: 6 }}>
-            <input type="checkbox" checked={showAlt} onChange={(e) => setShowAlt(e.target.checked)} /> Table view
-          </label>
         </div>
         <div style={{ fontSize: 12, color: "var(--soft)", marginBottom: 10 }}>Time off is tracked in half-week blocks (Mon–Wed / Thu–Sun).</div>
 
@@ -333,8 +346,7 @@ function TeamView({ data, teamId, setTeamId, meId }: { data: VacationData; teamI
           <span style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ ...swatch("#ccc"), background: NOT_SUB_BG }} /> Hasn't planned</span>
         </div>
 
-        {!showAlt && (
-          <div style={{ overflowX: "auto" }}>
+        <div style={{ overflowX: "auto" }}>
             <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 900 }}>
               <thead>
                 <tr>
@@ -377,21 +389,6 @@ function TeamView({ data, teamId, setTeamId, meId }: { data: VacationData; teamI
               </tbody>
             </table>
           </div>
-        )}
-
-        {showAlt && (
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-            <thead><tr>{["Period", "Out", "Who", "Notes"].map((h) => <th key={h} style={{ textAlign: "left", padding: "6px 8px", borderBottom: "1px solid var(--line)", color: "var(--soft)" }}>{h}</th>)}</tr></thead>
-            <tbody>
-              {periods.map((p, i) => {
-                const out = whoOut(data, p.start, p.end);
-                const h = holidayNote(data, p.start, p.end); const b = isBusy(data, p.start, p.end);
-                const notes = [h ? `${h.type === "closure" ? "Closure" : "Public holiday"}: ${h.name}` : null, b ? "High-stakes" : null].filter(Boolean).join(" · ");
-                return <tr key={i}><td style={{ padding: "6px 8px", borderBottom: "1px solid var(--line)" }}>{fmtLong(p.start)} – {fmtLong(p.end)} ({p.tag})</td><td style={{ padding: "6px 8px", borderBottom: "1px solid var(--line)" }}>{out.length}</td><td style={{ padding: "6px 8px", borderBottom: "1px solid var(--line)" }}>{out.join(", ") || "—"}</td><td style={{ padding: "6px 8px", borderBottom: "1px solid var(--line)" }}>{notes || "—"}</td></tr>;
-              })}
-            </tbody>
-          </table>
-        )}
 
         {detail && (
           <div style={{ marginTop: 12, border: "1px solid var(--line)", borderRadius: 10, padding: "12px 14px", background: "var(--surface2, var(--surface))", fontSize: 13 }}>
@@ -417,7 +414,11 @@ function TeamView({ data, teamId, setTeamId, meId }: { data: VacationData; teamI
                 <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", fontSize: 13, borderBottom: "1px solid var(--line)" }}>
                   <span style={{ fontWeight: 600, flex: 1 }}>{m.name}</span>
                   <span className="mini off">Nothing logged</span>
-                  <a className="btn-sm btn-ghost" href={`mailto:${m.email}?subject=${encodeURIComponent(`Reminder: log your ${open.label} vacation`)}&body=${encodeURIComponent(`Hi ${m.name.split(" ")[0]}, a reminder to log your ${open.label} time off in BambooHR before ${fmtLong(d(open.deadline))}.`)}`}>Send reminder</a>
+                  {reminded[m.id] ? (
+                    <span style={{ fontSize: 12, color: "var(--soft)" }}>{reminded[m.id]}</span>
+                  ) : (
+                    <button className="btn-sm btn-ghost" onClick={() => sendReminder(m)}>Send reminder</button>
+                  )}
                 </div>
               ))}
               {data.members.filter(notSubmitted).length === 0 && <div style={{ fontSize: 13, color: "var(--soft)" }}>Everyone has logged something for {open.label}. 🎉</div>}

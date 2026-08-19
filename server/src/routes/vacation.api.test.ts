@@ -80,4 +80,17 @@ describe("vacation planner API (owner-only)", () => {
     // bad date rejected
     expect((await post(cookie, "/vacation/closures", { name: "x", startDate: "nope", endDate: "2026-01-01" })).statusCode).toBe(400);
   });
+
+  it("POST /vacation/remind is owner-only and reports when Slack isn't configured", async () => {
+    const member = await loginAs(app, fx.delivererAlpha);
+    expect((await post(member, "/vacation/remind", { email: "a@b.co" })).statusCode).toBe(403);
+
+    const cookie = await owner();
+    expect((await post(cookie, "/vacation/remind", {})).statusCode).toBe(400); // email required
+    // No SLACK_BOT_TOKEN in the test env → clean {ok:false} with a reason, not a crash.
+    const res = await post(cookie, "/vacation/remind", { email: "someone@test.example", name: "Sam", quarter: "Q2 2027" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().ok).toBe(false);
+    expect(res.json().error).toMatch(/slack/i);
+  });
 });

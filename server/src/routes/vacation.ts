@@ -6,6 +6,7 @@ import { listTeams } from "../repositories/teams";
 import { upcomingQuarters } from "../rules/quarters";
 import { vacationsByEmail } from "../services/vacation";
 import { diagnoseDirectory, diagnoseTimeOff, hrConfigured } from "../services/bamboohr";
+import { dmPerson, slackDmConfigured } from "../services/slack";
 import {
   createBusyPeriod,
   createClosure,
@@ -223,6 +224,37 @@ const vacationRoutes: FastifyPluginAsync = async (app) => {
       await setSeniority(request.params.id, s);
       await audit(request.actor!.id, "person", request.params.id, "seniority_change", { seniority: s });
       return { ok: true };
+    }
+  );
+
+  // ---- Slack reminder to log vacation ---------------------------------------
+  // The Team-view "hasn't planned yet" nudge — DMs the person on Slack instead
+  // of opening a mailto. Best-effort; returns a clear reason if Slack isn't
+  // wired or the DM fails.
+  app.post<{ Body: { email?: string; name?: string; quarter?: string; deadline?: string } }>(
+    "/remind",
+    { preHandler: [app.requireOwner] },
+    async (request) => {
+      const { email, name, quarter, deadline } = request.body ?? {};
+      if (!email || typeof email !== "string") throw badRequest("email is required");
+      if (!slackDmConfigured()) return { ok: false, error: "Slack DMs aren't set up (no bot token)." };
+
+      const first = (name ?? "there").split(" ")[0];
+      const q = quarter || "the open quarter";
+      const by = deadline ? ` before ${deadline}` : "";
+      const r = await dmPerson(
+        email,
+        "vacation_reminder",
+        `Reminder: log your ${q} time off`,
+        `Hi ${first}, a quick reminder to log your ${q} time off in BambooHR${by} so the team can plan coverage.`
+      );
+      await audit(request.actor!.id, "person", request.actor!.id, "vacation_reminder_sent", {
+        email,
+        quarter: q,
+        via: "slack",
+        ok: r.ok,
+      });
+      return r.ok ? { ok: true } : { ok: false, error: `Slack: ${r.error ?? "failed"}` };
     }
   );
 };

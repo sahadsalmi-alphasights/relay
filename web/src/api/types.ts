@@ -54,6 +54,7 @@ export interface Instance {
   city?: string | null;
   department?: string | null;
   board?: string | null;
+  memberCount?: number;
 }
 
 /** User management portal — role tiers. owner > manager > member. */

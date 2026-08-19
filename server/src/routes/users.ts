@@ -9,6 +9,7 @@ import {
   findPersonById,
   LeadsProjectsError,
   listPeopleAdmin,
+  listPeopleAdminPage,
   roleOf,
   setDeactivated,
   setRole,
@@ -17,6 +18,7 @@ import {
 } from "../repositories/people";
 import { publish } from "../ws/hub";
 import { listInstanceKeysForPerson, listInstances, setPersonInstances } from "../repositories/instances";
+import { activeInstanceKey } from "../auth/activeInstance";
 import type { PersonStatus } from "../rules/types";
 import { getPermissionMatrix, PERMISSION_KEYS, type PermissionKey } from "../rules/permissionMatrix";
 import { hydratePermissionMatrix, savePermission } from "../repositories/rolePermissions";
@@ -34,6 +36,31 @@ function isAllowlistedOwner(email: string): boolean {
  * attributable, same as the rest of the app.
  */
 const usersRoutes: FastifyPluginAsync = async (app) => {
+  // Paginated + filtered roster — the scalable list for thousands of users.
+  // Defaults to the caller's active instance so you never load everyone at
+  // once; Location/Department/Board/search narrow it further.
+  app.get<{
+    Querystring: { instance?: string; location?: string; department?: string; board?: string; q?: string; page?: string; limit?: string };
+  }>("/roster", { preHandler: [app.requireOwner] }, async (request) => {
+    const qy = request.query;
+    const limit = Math.min(Math.max(parseInt(qy.limit ?? "50", 10) || 50, 1), 200);
+    const page = Math.max(parseInt(qy.page ?? "1", 10) || 1, 1);
+    // If no explicit instance/location filter is given, scope to the active
+    // instance so the default view is one instance, not the whole company.
+    const anyFilter = qy.instance || qy.location || qy.department || qy.board;
+    const instanceKey = qy.instance || (anyFilter ? undefined : activeInstanceKey(request));
+    const { rows, total } = await listPeopleAdminPage({
+      instanceKey,
+      location: qy.location,
+      department: qy.department,
+      board: qy.board,
+      q: qy.q,
+      limit,
+      offset: (page - 1) * limit,
+    });
+    return { users: rows, total, page, limit };
+  });
+
   app.get("/", { preHandler: [app.requireOwner] }, async () => {
     return listPeopleAdmin();
   });

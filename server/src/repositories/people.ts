@@ -294,6 +294,75 @@ export async function listPeopleAdmin(): Promise<AdminUserRow[]> {
   return rows.map((r) => ({ ...r, role: roleOf(r) }));
 }
 
+export interface AdminRosterFilter {
+  /** Restrict to members of instances matching any of these (all optional). */
+  instanceKey?: string;
+  location?: string;
+  department?: string;
+  board?: string;
+  /** Free-text match on name or email. */
+  q?: string;
+  limit: number;
+  offset: number;
+}
+
+/**
+ * Paginated + filtered owner roster — the scalable replacement for
+ * listPeopleAdmin() once there are thousands of users across many instances.
+ * Scopes to people who are MEMBERS of an instance matching the given
+ * instance/location/department/board (via person_instance), optionally
+ * name/email searched. Returns the page plus the total match count.
+ */
+export async function listPeopleAdminPage(
+  f: AdminRosterFilter
+): Promise<{ rows: AdminUserRow[]; total: number }> {
+  const params: unknown[] = [];
+  const conds: string[] = [];
+
+  // Instance membership scope — a subquery over the join so location/dept/board
+  // filter through the instance the person belongs to.
+  const instConds: string[] = [];
+  if (f.instanceKey) { params.push(f.instanceKey); instConds.push(`pi.instance_key = $${params.length}`); }
+  if (f.location) { params.push(f.location); instConds.push(`i.city = $${params.length}`); }
+  if (f.department) { params.push(f.department); instConds.push(`i.department = $${params.length}`); }
+  if (f.board) { params.push(f.board); instConds.push(`i.board = $${params.length}`); }
+  if (instConds.length) {
+    conds.push(
+      `EXISTS (SELECT 1 FROM person_instance pi JOIN instance i ON i.key = pi.instance_key
+               WHERE pi.person_id = p.id AND ${instConds.join(" AND ")})`
+    );
+  }
+  if (f.q && f.q.trim()) {
+    params.push(`%${f.q.trim()}%`);
+    conds.push(`(p.name ILIKE $${params.length} OR p.email ILIKE $${params.length})`);
+  }
+  const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
+
+  const totalRes = await pool.query(`SELECT COUNT(*)::int AS n FROM person p ${where}`, params);
+  const total = totalRes.rows[0].n as number;
+
+  params.push(f.limit);
+  const limitIdx = params.length;
+  params.push(f.offset);
+  const offsetIdx = params.length;
+  const { rows } = await pool.query(
+    `SELECT p.id, p.email, p.name, p.team_id AS "teamId", t.name AS "teamName",
+            p.is_manager AS "isManager", p.is_owner AS "isOwner",
+            p.practice_area AS "practiceArea", p.status,
+            p.evening_coverage AS "eveningCoverage", p.is_ghost AS "isGhost",
+            p.last_login_at AS "lastLoginAt", p.deactivated_at AS "deactivatedAt",
+            p.business_unit AS "businessUnit", p.seniority,
+            COALESCE((SELECT array_agg(pi.instance_key ORDER BY pi.instance_key)
+                      FROM person_instance pi WHERE pi.person_id = p.id), '{}') AS "instanceKeys"
+     FROM person p LEFT JOIN team t ON t.id = p.team_id
+     ${where}
+     ORDER BY p.is_owner DESC, p.is_manager DESC, p.name
+     LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
+    params
+  );
+  return { rows: rows.map((r) => ({ ...r, role: roleOf(r) })), total };
+}
+
 export interface VacationPerson {
   id: string;
   name: string;

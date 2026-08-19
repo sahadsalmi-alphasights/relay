@@ -43,14 +43,25 @@ const inputStyle: CSSProperties = {
 export default function UserManagementTab({ reloadTick }: { reloadTick: number }) {
   const { actor } = useApp();
   const { isDesktop } = useViewport();
+  // Full roster (lazy) — only the Teams/Groups tabs and the delete-reassign
+  // picker need every person, so it's fetched on demand, never on mount.
   const [users, setUsers] = useState<AdminUser[] | null>(null);
   const [teams, setTeams] = useState<Team[]>([]);
   const [instances, setInstances] = useState<Instance[]>([]);
   const [matrix, setMatrix] = useState<PermissionMatrix | null>(null);
+  const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [view, setView] = useState<"users" | "groups" | "teams" | "instances">("users");
   const [search, setSearch] = useState("");
+  // Paginated, instance-scoped roster for the Users tab (scales to thousands).
+  const LIMIT = 50;
+  const [roster, setRoster] = useState<AdminUser[]>([]);
+  const [rosterTotal, setRosterTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [fLoc, setFLoc] = useState("");
+  const [fDept, setFDept] = useState("");
+  const [fBoard, setFBoard] = useState("");
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState<{ email: string; name: string; role: Role; teamId: string }>({
     email: "",
@@ -59,35 +70,76 @@ export default function UserManagementTab({ reloadTick }: { reloadTick: number }
     teamId: "",
   });
 
+  // Light load — teams, permission matrix, instances (with server-side member
+  // counts). Deliberately NOT the full user list.
   const load = async () => {
     setError(null);
     try {
-      const [u, t, p, inst] = await Promise.all([
-        api.get<AdminUser[]>("/users"),
+      const [t, p, inst] = await Promise.all([
         api.get<Team[]>("/teams"),
         api.get<{ matrix: PermissionMatrix }>("/users/permissions"),
         api.get<Instance[]>("/instances"),
       ]);
-      setUsers(u);
       setTeams(t);
       setMatrix(p.matrix);
       setInstances(inst);
+      setReady(true);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not load user management");
+    }
+  };
+
+  // The paginated, filtered, instance-scoped roster for the Users tab. With no
+  // location filter the server scopes to the caller's active instance.
+  const loadRoster = async () => {
+    const p = new URLSearchParams({ page: String(page), limit: String(LIMIT) });
+    if (fLoc) p.set("location", fLoc);
+    if (fDept) p.set("department", fDept);
+    if (fBoard) p.set("board", fBoard);
+    if (search.trim()) p.set("q", search.trim());
+    try {
+      const res = await api.get<{ users: AdminUser[]; total: number }>(`/users/roster?${p.toString()}`);
+      setRoster(res.users);
+      setRosterTotal(res.total);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not load users");
     }
   };
 
+  // Full roster, on demand (Teams/Groups tabs, reassign picker).
+  const ensureUsers = async () => {
+    if (users) return;
+    try {
+      setUsers(await api.get<AdminUser[]>("/users"));
+    } catch {
+      /* surfaced elsewhere */
+    }
+  };
+
+  // Reload whatever the current view shows after a change.
+  const refresh = async () => {
+    await load();
+    if (view === "users") await loadRoster();
+    if (users) setUsers(await api.get<AdminUser[]>("/users"));
+  };
+
   useEffect(() => {
-    load();
+    void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reloadTick]);
+
+  useEffect(() => {
+    if (view === "users") void loadRoster();
+    if (view === "groups" || view === "teams") void ensureUsers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, fLoc, fDept, fBoard, search, page, reloadTick]);
 
   const run = async (id: string, fn: () => Promise<unknown>) => {
     setBusyId(id);
     setError(null);
     try {
       await fn();
-      await load();
+      await refresh();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "That change could not be saved");
     } finally {
@@ -156,6 +208,7 @@ export default function UserManagementTab({ reloadTick }: { reloadTick: number }
     } catch (err) {
       if (err instanceof ApiError && err.status === 409 && err.message.includes("take them over")) {
         setError(err.message);
+        void ensureUsers(); // need the full list to pick a new PL
         setReassign({ user: u, to: "" });
       } else {
         setError(err instanceof ApiError ? err.message : "That change could not be saved");
@@ -198,25 +251,23 @@ export default function UserManagementTab({ reloadTick }: { reloadTick: number }
     }
   };
 
-  const filtered = useMemo(() => {
-    if (!users) return [];
-    const q = search.trim().toLowerCase();
-    if (!q) return users;
-    return users.filter(
-      (u) => u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) || u.role.includes(q)
-    );
-  }, [users, search]);
+  // The Users tab renders the server-paginated roster directly (already
+  // filtered + searched server-side).
+  const filtered = roster;
+  const pageCount = Math.max(1, Math.ceil(rosterTotal / LIMIT));
+  // Distinct filter options derived from the instance registry.
+  const locations = useMemo(() => [...new Set(instances.map((i) => i.city).filter(Boolean))] as string[], [instances]);
+  const departments = useMemo(
+    () => [...new Set(instances.filter((i) => !fLoc || i.city === fLoc).map((i) => i.department).filter(Boolean))] as string[],
+    [instances, fLoc]
+  );
+  const boards = useMemo(
+    () => [...new Set(instances.filter((i) => (!fLoc || i.city === fLoc) && (!fDept || i.department === fDept)).map((i) => i.board).filter(Boolean))] as string[],
+    [instances, fLoc, fDept]
+  );
+  const resetPage = () => setPage(1);
 
-  const counts = useMemo(() => {
-    const c = { owner: 0, manager: 0, member: 0, deactivated: 0 };
-    (users ?? []).forEach((u) => {
-      c[u.role] += 1;
-      if (u.deactivatedAt) c.deactivated += 1;
-    });
-    return c;
-  }, [users]);
-
-  if (error && !users) {
+  if (error && !ready) {
     return (
       <>
         <div className="section-lbl">User management</div>
@@ -224,7 +275,16 @@ export default function UserManagementTab({ reloadTick }: { reloadTick: number }
       </>
     );
   }
-  if (!users) return <div className="empty">Loading…</div>;
+  if (!ready) return <div className="empty">Loading…</div>;
+
+  const pager =
+    pageCount > 1 ? (
+      <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "center", marginTop: 12 }}>
+        <button className="btn-sm btn-ghost" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>‹ Prev</button>
+        <span style={{ fontSize: 12, color: "var(--soft)" }}>Page {page} of {pageCount} · {rosterTotal} users</span>
+        <button className="btn-sm btn-ghost" disabled={page >= pageCount} onClick={() => setPage((p) => Math.min(pageCount, p + 1))}>Next ›</button>
+      </div>
+    ) : null;
 
   const roleSelect = (u: AdminUser) => (
     <select className="stage-select" value={u.role} disabled={busyId === u.id} onChange={(e) => changeRole(u, e.target.value as Role)}>
@@ -344,12 +404,12 @@ export default function UserManagementTab({ reloadTick }: { reloadTick: number }
   const header = (
     <>
       <div className="section-lbl">
-        User management <span className="count">{users.length}</span>
+        User management {view === "users" && <span className="count">{rosterTotal}</span>}
       </div>
       <div className="scope-note">
-        {counts.owner} owner{counts.owner !== 1 ? "s" : ""} · {counts.manager} manager
-        {counts.manager !== 1 ? "s" : ""} · {counts.member} member{counts.member !== 1 ? "s" : ""}
-        {counts.deactivated > 0 ? ` · ${counts.deactivated} deactivated` : ""}
+        {view === "users"
+          ? "Scoped to your active instance — filter by location, department or board, or search."
+          : "Owner portal."}
       </div>
       <div className="subtabs">
         <button className={"subtab" + (view === "users" ? " on" : "")} onClick={() => setView("users")}>
@@ -366,8 +426,24 @@ export default function UserManagementTab({ reloadTick }: { reloadTick: number }
         </button>
       </div>
       {view === "users" && (
-        <div className="audit-filters">
-          <input placeholder="Search name, email, or role" value={search} onChange={(e) => setSearch(e.target.value)} style={{ flex: 1, minWidth: 200 }} />
+        <div className="audit-filters" style={{ flexWrap: "wrap" }}>
+          <select className="stage-select" value={fLoc} onChange={(e) => { setFLoc(e.target.value); setFDept(""); setFBoard(""); resetPage(); }}>
+            <option value="">Active instance</option>
+            {locations.map((l) => <option key={l} value={l}>{l}</option>)}
+          </select>
+          {fLoc && (
+            <select className="stage-select" value={fDept} onChange={(e) => { setFDept(e.target.value); setFBoard(""); resetPage(); }}>
+              <option value="">All departments</option>
+              {departments.map((dep) => <option key={dep} value={dep}>{dep}</option>)}
+            </select>
+          )}
+          {fLoc && boards.length > 0 && (
+            <select className="stage-select" value={fBoard} onChange={(e) => { setFBoard(e.target.value); resetPage(); }}>
+              <option value="">All boards</option>
+              {boards.map((b) => <option key={b} value={b}>{b}</option>)}
+            </select>
+          )}
+          <input placeholder="Search name or email" value={search} onChange={(e) => { setSearch(e.target.value); resetPage(); }} style={{ flex: 1, minWidth: 180 }} />
           <button className="btn-sm btn-pl" onClick={() => setAdding((a) => !a)}>
             {adding ? "Cancel" : "＋ Add user"}
           </button>
@@ -409,7 +485,7 @@ export default function UserManagementTab({ reloadTick }: { reloadTick: number }
             onChange={(e) => setReassign({ ...reassign, to: e.target.value })}
           >
             <option value="">— Pick the new PL —</option>
-            {users
+            {(users ?? roster)
               .filter((u) => u.id !== reassign.user.id && !u.deactivatedAt)
               .map((u) => (
                 <option key={u.id} value={u.id}>
@@ -439,7 +515,7 @@ export default function UserManagementTab({ reloadTick }: { reloadTick: number }
       <>
         {header}
         <UserGroupsView
-          users={users}
+          users={users ?? []}
           busyId={busyId}
           onChangeRole={changeRole}
           matrix={matrix}
@@ -453,7 +529,7 @@ export default function UserManagementTab({ reloadTick }: { reloadTick: number }
     return (
       <>
         {header}
-        <InstancesView instances={instances} users={users} onCreate={createInstanceByName} />
+        <InstancesView instances={instances} onCreate={createInstanceByName} />
       </>
     );
   }
@@ -464,7 +540,7 @@ export default function UserManagementTab({ reloadTick }: { reloadTick: number }
         {header}
         <UserTeamsView
           teams={teams}
-          users={users}
+          users={users ?? []}
           busyId={busyId}
           onRename={renameTeam}
           onAssignManager={assignManager}
@@ -512,6 +588,7 @@ export default function UserManagementTab({ reloadTick }: { reloadTick: number }
           </tbody>
         </table>
         {filtered.length === 0 && <div className="empty">No matching users.</div>}
+        {pager}
       </>
     );
   }
@@ -551,6 +628,7 @@ export default function UserManagementTab({ reloadTick }: { reloadTick: number }
           </div>
         </div>
       ))}
+      {pager}
     </>
   );
 }

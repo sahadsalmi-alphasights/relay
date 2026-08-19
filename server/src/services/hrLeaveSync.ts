@@ -59,7 +59,8 @@ export async function runHrLeaveSync(now: Date): Promise<HrSyncResult> {
   if (!settings.enabled) return { ran: false, setOnLeave: 0, restored: 0, summary: "Sync disabled." };
 
   const today = dubaiDateKey(now);
-  const [requests, directory] = await Promise.all([fetchPlannedTimeOff(today, today), fetchDirectoryEmails()]);
+  // Approved-only for live status — a pending request must not auto-Offline someone.
+  const [requests, directory] = await Promise.all([fetchPlannedTimeOff(today, today, false), fetchDirectoryEmails()]);
   if (requests === null || directory === null) {
     const summary = "Sync failed — could not reach BambooHR (check the API key and subdomain).";
     await recordHrSync(summary);

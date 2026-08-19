@@ -12,6 +12,7 @@ import anglesRoutes from "./routes/angles";
 import assignmentsRoutes from "./routes/assignments";
 import auditLogRoutes from "./routes/auditLog";
 import instancesRoutes from "./routes/instances";
+import meRoutes from "./routes/me";
 import usageEventsRoutes from "./routes/usageEvents";
 import vacationRoutes from "./routes/vacation";
 import usersRoutes from "./routes/users";
@@ -126,6 +127,7 @@ export function buildApp(): FastifyInstance {
   app.register(usageEventsRoutes, { prefix: "/usage-events" });
   app.register(analyticsRoutes, { prefix: "/analytics" });
   app.register(instancesRoutes, { prefix: "/instances" });
+  app.register(meRoutes, { prefix: "/me" });
   app.register(vacationRoutes, { prefix: "/vacation" });
 
   const heartbeatTimer = startHeartbeat();

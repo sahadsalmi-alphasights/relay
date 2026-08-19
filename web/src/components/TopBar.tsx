@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { dubaiHour, dubaiMinute } from "../lib/time";
 import { useApp } from "../state/AppContext";
 import { useTheme } from "../lib/theme";
+import InstanceSwitcher from "./InstanceSwitcher";
 import type { LiveStatus } from "../lib/useLiveSocket";
 import type { Notification as AppNotification } from "../api/types";
 import type { NotificationsState } from "../lib/useNotifications";
@@ -59,6 +60,7 @@ export default function TopBar({
         {effectiveHour < 15 ? "APAC live 2×" : "APAC done"}
       </span>
       <div className="topbar-spacer" />
+      <InstanceSwitcher />
       <button className="theme-btn" onClick={toggleTheme} title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}>
         {/* Half-filled "contrast" circle — deliberately NOT a sun/moon, which
             read as evening coverage. The moon now belongs to that toggle. */}

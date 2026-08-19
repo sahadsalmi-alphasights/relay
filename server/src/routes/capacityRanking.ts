@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from "fastify";
 import { config } from "../config";
 import { resolveNow } from "../lib/requestTime";
 import { listAvailableCandidatesWithAssignments } from "../services/candidates";
+import { activeInstanceKey } from "../auth/activeInstance";
 import { isEligible } from "../rules/eligibility";
 import { personLoad, personRawRemaining } from "../rules/load";
 import { median } from "../rules/median";
@@ -33,8 +34,9 @@ async function compute(request: import("fastify").FastifyRequest, ghost: boolean
 > {
   const now = resolveNow(request);
   const hour = dubaiHour(now);
-  // Scope the ranking to the viewer's BU so C and NC capacity never mix.
-  const people = await listAvailableCandidatesWithAssignments(request.actor!.businessUnit, { ghost });
+  // Scope the ranking to the viewer's active instance (owners can switch;
+  // others get their home) so instances never mix in the capacity picture.
+  const people = await listAvailableCandidatesWithAssignments(activeInstanceKey(request), { ghost });
   // On Sundays only the people rostered for THAT Sunday are online (§4 Rule 2).
   // Everyone else is flagged offline in the ranking (sundayOff) — Sunday
   // coverage is a schedule, not a preference. This is a separate flag from
@@ -95,7 +97,9 @@ const capacityRankingRoutes: FastifyPluginAsync = async (app) => {
     const demo = request.headers["x-demo-as-of"];
     if (config.nodeEnv !== "production" || demo) return compute(request, ghost);
 
-    const key = ghost ? "ghost" : "std";
+    // Cache per active-instance so an owner viewing a different instance never
+    // gets another instance's cached ranking.
+    const key = `${activeInstanceKey(request)}:${ghost ? "ghost" : "std"}`;
     const hit = cache.get(key);
     if (hit && Date.now() - hit.at < TTL_MS) return hit.inflight;
     const inflight = compute(request, ghost);

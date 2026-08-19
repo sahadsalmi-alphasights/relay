@@ -2,6 +2,7 @@ import { dubaiHour, dubaiMinute } from "../lib/time";
 import { initials } from "../lib/format";
 import { useApp } from "../state/AppContext";
 import { useTheme } from "../lib/theme";
+import InstanceSwitcher from "./InstanceSwitcher";
 import type { LiveStatus } from "../lib/useLiveSocket";
 import type { Notification as AppNotification } from "../api/types";
 import type { NotificationsState } from "../lib/useNotifications";
@@ -57,6 +58,7 @@ export default function Header({
             <span className={"live-dot " + (liveStatus === "connected" ? "on" : "off")} />
             🇦🇪 {timeStr}
           </span>
+          <InstanceSwitcher />
           <button
             className="theme-btn"
             onClick={toggleTheme}

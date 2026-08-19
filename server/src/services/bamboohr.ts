@@ -177,14 +177,20 @@ export async function diagnoseHolidays(
  * on. Returns null on any failure (so the caller can distinguish "couldn't
  * reach BambooHR" from "nobody's out").
  */
-export async function fetchApprovedTimeOff(start: string, end: string): Promise<TimeOffRequest[] | null> {
-  const q = `/time_off/requests/?start=${start}&end=${end}&status=approved`;
+export async function fetchPlannedTimeOff(start: string, end: string): Promise<TimeOffRequest[] | null> {
+  // No status filter — we then keep BOTH approved AND requested (pending)
+  // bookings, since a submitted-but-unapproved request still means the person
+  // has planned that time off. Denied / canceled / superseded are dropped.
+  const q = `/time_off/requests/?start=${start}&end=${end}`;
   const raw = await getJson<
-    { employeeId?: string | number; type?: { name?: string }; start?: string; end?: string }[]
+    { employeeId?: string | number; type?: { name?: string }; start?: string; end?: string; status?: { status?: string } | string }[]
   >(q);
   if (!raw) return null;
+  const statusOf = (x: { status?: { status?: string } | string }) =>
+    (typeof x.status === "string" ? x.status : x.status?.status ?? "").toLowerCase();
+  const PLANNED = new Set(["approved", "requested"]);
   return raw
-    .filter((r) => r.employeeId != null && r.type?.name)
+    .filter((r) => r.employeeId != null && r.type?.name && PLANNED.has(statusOf(r)))
     .map((r) => ({
       employeeId: String(r.employeeId),
       typeName: String(r.type!.name),

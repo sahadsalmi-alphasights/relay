@@ -2,7 +2,7 @@ import { config } from "../config";
 import { getNotificationSettings, type NotificationSettings } from "../repositories/notificationSettings";
 import { findPersonById } from "../repositories/people";
 import { GOAL_CHANGE_TARGETS, goalChangeTargetLabel } from "../rules/goalChange";
-import { getSecret } from "./secretsVault";
+import { getHints, getSecret } from "./secretsVault";
 
 /** Vault secret names for the Slack credentials. */
 export const SLACK_SECRET = {
@@ -10,6 +10,46 @@ export const SLACK_SECRET = {
   signingSecret: "slack.signing_secret",
   botToken: "slack.bot_token",
 } as const;
+
+export interface SlackCredHint {
+  hasValue: boolean;
+  hint: string | null;
+  /** Where the active value comes from: pasted in-app, the env var, or unset. */
+  source: "in-app" | "env" | null;
+}
+
+function last4(s: string): string {
+  // Bare last-4 — the UI prepends the "••••" mask itself (matches vault hints).
+  return s.length >= 4 ? s.slice(-4) : s;
+}
+
+/**
+ * Per-credential status for the Integrations panel that reflects BOTH sources:
+ * a value pasted in-app (from the vault, with its stored hint) OR the env var
+ * that already powers notifications. This is what makes the Slack keys you
+ * configured for notifications show up as present in Integrations, rather than
+ * the panel looking empty because the vault has nothing.
+ */
+export async function getSlackHints(): Promise<{
+  webhookUrl: SlackCredHint;
+  signingSecret: SlackCredHint;
+  botToken: SlackCredHint;
+}> {
+  const vault = await getHints([SLACK_SECRET.webhookUrl, SLACK_SECRET.signingSecret, SLACK_SECRET.botToken]);
+  const spec = {
+    webhookUrl: { name: SLACK_SECRET.webhookUrl, env: config.slackWebhookUrl },
+    signingSecret: { name: SLACK_SECRET.signingSecret, env: config.slackSigningSecret },
+    botToken: { name: SLACK_SECRET.botToken, env: config.slackBotToken },
+  } as const;
+  const out = {} as { webhookUrl: SlackCredHint; signingSecret: SlackCredHint; botToken: SlackCredHint };
+  for (const k of ["webhookUrl", "signingSecret", "botToken"] as const) {
+    const v = vault[spec[k].name];
+    if (v?.hasValue) out[k] = { hasValue: true, hint: v.hint, source: "in-app" };
+    else if (spec[k].env) out[k] = { hasValue: true, hint: last4(spec[k].env), source: "env" };
+    else out[k] = { hasValue: false, hint: null, source: null };
+  }
+  return out;
+}
 
 /**
  * Resolve each Slack credential: the value pasted in Integrations (decrypted

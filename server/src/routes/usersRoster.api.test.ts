@@ -33,14 +33,15 @@ describe("GET /users/roster (scalable owner roster)", () => {
   });
 
   it("filters by a different instance tuple and finds only its members", async () => {
-    // No one is Consulting yet.
+    // The live population is Consulting (key 'non_consulting'); the
+    // Non-Consulting instance (key 'consulting') is empty to start with.
     const cookie = await owner();
-    let res = await get(cookie, "/users/roster?location=Dubai&department=" + encodeURIComponent("DUB - Consulting"));
+    let res = await get(cookie, "/users/roster?location=Dubai&department=" + encodeURIComponent("DUB - Non-Consulting"));
     expect(res.json().total).toBe(0);
 
-    // Add delivererAlpha to the Consulting instance.
+    // Add delivererAlpha to the Non-Consulting instance (key 'consulting').
     await pool.query(`INSERT INTO person_instance (person_id, instance_key) VALUES ($1, 'consulting')`, [fx.delivererAlpha]);
-    res = await get(cookie, "/users/roster?location=Dubai&department=" + encodeURIComponent("DUB - Consulting"));
+    res = await get(cookie, "/users/roster?location=Dubai&department=" + encodeURIComponent("DUB - Non-Consulting"));
     expect(res.json().total).toBe(1);
     expect(res.json().users[0].id).toBe(fx.delivererAlpha);
   });

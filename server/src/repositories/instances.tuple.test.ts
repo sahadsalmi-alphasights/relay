@@ -8,12 +8,15 @@ afterEach(async () => {
 
 describe("instance tuple derivation (Okta-driven, non-breaking for Dubai)", () => {
   it("reuses the existing Dubai instance key rather than creating a new one", async () => {
-    // The migration described the seeded Dubai instances with the tuple, so an
-    // Okta identity for Dubai NC resolves to the ORIGINAL 'non_consulting' key —
-    // existing data/memberships are untouched.
-    const key = await deriveInstanceKey("Dubai", "DUB - Non-Consulting", null);
+    // The seeded Dubai instances are described by their (city, department) tuple,
+    // so an Okta identity resolves to the ORIGINAL opaque key — existing
+    // data/memberships are untouched. Note the intentional key/label inversion
+    // (migration 1731000035000): the live population lives under the
+    // 'non_consulting' key but IS the Consulting business, so Dubai Consulting
+    // derives to 'non_consulting' and Dubai Non-Consulting to 'consulting'.
+    const key = await deriveInstanceKey("Dubai", "DUB - Consulting", null);
     expect(key).toBe("non_consulting");
-    const key2 = await deriveInstanceKey("Dubai", "DUB - Consulting", null);
+    const key2 = await deriveInstanceKey("Dubai", "DUB - Non-Consulting", null);
     expect(key2).toBe("consulting");
   });
 

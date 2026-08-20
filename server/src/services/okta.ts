@@ -149,28 +149,33 @@ async function mintOAuthToken(org: string): Promise<{ ok: boolean; token?: strin
   if (!clientId || !privateKey) return { ok: false, error: "no OAuth client id / private key" };
 
   const tokenUrl = `${org}/oauth2/v1/token`;
-  let assertion: string;
+  // Validate the key up front (fail fast with a readable reason).
   try {
-    assertion = buildClientAssertion(tokenUrl, clientId, privateKey, Math.floor(Date.now() / 1000));
+    buildClientAssertion(tokenUrl, clientId, privateKey, Math.floor(Date.now() / 1000));
   } catch (e) {
     return { ok: false, error: `couldn't sign client assertion — private key not valid PEM (${e instanceof Error ? e.message : "?"})` };
   }
-  const body = new URLSearchParams({
-    grant_type: "client_credentials",
-    scope: OKTA_SCOPE,
-    client_assertion_type: "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
-    client_assertion: assertion,
-  });
-  const post = (nonce?: string) =>
-    fetch(tokenUrl, {
+  // Build a FRESH client_assertion (new jti) and DPoP proof on every attempt —
+  // Okta rejects a reused client_assertion ("already been used"), so the nonce
+  // retry must not resend the first attempt's assertion.
+  const post = (nonce?: string) => {
+    const now = Math.floor(Date.now() / 1000);
+    const body = new URLSearchParams({
+      grant_type: "client_credentials",
+      scope: OKTA_SCOPE,
+      client_assertion_type: "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
+      client_assertion: buildClientAssertion(tokenUrl, clientId, privateKey, now),
+    });
+    return fetch(tokenUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
         Accept: "application/json",
-        DPoP: buildDpopProof(tokenUrl, "POST", privateKey, Math.floor(Date.now() / 1000), { nonce }),
+        DPoP: buildDpopProof(tokenUrl, "POST", privateKey, now, { nonce }),
       },
       body,
     });
+  };
   try {
     let res = await post();
     let json = (await res.json().catch(() => ({}))) as { access_token?: string; expires_in?: number; error?: string; error_description?: string };

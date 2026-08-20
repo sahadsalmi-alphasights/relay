@@ -173,8 +173,15 @@ export interface ImportResult {
 }
 
 /** Perform the import. Idempotent: existing instances/users are reused, and a
- *  person is only re-homed when their derived instance differs from now. */
-export async function applyImport(actorId: string, fetchSource: DirectorySource): Promise<ImportResult> {
+ *  person is only re-homed when their derived instance differs from now.
+ *  `instancesOnly` (default) creates just the allowlisted instances and feeds
+ *  NO users from Okta — no user is created or re-homed. */
+export async function applyImport(
+  actorId: string,
+  fetchSource: DirectorySource,
+  opts?: { instancesOnly?: boolean }
+): Promise<ImportResult> {
+  const instancesOnly = opts?.instancesOnly ?? true;
   const dir = await fetchSource();
   if (dir === null) return { ok: false, error: "Could not reach the directory source — check the Okta API token / org URL." };
 
@@ -193,28 +200,31 @@ export async function applyImport(actorId: string, fetchSource: DirectorySource)
     tupleKeys.set(id, await deriveInstanceKey(t.city, t.department, t.board));
   }
 
-  // 2. Partition people into "create" (unknown email) and "re-home" (known
-  //    email whose current home differs from the derived key). Dedup by email.
-  const existingPeople = await emailBusinessUnitMap();
-  const toCreate = new Map<string, { email: string; name: string; businessUnit: string }>();
-  const reassignByKey = new Map<string, string[]>();
-  for (const p of usable) {
-    const key = tupleKeys.get(tupleId(p.location!, p.department!, p.board))!;
-    const known = existingPeople.get(p.email);
-    if (!known) {
-      if (!toCreate.has(p.email)) toCreate.set(p.email, { email: p.email, name: p.name || p.email, businessUnit: key });
-    } else if (known.businessUnit !== key) {
-      const ids = reassignByKey.get(key) ?? [];
-      ids.push(known.id);
-      reassignByKey.set(key, ids);
-    }
-  }
-
-  const usersCreated = await bulkCreatePeopleWithBu([...toCreate.values()]);
+  // 2. Users — SKIPPED in instancesOnly mode (nothing but instances is fed from
+  //    Okta). Otherwise partition into "create" (unknown email) and "re-home"
+  //    (known email whose current home differs from the derived key).
+  let usersCreated = 0;
   let usersReassigned = 0;
-  for (const [key, ids] of reassignByKey) {
-    await bulkSetBusinessUnit(ids, key);
-    usersReassigned += ids.length;
+  if (!instancesOnly) {
+    const existingPeople = await emailBusinessUnitMap();
+    const toCreate = new Map<string, { email: string; name: string; businessUnit: string }>();
+    const reassignByKey = new Map<string, string[]>();
+    for (const p of usable) {
+      const key = tupleKeys.get(tupleId(p.location!, p.department!, p.board))!;
+      const known = existingPeople.get(p.email);
+      if (!known) {
+        if (!toCreate.has(p.email)) toCreate.set(p.email, { email: p.email, name: p.name || p.email, businessUnit: key });
+      } else if (known.businessUnit !== key) {
+        const ids = reassignByKey.get(key) ?? [];
+        ids.push(known.id);
+        reassignByKey.set(key, ids);
+      }
+    }
+    usersCreated = await bulkCreatePeopleWithBu([...toCreate.values()]);
+    for (const [key, ids] of reassignByKey) {
+      await bulkSetBusinessUnit(ids, key);
+      usersReassigned += ids.length;
+    }
   }
 
   await insertAuditLog({
@@ -224,7 +234,7 @@ export async function applyImport(actorId: string, fetchSource: DirectorySource)
     entityId: "00000000-0000-0000-0000-000000000000",
     actorId,
     action: "okta_import",
-    newValue: { instancesCreated, instancesTotal: uniqueTuples.size, usersCreated, usersReassigned, skippedNoEmail, skippedNoTuple, skippedNotAllowed },
+    newValue: { instancesOnly, instancesCreated, instancesTotal: uniqueTuples.size, usersCreated, usersReassigned, skippedNoEmail, skippedNoTuple, skippedNotAllowed },
   });
 
   return {

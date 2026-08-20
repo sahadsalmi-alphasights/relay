@@ -51,18 +51,27 @@ describe("directory instance/user import (Okta tuple derivation)", () => {
     expect(after.rows[0].n).toBe(before.rows[0].n);
   });
 
-  it("applies: creates the new instance + users and assigns memberships", async () => {
-    const r = await applyImport(actorId, source);
+  it("instances-only (default): creates the instance but feeds NO users", async () => {
+    const before = await pool.query(`SELECT count(*)::int n FROM person`);
+    const r = await applyImport(actorId, source); // default instancesOnly = true
     expect(r.ok).toBe(true);
     expect(r.instancesCreated).toBe(1);
     expect(r.instancesTotal).toBe(2);
+    expect(r.usersCreated).toBe(0);
+    expect(r.usersReassigned).toBe(0);
+
+    const inst = await pool.query(`SELECT city, department, board FROM instance WHERE key = 'london_lon_pe_board_3'`);
+    expect(inst.rows[0]).toMatchObject({ city: "London", department: "LON PE", board: "Board 3" });
+    // No new people created.
+    const after = await pool.query(`SELECT count(*)::int n FROM person`);
+    expect(after.rows[0].n).toBe(before.rows[0].n);
+  });
+
+  it("with instancesOnly=false: also creates users and assigns memberships", async () => {
+    const r = await applyImport(actorId, source, { instancesOnly: false });
     expect(r.usersCreated).toBe(2);
     expect(r.usersReassigned).toBe(0); // kai's derived key equals his current home
 
-    const inst = await pool.query(`SELECT key, city, department, board FROM instance WHERE key = 'london_lon_pe_board_3'`);
-    expect(inst.rows[0]).toMatchObject({ city: "London", department: "LON PE", board: "Board 3" });
-
-    // New users are members of the London instance via the home trigger.
     const members = await pool.query(
       `SELECT p.email FROM person p JOIN person_instance pi ON pi.person_id = p.id
        WHERE pi.instance_key = 'london_lon_pe_board_3' ORDER BY p.email`

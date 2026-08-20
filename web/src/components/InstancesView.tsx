@@ -273,15 +273,16 @@ export default function InstancesView({
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 12 }}>
                   <button className="btn-sm btn-pl" disabled={importBusy !== null} onClick={runApply}>
-                    {importBusy === "apply" ? "Applying…" : `Apply — create ${preview.newInstances} instance(s) & ${preview.newUsers} user(s)`}
+                    {importBusy === "apply" ? "Applying…" : `Apply — create ${preview.newInstances} instance(s)`}
                   </button>
                   <button className="btn-sm btn-ghost" disabled={importBusy !== null} onClick={runPreview}>Refresh preview</button>
+                  <span style={{ fontSize: 11, color: "var(--soft)" }}>Instances only — no users are created or changed.</span>
                 </div>
               </>
             )}
             {applied && applied.ok && (
               <div style={{ marginTop: 12, fontSize: 13, color: "var(--green)" }}>
-                ✓ Imported — {applied.instancesCreated} instance(s) created ({applied.instancesTotal} total), {applied.usersCreated} user(s) created, {applied.usersReassigned} re-homed.
+                ✓ Imported — {applied.instancesCreated} instance(s) created ({applied.instancesTotal} total). No users changed.
               </div>
             )}
           </div>

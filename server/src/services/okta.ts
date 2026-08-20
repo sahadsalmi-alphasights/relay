@@ -268,17 +268,83 @@ export async function fetchOktaDirectory(): Promise<DirectoryPerson[] | null> {
  * present — the "inspect fields" equivalent, but Okta's attribute names are
  * known, so this just confirms the values look right before an import.
  */
+/** Mint an OAuth access token but KEEP the failure reason (status + Okta error
+ *  body) instead of swallowing it — for the owner diagnostic. */
+async function mintAccessTokenDetailed(org: string): Promise<{ ok: boolean; token?: string; error?: string }> {
+  const clientId = await getOktaClientId();
+  const privateKey = await getOktaPrivateKey();
+  if (!clientId || !privateKey) return { ok: false, error: "no OAuth client id / private key" };
+  const tokenUrl = `${org}/oauth2/v1/token`;
+  let assertion: string;
+  try {
+    assertion = buildClientAssertion(tokenUrl, clientId, privateKey, Math.floor(Date.now() / 1000));
+  } catch (e) {
+    return { ok: false, error: `couldn't sign JWT — private key not valid PEM (${e instanceof Error ? e.message : "?"})` };
+  }
+  try {
+    const res = await fetch(tokenUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+      body: new URLSearchParams({
+        grant_type: "client_credentials",
+        scope: OKTA_SCOPE,
+        client_assertion_type: "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
+        client_assertion: assertion,
+      }),
+    });
+    const json = (await res.json().catch(() => ({}))) as { access_token?: string; error?: string; error_description?: string };
+    if (!res.ok || !json.access_token) {
+      const detail = json.error ? `${json.error}${json.error_description ? ` — ${json.error_description}` : ""}` : `HTTP ${res.status}`;
+      return { ok: false, error: `token endpoint at ${tokenUrl}: ${detail}` };
+    }
+    return { ok: true, token: json.access_token };
+  } catch (e) {
+    return { ok: false, error: `network error reaching ${tokenUrl}: ${e instanceof Error ? e.message : "?"}` };
+  }
+}
+
 export async function diagnoseOktaDirectory(): Promise<{
   ok: boolean;
   error?: string;
+  authMode?: "oauth" | "token";
   users?: number;
   withTuple?: number;
   withBoard?: number;
   values?: Record<string, { value: string; count: number }[]>;
 }> {
-  if (!(await oktaConfigured())) return { ok: false, error: "Okta API not configured — add OAuth (client id + private key) or an SSWS API token in Integrations (org URL defaults to your OIDC issuer)." };
+  const org = await getOktaOrgUrl();
+  if (!org) return { ok: false, error: "No Okta org URL — set OIDC issuer or an explicit Org base URL." };
+
+  // Resolve auth WITH the failure reason surfaced (the normal path hides it).
+  let authHeader: string;
+  let authMode: "oauth" | "token";
+  if (await oauthConfigured()) {
+    authMode = "oauth";
+    const minted = await mintAccessTokenDetailed(org);
+    if (!minted.ok) return { ok: false, authMode, error: `OAuth token exchange failed — ${minted.error}. Check: client auth = Public key/Private key, the JWK is registered, scope okta.users.read is granted, and DPoP is OFF.` };
+    authHeader = `Bearer ${minted.token}`;
+  } else if (await getOktaApiToken()) {
+    authMode = "token";
+    authHeader = `SSWS ${await getOktaApiToken()}`;
+  } else {
+    return { ok: false, error: "Okta API not configured — add OAuth (client id + private key) or an SSWS token." };
+  }
+
+  // Probe the Users API with the real reason kept.
+  try {
+    const res = await fetch(`${org}/api/v1/users?limit=1`, { headers: { Authorization: authHeader, Accept: "application/json" } });
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as { errorCode?: string; errorSummary?: string };
+      const detail = body.errorSummary || body.errorCode || `HTTP ${res.status}`;
+      const hint = res.status === 403 ? " (grant the app the Read-Only Administrator role + okta.users.read scope)" : "";
+      return { ok: false, authMode, error: `Users API returned ${res.status}: ${detail}${hint}` };
+    }
+  } catch (e) {
+    return { ok: false, authMode, error: `network error reaching the Users API: ${e instanceof Error ? e.message : "?"}` };
+  }
+
   const dir = await fetchOktaDirectory();
-  if (dir === null) return { ok: false, error: "Could not reach the Okta API — check the token and org URL (needs read-only Users API access)." };
+  if (dir === null) return { ok: false, authMode, error: "Reached Okta, but the directory read returned nothing usable." };
 
   const tally = (pick: (p: DirectoryPerson) => string | null) => {
     const counts = new Map<string, number>();
@@ -291,6 +357,7 @@ export async function diagnoseOktaDirectory(): Promise<{
 
   return {
     ok: true,
+    authMode,
     users: dir.length,
     withTuple: dir.filter((p) => p.location && p.department).length,
     withBoard: dir.filter((p) => p.board).length,

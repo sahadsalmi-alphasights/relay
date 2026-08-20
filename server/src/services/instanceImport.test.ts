@@ -1,11 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { pool } from "../db";
-import type { DirectoryPerson } from "./bamboohr";
-
-// Mock the BambooHR client so the import runs against a scripted directory.
-vi.mock("./bamboohr", () => ({ fetchDirectory: vi.fn() }));
-import { fetchDirectory } from "./bamboohr";
-import { applyImport, previewImport } from "./instanceImport";
+import { applyImport, previewImport, type DirectoryPerson } from "./instanceImport";
 
 const dir = (rows: Partial<DirectoryPerson>[]): DirectoryPerson[] =>
   rows.map((r, i) => ({ employeeId: String(i + 1), email: "", name: "", location: null, department: null, board: null, ...r }));
@@ -18,6 +13,10 @@ const SAMPLE = dir([
   { email: "notuple@x.test", name: "No Office", location: null, department: null }, // skipped — no tuple
 ]);
 
+// Directory sources passed to the (source-agnostic) importer.
+const source = async () => SAMPLE;
+const outage = async () => null;
+
 let actorId: string;
 beforeEach(async () => {
   await pool.query(`TRUNCATE TABLE person, audit_log RESTART IDENTITY CASCADE`);
@@ -29,14 +28,12 @@ beforeEach(async () => {
     `INSERT INTO person (email, name, business_unit) VALUES ('kai@x.test', 'Kai', 'non_consulting') RETURNING id`
   );
   actorId = rows[0].id;
-  (fetchDirectory as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(SAMPLE);
 });
-afterEach(() => vi.clearAllMocks());
 
-describe("BambooHR instance/user import (same tuple derivation as Okta)", () => {
+describe("directory instance/user import (Okta tuple derivation)", () => {
   it("previews without writing anything", async () => {
     const before = await pool.query(`SELECT count(*)::int n FROM person`);
-    const p = await previewImport();
+    const p = await previewImport(source);
     expect(p.ok).toBe(true);
     expect(p.totalEmployees).toBe(5);
     expect(p.withTuple).toBe(3);
@@ -53,7 +50,7 @@ describe("BambooHR instance/user import (same tuple derivation as Okta)", () => 
   });
 
   it("applies: creates the new instance + users and assigns memberships", async () => {
-    const r = await applyImport(actorId);
+    const r = await applyImport(actorId, source);
     expect(r.ok).toBe(true);
     expect(r.instancesCreated).toBe(1);
     expect(r.instancesTotal).toBe(2);
@@ -72,18 +69,17 @@ describe("BambooHR instance/user import (same tuple derivation as Okta)", () => 
   });
 
   it("is idempotent — a second run creates nothing new", async () => {
-    await applyImport(actorId);
-    const r2 = await applyImport(actorId);
+    await applyImport(actorId, source);
+    const r2 = await applyImport(actorId, source);
     expect(r2.instancesCreated).toBe(0);
     expect(r2.usersCreated).toBe(0);
     expect(r2.usersReassigned).toBe(0);
   });
 
-  it("surfaces a BambooHR outage as an error, writing nothing", async () => {
-    (fetchDirectory as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(null);
-    const p = await previewImport();
+  it("surfaces a directory outage as an error, writing nothing", async () => {
+    const p = await previewImport(outage);
     expect(p.ok).toBe(false);
-    const r = await applyImport(actorId);
+    const r = await applyImport(actorId, outage);
     expect(r.ok).toBe(false);
   });
 });

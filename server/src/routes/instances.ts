@@ -3,7 +3,7 @@ import { badRequest, conflict } from "../errors";
 import { insertAuditLog } from "../repositories/auditLog";
 import { createInstance, findInstanceByKey, listInstances, slugifyInstanceKey } from "../repositories/instances";
 import { applyImport, previewImport } from "../services/instanceImport";
-import { diagnoseImportFields } from "../services/bamboohr";
+import { diagnoseOktaDirectory, fetchOktaDirectory } from "../services/okta";
 import { publish } from "../ws/hub";
 
 /**
@@ -32,17 +32,18 @@ const instancesRoutes: FastifyPluginAsync = async (app) => {
     return instance;
   });
 
-  // Seed instances + users from BambooHR, using the SAME (city, department)
-  // derivation Okta uses. Preview is read-only (nothing written) so an owner
-  // can review the plan; apply performs it, idempotently, and is audit-logged.
-  // Read-only field landscape — what BambooHR actually returns, so we can map
-  // the right fields to (city, department, board).
-  app.get("/import/fields", { preHandler: [app.requireOwner] }, async () => diagnoseImportFields());
+  // Seed instances + users from OKTA — the source of truth. Each person's
+  // (city, department, whiteboard_number) profile resolves to an instance the
+  // SAME way the OIDC login does. Preview is read-only (nothing written) so an
+  // owner can review the plan; apply performs it, idempotently, audit-logged.
+  // Diagnostics: confirm the Okta directory is reachable and the attribute
+  // values look right before importing.
+  app.get("/import/fields", { preHandler: [app.requireOwner] }, async () => diagnoseOktaDirectory());
 
-  app.get("/import/preview", { preHandler: [app.requireOwner] }, async () => previewImport());
+  app.get("/import/preview", { preHandler: [app.requireOwner] }, async () => previewImport(fetchOktaDirectory));
 
   app.post("/import/apply", { preHandler: [app.requireOwner] }, async (request) => {
-    const result = await applyImport(request.actor!.id);
+    const result = await applyImport(request.actor!.id, fetchOktaDirectory);
     if (result.ok && ((result.usersCreated ?? 0) > 0 || (result.usersReassigned ?? 0) > 0)) {
       publish({ type: "people" });
       publish({ type: "capacity-ranking" });

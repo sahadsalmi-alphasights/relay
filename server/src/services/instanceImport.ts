@@ -1,20 +1,35 @@
 import { insertAuditLog } from "../repositories/auditLog";
 import { deriveInstanceKey, findInstanceByTuple } from "../repositories/instances";
 import { bulkCreatePeopleWithBu, bulkSetBusinessUnit, emailBusinessUnitMap } from "../repositories/people";
-import { fetchDirectory, type DirectoryPerson } from "./bamboohr";
+
+/** One directory row, normalised to the (city, department, board?) tuple the
+ *  instance model uses. Produced by a directory source (e.g. Okta). */
+export interface DirectoryPerson {
+  employeeId: string; // stable id from the source (email for Okta)
+  email: string; // lower-cased ("" if none)
+  name: string;
+  location: string | null; // → instance city
+  department: string | null; // → instance department
+  board: string | null; // whiteboard_number → instance board
+}
 
 /**
- * Seed instances and users from the BambooHR directory — the SAME derivation
- * Okta uses at login: each person's (city, department, board?) resolves to an
- * isolated instance via deriveInstanceKey (board = whiteboard_number, pulled
- * from BambooHR's custom field when present), and their home instance is set
- * with the bulk equivalents of setPersonBusinessUnit. The person_home_instance
- * trigger adds the membership.
+ * Seed instances and users from a directory source (Okta), using the SAME
+ * derivation Okta uses at login: each person's (city, department, board?)
+ * resolves to an isolated instance via deriveInstanceKey (board =
+ * whiteboard_number), and their home instance is set with the bulk equivalents
+ * of setPersonBusinessUnit. The person_home_instance trigger adds membership.
+ *
+ * Source-agnostic: callers pass a fetcher that returns DirectoryPerson rows (or
+ * null on failure), so the same preview/apply logic works for any directory.
  *
  * Two entry points, on purpose: previewImport() is read-only (nothing is
  * written) so an owner can see exactly what a run would create before doing it;
  * applyImport() performs it, idempotently (re-running only fills gaps).
  */
+
+/** A directory source: resolves to the roster, or null if it couldn't be read. */
+export type DirectorySource = () => Promise<DirectoryPerson[] | null>;
 
 export interface ImportGroup {
   city: string;
@@ -63,9 +78,9 @@ function classify(dir: DirectoryPerson[]): Classified {
 }
 
 /** Read-only dry run. Never writes. */
-export async function previewImport(): Promise<ImportPreview> {
-  const dir = await fetchDirectory();
-  if (dir === null) return { ok: false, error: "Could not reach BambooHR — check the API key and subdomain in Integrations." };
+export async function previewImport(fetchSource: DirectorySource): Promise<ImportPreview> {
+  const dir = await fetchSource();
+  if (dir === null) return { ok: false, error: "Could not reach the directory source — check the Okta API token / org URL." };
 
   const { usable, skippedNoEmail, skippedNoTuple } = classify(dir);
 
@@ -128,9 +143,9 @@ export interface ImportResult {
 
 /** Perform the import. Idempotent: existing instances/users are reused, and a
  *  person is only re-homed when their derived instance differs from now. */
-export async function applyImport(actorId: string): Promise<ImportResult> {
-  const dir = await fetchDirectory();
-  if (dir === null) return { ok: false, error: "Could not reach BambooHR — check the API key and subdomain in Integrations." };
+export async function applyImport(actorId: string, fetchSource: DirectorySource): Promise<ImportResult> {
+  const dir = await fetchSource();
+  if (dir === null) return { ok: false, error: "Could not reach the directory source — check the Okta API token / org URL." };
 
   const { usable, skippedNoEmail, skippedNoTuple } = classify(dir);
 
@@ -177,7 +192,7 @@ export async function applyImport(actorId: string): Promise<ImportResult> {
     // no single entity, so use the nil UUID as a stable sentinel.
     entityId: "00000000-0000-0000-0000-000000000000",
     actorId,
-    action: "bamboohr_import",
+    action: "okta_import",
     newValue: { instancesCreated, instancesTotal: uniqueTuples.size, usersCreated, usersReassigned, skippedNoEmail, skippedNoTuple },
   });
 

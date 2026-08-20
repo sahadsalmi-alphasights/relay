@@ -76,29 +76,6 @@ async function getJson<T>(path: string): Promise<T | null> {
   }
 }
 
-/** POST variant — used for the custom-report endpoint, the only way to pull
- *  CUSTOM fields (e.g. whiteboard_number) in bulk. Null on any failure. */
-async function postJson<T>(path: string, body: unknown): Promise<T | null> {
-  let creds: { apiKey: string; subdomain: string } | null;
-  try {
-    creds = await getBambooCreds();
-  } catch {
-    return null;
-  }
-  if (!creds) return null;
-  try {
-    const res = await fetch(`${baseUrl(creds.subdomain)}${path}`, {
-      method: "POST",
-      headers: { Authorization: authHeader(creds.apiKey), Accept: "application/json", "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) return null;
-    return (await res.json()) as T;
-  } catch {
-    return null;
-  }
-}
-
 /**
  * Like getJson but keeps the failure reason (HTTP status / network error) for
  * the owner diagnostics — the normal path deliberately swallows errors so a
@@ -121,52 +98,6 @@ async function getJsonDetailed<T>(path: string): Promise<{ ok: boolean; error?: 
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "network error reaching BambooHR" };
   }
-}
-
-/**
- * Owner diagnostics — the BambooHR FIELD LANDSCAPE, so we can map the right
- * fields to (city, department, board) instead of guessing. Returns every field
- * BambooHR exposes (id + name), which field we auto-detected as the board, and
- * the DISTINCT values (with counts) actually present for the candidate fields —
- * location, department, division, and the detected board field. Seeing the
- * value sets side by side reveals which field holds Consulting/Non-Consulting
- * vs the sub-team vs the board. Read-only.
- */
-export async function diagnoseImportFields(): Promise<{
-  ok: boolean;
-  error?: string;
-  allFields?: { id: string; name: string }[];
-  boardFieldDetected?: string | null;
-  values?: Record<string, { value: string; count: number }[]>;
-}> {
-  const metaRes = await getJsonDetailed<{ id?: string | number; name?: string | null; alias?: string | null }[]>("/meta/fields");
-  if (!metaRes.ok) return { ok: false, error: metaRes.error };
-  const meta = Array.isArray(metaRes.data) ? metaRes.data : [];
-  const allFields = meta
-    .map((f) => ({ id: f.alias ? String(f.alias) : f.id != null ? String(f.id) : "", name: String(f.name ?? f.alias ?? f.id ?? "") }))
-    .filter((f) => f.id);
-
-  const boardField = await findBoardFieldId();
-  const candidateFields = ["location", "department", "division", ...(boardField ? [boardField] : [])];
-  const report = await postJson<{ employees?: Record<string, string | null>[] }>(
-    "/reports/custom?format=JSON&onlyCurrent=true",
-    { fields: candidateFields }
-  );
-  const employees = report?.employees ?? [];
-
-  const values: Record<string, { value: string; count: number }[]> = {};
-  for (const field of candidateFields) {
-    const counts = new Map<string, number>();
-    for (const e of employees) {
-      const v = (e[field] ?? "").trim() || "(empty)";
-      counts.set(v, (counts.get(v) ?? 0) + 1);
-    }
-    values[field === boardField ? `board (${boardField})` : field] = [...counts.entries()]
-      .map(([value, count]) => ({ value, count }))
-      .sort((a, b) => b.count - a.count);
-  }
-
-  return { ok: true, allFields, boardFieldDetected: boardField, values };
 }
 
 /** Owner diagnostics — directory reachability + how many people carry a work email. */
@@ -291,82 +222,6 @@ export async function fetchPlannedTimeOff(
       typeName: String(r.type!.name),
       start: r.start ?? start,
       end: r.end ?? end,
-    }));
-}
-
-/** A person from the BambooHR company directory, with the fields we derive an
- *  instance (office) from — the SAME tuple Okta sends: (city, department,
- *  board?). `board` comes from a BambooHR custom field (whiteboard_number);
- *  it's null when the account has no such field or the person's is empty. */
-export interface DirectoryPerson {
-  employeeId: string;
-  email: string; // lower-cased work email ("" if none)
-  name: string;
-  location: string | null; // office → instance city
-  department: string | null; // → instance department
-  board: string | null; // whiteboard_number → instance board
-}
-
-/**
- * Find the BambooHR field id for the whiteboard/board number. It's a CUSTOM
- * field, so its id varies per account — we discover it from /meta/fields by
- * name (matching "whiteboard" or "board"), rather than hard-coding an id.
- * Returns the field id (as BambooHR expects it in a report request) or null.
- */
-export async function findBoardFieldId(): Promise<string | null> {
-  const meta = await getJson<{ id?: string | number; name?: string | null; alias?: string | null }[]>("/meta/fields");
-  if (!Array.isArray(meta)) return null;
-  const match = meta.find((f) => {
-    const hay = `${f.name ?? ""} ${f.alias ?? ""}`.toLowerCase();
-    return hay.includes("whiteboard") || /\bboard\b/.test(hay);
-  });
-  if (!match) return null;
-  return match.alias ? String(match.alias) : match.id != null ? String(match.id) : null;
-}
-
-/**
- * The full BambooHR company directory as DirectoryPerson rows, INCLUDING board
- * (whiteboard_number) when the account exposes that custom field. Standard
- * fields don't include custom ones, so we pull everyone via the custom-report
- * API with the discovered board field; if that field/endpoint isn't available
- * we fall back to the plain directory (board null). Used by the instance-seed
- * import to derive offices and assign people. Returns null on any failure (so
- * the caller can tell "couldn't reach BambooHR" from "empty").
- */
-export async function fetchDirectory(): Promise<DirectoryPerson[] | null> {
-  const boardField = await findBoardFieldId();
-  const fields = ["workEmail", "displayName", "firstName", "lastName", "location", "department", ...(boardField ? [boardField] : [])];
-  const report = await postJson<{
-    employees?: Record<string, string | null>[];
-  }>("/reports/custom?format=JSON&onlyCurrent=true", { fields });
-
-  if (report?.employees) {
-    return report.employees
-      .filter((e) => e.id != null)
-      .map((e) => ({
-        employeeId: String(e.id),
-        email: (e.workEmail ?? "").trim().toLowerCase(),
-        name: ((e.displayName ?? "").trim() || [e.firstName, e.lastName].filter(Boolean).join(" ").trim() || e.workEmail || "").trim(),
-        location: e.location?.trim() || null,
-        department: e.department?.trim() || null,
-        board: boardField ? (e[boardField]?.trim() || null) : null,
-      }));
-  }
-
-  // Fallback: the plain directory (no custom fields → board null).
-  const raw = await getJson<{
-    employees?: { id?: string | number; workEmail?: string | null; displayName?: string | null; firstName?: string | null; lastName?: string | null; location?: string | null; department?: string | null }[];
-  }>("/employees/directory");
-  if (!raw?.employees) return null;
-  return raw.employees
-    .filter((e) => e.id != null)
-    .map((e) => ({
-      employeeId: String(e.id),
-      email: (e.workEmail ?? "").trim().toLowerCase(),
-      name: (e.displayName?.trim() || [e.firstName, e.lastName].filter(Boolean).join(" ").trim() || e.workEmail || "").trim(),
-      location: e.location?.trim() || null,
-      department: e.department?.trim() || null,
-      board: null,
     }));
 }
 

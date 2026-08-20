@@ -25,6 +25,7 @@ import {
 } from "../repositories/hrIntegrationSettings";
 import { secretCrypto } from "../crypto/secretCrypto";
 import { hrConfigured, fetchDirectoryEmails } from "../services/bamboohr";
+import { OKTA_SECRET, getOktaHints, oktaConfigured, diagnoseOktaDirectory } from "../services/okta";
 import { runHrLeaveSync } from "../services/hrLeaveSync";
 import { badRequest } from "../errors";
 import { publish } from "../ws/hub";
@@ -337,6 +338,41 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
     const directory = await fetchDirectoryEmails();
     return { ok: directory !== null, employees: directory?.size ?? 0 };
   });
+
+  // ---- Okta directory (Integrations) — read-only Users API for the instance
+  // seed. The API token is a credential (encrypted at rest via the vault, env
+  // fallback); the org URL defaults to the OIDC issuer origin. ------------------
+  app.get("/okta-integration", { preHandler: [app.requireAuth] }, async () => ({
+    oktaConfigured: await oktaConfigured(),
+    oktaHints: await getOktaHints(),
+    secretStore: secretCrypto().kind,
+  }));
+
+  app.patch<{ Body: { apiToken?: string; orgUrl?: string; clear?: string } }>(
+    "/okta-integration/credentials",
+    { preHandler: [app.requireOwner] },
+    async (request) => {
+      const b = request.body ?? {};
+      const changed: string[] = [];
+      if (b.clear === "apiToken") { await clearSecret(OKTA_SECRET.apiToken); changed.push("cleared apiToken"); }
+      else if (typeof b.apiToken === "string" && b.apiToken.trim()) { await setSecret(OKTA_SECRET.apiToken, b.apiToken.trim()); changed.push("apiToken"); }
+      if (b.clear === "orgUrl") { await clearSecret(OKTA_SECRET.orgUrl); changed.push("cleared orgUrl"); }
+      else if (typeof b.orgUrl === "string" && b.orgUrl.trim()) { await setSecret(OKTA_SECRET.orgUrl, b.orgUrl.trim()); changed.push("orgUrl"); }
+
+      await insertAuditLog({
+        entityType: "instance_import",
+        entityId: "00000000-0000-0000-0000-000000000000",
+        actorId: request.actor!.id,
+        action: "okta_credentials_updated",
+        newValue: { changed },
+      });
+      return { oktaConfigured: await oktaConfigured(), oktaHints: await getOktaHints(), secretStore: secretCrypto().kind };
+    }
+  );
+
+  // Owner-only connection test — reads the directory and reports counts +
+  // distinct city/department/whiteboard_number values, proving the token works.
+  app.post("/okta-integration/test", { preHandler: [app.requireOwner] }, async () => diagnoseOktaDirectory());
 };
 
 export default settingsRoutes;

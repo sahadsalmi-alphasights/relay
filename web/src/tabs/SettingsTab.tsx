@@ -4,6 +4,7 @@ import CoverageSettings from "../components/CoverageSettings";
 import NotificationSettings from "../components/NotificationSettings";
 import HrIntegrationSettings from "../components/HrIntegrationSettings";
 import SlackIntegrationSettings from "../components/SlackIntegrationSettings";
+import OktaIntegrationSettings from "../components/OktaIntegrationSettings";
 import WhoIsOut from "../components/WhoIsOut";
 import SundayRotaPlanner from "../components/SundayRotaPlanner";
 import UserManagementTab from "./UserManagementTab";
@@ -43,6 +44,7 @@ export default function SettingsTab({ reloadTick, onReload }: { reloadTick: numb
         <>
           <HrIntegrationSettings onSaved={onReload} />
           <SlackIntegrationSettings onSaved={onReload} />
+          <OktaIntegrationSettings onSaved={onReload} />
         </>
       )}
       {view === "whoout" && <WhoIsOut />}

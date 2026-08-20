@@ -1,4 +1,4 @@
-import { createSign, randomUUID } from "crypto";
+import { createHash, createPublicKey, createSign, randomUUID } from "crypto";
 import { config } from "../config";
 import { getHints, getSecret } from "./secretsVault";
 import type { DirectoryPerson } from "./instanceImport";
@@ -104,21 +104,56 @@ export function buildClientAssertion(tokenUrl: string, clientId: string, private
 // don't mint one per request. Cleared implicitly on process restart.
 let tokenCache: { token: string; expiresAt: number } | null = null;
 
-/** Mint (or reuse a cached) OAuth bearer access token. Null on failure/misconfig. */
-async function getOktaAccessToken(org: string): Promise<string | null> {
-  const nowSec = Math.floor(Date.now() / 1000);
-  if (tokenCache && tokenCache.expiresAt - 60 > nowSec) return tokenCache.token;
+const b64urlJSON = (o: object): string => Buffer.from(JSON.stringify(o)).toString("base64url");
+const signRS256 = (input: string, keyPem: string): string =>
+  createSign("RSA-SHA256").update(input).end().sign(keyPem).toString("base64url");
+/** HTTP URI for a DPoP `htu` claim — scheme+host+path, no query/fragment. */
+const httpUri = (u: string): string => {
+  const url = new URL(u);
+  return `${url.origin}${url.pathname}`;
+};
 
+/**
+ * A DPoP proof JWT (RFC 9449). Header carries the PUBLIC JWK (kty/n/e — no
+ * secret) and typ dpop+jwt; claims bind the proof to this HTTP method + URI
+ * with a unique jti. `nonce` is added when the server challenges with one;
+ * `accessToken` adds the `ath` hash that binds the proof to the token on
+ * resource requests.
+ */
+export function buildDpopProof(
+  htu: string,
+  htm: string,
+  keyPem: string,
+  nowSec: number,
+  opts?: { nonce?: string; accessToken?: string }
+): string {
+  const jwk = createPublicKey({ key: keyPem }).export({ format: "jwk" }) as { kty: string; n: string; e: string };
+  const header = b64urlJSON({ typ: "dpop+jwt", alg: "RS256", jwk: { kty: jwk.kty, n: jwk.n, e: jwk.e } });
+  const claims: Record<string, unknown> = { htu: httpUri(htu), htm, iat: nowSec, jti: randomUUID() };
+  if (opts?.nonce) claims.nonce = opts.nonce;
+  if (opts?.accessToken) claims.ath = createHash("sha256").update(opts.accessToken).digest("base64url");
+  const payload = b64urlJSON(claims);
+  const signingInput = `${header}.${payload}`;
+  return `${signingInput}.${signRS256(signingInput, keyPem)}`;
+}
+
+/**
+ * Mint an OAuth access token via private_key_jwt WITH DPoP. Sends a DPoP proof
+ * on the token request and, on Okta's `use_dpop_nonce` challenge, retries once
+ * with the returned nonce. Keeps the failure reason for diagnostics; caches the
+ * (DPoP-bound) token in memory. Result carries ok + token or a readable error.
+ */
+async function mintOAuthToken(org: string): Promise<{ ok: boolean; token?: string; error?: string }> {
   const clientId = await getOktaClientId();
   const privateKey = await getOktaPrivateKey();
-  if (!clientId || !privateKey) return null;
+  if (!clientId || !privateKey) return { ok: false, error: "no OAuth client id / private key" };
 
   const tokenUrl = `${org}/oauth2/v1/token`;
   let assertion: string;
   try {
-    assertion = buildClientAssertion(tokenUrl, clientId, privateKey, nowSec);
-  } catch {
-    return null; // bad/unparseable private key
+    assertion = buildClientAssertion(tokenUrl, clientId, privateKey, Math.floor(Date.now() / 1000));
+  } catch (e) {
+    return { ok: false, error: `couldn't sign client assertion — private key not valid PEM (${e instanceof Error ? e.message : "?"})` };
   }
   const body = new URLSearchParams({
     grant_type: "client_credentials",
@@ -126,33 +161,80 @@ async function getOktaAccessToken(org: string): Promise<string | null> {
     client_assertion_type: "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
     client_assertion: assertion,
   });
-  try {
-    const res = await fetch(tokenUrl, {
+  const post = (nonce?: string) =>
+    fetch(tokenUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Accept: "application/json",
+        DPoP: buildDpopProof(tokenUrl, "POST", privateKey, Math.floor(Date.now() / 1000), { nonce }),
+      },
       body,
     });
-    if (!res.ok) return null;
-    const json = (await res.json()) as { access_token?: string; expires_in?: number };
-    if (!json.access_token) return null;
-    tokenCache = { token: json.access_token, expiresAt: nowSec + (json.expires_in ?? 3600) };
-    return json.access_token;
-  } catch {
-    return null;
+  try {
+    let res = await post();
+    let json = (await res.json().catch(() => ({}))) as { access_token?: string; expires_in?: number; error?: string; error_description?: string };
+    if (!res.ok && json.error === "use_dpop_nonce") {
+      res = await post(res.headers.get("dpop-nonce") ?? undefined);
+      json = (await res.json().catch(() => ({}))) as typeof json;
+    }
+    if (!res.ok || !json.access_token) {
+      const detail = json.error ? `${json.error}${json.error_description ? ` — ${json.error_description}` : ""}` : `HTTP ${res.status}`;
+      return { ok: false, error: `token endpoint at ${tokenUrl}: ${detail}` };
+    }
+    tokenCache = { token: json.access_token, expiresAt: Math.floor(Date.now() / 1000) + (json.expires_in ?? 3600) };
+    return { ok: true, token: json.access_token };
+  } catch (e) {
+    return { ok: false, error: `network error reaching ${tokenUrl}: ${e instanceof Error ? e.message : "?"}` };
   }
 }
 
+/** Cached (DPoP-bound) OAuth token, minting a fresh one when near expiry. */
+async function cachedOAuthToken(org: string): Promise<string | null> {
+  const now = Math.floor(Date.now() / 1000);
+  if (tokenCache && tokenCache.expiresAt - 60 > now) return tokenCache.token;
+  const r = await mintOAuthToken(org);
+  return r.ok ? r.token! : null;
+}
+
+// Okta hands out a rolling DPoP nonce on resource requests; remember the latest
+// so the next request presents it up front (avoids an extra challenge round).
+let resourceNonce: string | undefined;
+
 /**
- * Resolve the Authorization header for a directory call: OAuth bearer when a
- * client id + private key are configured, else the SSWS token, else null.
+ * GET an Okta API URL with whichever auth mode is configured. OAuth mode sends
+ * a per-request DPoP proof (with `ath`) and `Authorization: DPoP <token>`,
+ * retrying once on a `use_dpop_nonce` 401. SSWS mode sends the static token.
+ * Returns the Response, or an { error } when auth can't even be attempted.
  */
-async function oktaAuthHeader(org: string): Promise<{ Authorization: string } | null> {
+async function oktaApiGet(org: string, url: string): Promise<{ res: Response } | { error: string }> {
   if (await oauthConfigured()) {
-    const access = await getOktaAccessToken(org);
-    return access ? { Authorization: `Bearer ${access}` } : null;
+    const token = await cachedOAuthToken(org);
+    if (!token) return { error: "OAuth token exchange failed (run Test for detail)" };
+    const privateKey = await getOktaPrivateKey();
+    const get = (nonce?: string) =>
+      fetch(url, {
+        headers: {
+          Authorization: `DPoP ${token}`,
+          Accept: "application/json",
+          DPoP: buildDpopProof(url, "GET", privateKey, Math.floor(Date.now() / 1000), { accessToken: token, nonce }),
+        },
+      });
+    let res = await get(resourceNonce);
+    if (res.status === 401) {
+      const nonce = res.headers.get("dpop-nonce");
+      if (nonce) {
+        resourceNonce = nonce;
+        res = await get(nonce);
+      }
+    }
+    const rolled = res.headers.get("dpop-nonce");
+    if (rolled) resourceNonce = rolled;
+    return { res };
   }
   const token = await getOktaApiToken();
-  return token ? { Authorization: `SSWS ${token}` } : null;
+  if (!token) return { error: "no SSWS token" };
+  return { res: await fetch(url, { headers: { Authorization: `SSWS ${token}`, Accept: "application/json" } }) };
 }
 
 const last4 = (s: string) => (s.length >= 4 ? s.slice(-4) : s);
@@ -238,8 +320,6 @@ const mapUser = (u: OktaUser): DirectoryPerson => {
 export async function fetchOktaDirectory(): Promise<DirectoryPerson[] | null> {
   const org = await getOktaOrgUrl();
   if (!org) return null;
-  const auth = await oktaAuthHeader(org);
-  if (!auth) return null;
   const out: DirectoryPerson[] = [];
   // Only current/active users; 200 per page (Okta's max).
   let url: string | null = `${org}/api/v1/users?limit=200&filter=${encodeURIComponent('status eq "ACTIVE"')}`;
@@ -247,7 +327,9 @@ export async function fetchOktaDirectory(): Promise<DirectoryPerson[] | null> {
     let guard = 0;
     while (url && guard < 200) {
       guard += 1;
-      const res: Response = await fetch(url, { headers: { ...auth, Accept: "application/json" } });
+      const r = await oktaApiGet(org, url);
+      if ("error" in r) return null;
+      const res = r.res;
       if (!res.ok) return null;
       const page = (await res.json()) as OktaUser[];
       for (const u of page) {
@@ -265,44 +347,9 @@ export async function fetchOktaDirectory(): Promise<DirectoryPerson[] | null> {
 /**
  * Owner diagnostics for the Okta directory: reachability, counts, and the
  * DISTINCT city / department / whiteboard_number values (with counts) actually
- * present — the "inspect fields" equivalent, but Okta's attribute names are
- * known, so this just confirms the values look right before an import.
+ * present. Surfaces the real failure (token exchange vs Users API) instead of
+ * a generic "could not reach", including DPoP-required and scope/role errors.
  */
-/** Mint an OAuth access token but KEEP the failure reason (status + Okta error
- *  body) instead of swallowing it — for the owner diagnostic. */
-async function mintAccessTokenDetailed(org: string): Promise<{ ok: boolean; token?: string; error?: string }> {
-  const clientId = await getOktaClientId();
-  const privateKey = await getOktaPrivateKey();
-  if (!clientId || !privateKey) return { ok: false, error: "no OAuth client id / private key" };
-  const tokenUrl = `${org}/oauth2/v1/token`;
-  let assertion: string;
-  try {
-    assertion = buildClientAssertion(tokenUrl, clientId, privateKey, Math.floor(Date.now() / 1000));
-  } catch (e) {
-    return { ok: false, error: `couldn't sign JWT — private key not valid PEM (${e instanceof Error ? e.message : "?"})` };
-  }
-  try {
-    const res = await fetch(tokenUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
-      body: new URLSearchParams({
-        grant_type: "client_credentials",
-        scope: OKTA_SCOPE,
-        client_assertion_type: "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
-        client_assertion: assertion,
-      }),
-    });
-    const json = (await res.json().catch(() => ({}))) as { access_token?: string; error?: string; error_description?: string };
-    if (!res.ok || !json.access_token) {
-      const detail = json.error ? `${json.error}${json.error_description ? ` — ${json.error_description}` : ""}` : `HTTP ${res.status}`;
-      return { ok: false, error: `token endpoint at ${tokenUrl}: ${detail}` };
-    }
-    return { ok: true, token: json.access_token };
-  } catch (e) {
-    return { ok: false, error: `network error reaching ${tokenUrl}: ${e instanceof Error ? e.message : "?"}` };
-  }
-}
-
 export async function diagnoseOktaDirectory(): Promise<{
   ok: boolean;
   error?: string;
@@ -315,32 +362,26 @@ export async function diagnoseOktaDirectory(): Promise<{
   const org = await getOktaOrgUrl();
   if (!org) return { ok: false, error: "No Okta org URL — set OIDC issuer or an explicit Org base URL." };
 
-  // Resolve auth WITH the failure reason surfaced (the normal path hides it).
-  let authHeader: string;
   let authMode: "oauth" | "token";
   if (await oauthConfigured()) {
     authMode = "oauth";
-    const minted = await mintAccessTokenDetailed(org);
-    if (!minted.ok) return { ok: false, authMode, error: `OAuth token exchange failed — ${minted.error}. Check: client auth = Public key/Private key, the JWK is registered, scope okta.users.read is granted, and DPoP is OFF.` };
-    authHeader = `Bearer ${minted.token}`;
+    // Mint with the reason kept (DPoP nonce handled inside). This warms the cache.
+    const minted = await mintOAuthToken(org);
+    if (!minted.ok) return { ok: false, authMode, error: `OAuth token exchange failed — ${minted.error}. Check: client auth = Public key/Private key, the JWK is registered, and scope okta.users.read is granted.` };
   } else if (await getOktaApiToken()) {
     authMode = "token";
-    authHeader = `SSWS ${await getOktaApiToken()}`;
   } else {
     return { ok: false, error: "Okta API not configured — add OAuth (client id + private key) or an SSWS token." };
   }
 
-  // Probe the Users API with the real reason kept.
-  try {
-    const res = await fetch(`${org}/api/v1/users?limit=1`, { headers: { Authorization: authHeader, Accept: "application/json" } });
-    if (!res.ok) {
-      const body = (await res.json().catch(() => ({}))) as { errorCode?: string; errorSummary?: string };
-      const detail = body.errorSummary || body.errorCode || `HTTP ${res.status}`;
-      const hint = res.status === 403 ? " (grant the app the Read-Only Administrator role + okta.users.read scope)" : "";
-      return { ok: false, authMode, error: `Users API returned ${res.status}: ${detail}${hint}` };
-    }
-  } catch (e) {
-    return { ok: false, authMode, error: `network error reaching the Users API: ${e instanceof Error ? e.message : "?"}` };
+  // Probe the Users API (OAuth path sends the DPoP proof) with the reason kept.
+  const probe = await oktaApiGet(org, `${org}/api/v1/users?limit=1`);
+  if ("error" in probe) return { ok: false, authMode, error: probe.error };
+  if (!probe.res.ok) {
+    const body = (await probe.res.json().catch(() => ({}))) as { errorCode?: string; errorSummary?: string };
+    const detail = body.errorSummary || body.errorCode || `HTTP ${probe.res.status}`;
+    const hint = probe.res.status === 403 ? " (grant the app the Read-Only Administrator role + okta.users.read scope)" : "";
+    return { ok: false, authMode, error: `Users API returned ${probe.res.status}: ${detail}${hint}` };
   }
 
   const dir = await fetchOktaDirectory();

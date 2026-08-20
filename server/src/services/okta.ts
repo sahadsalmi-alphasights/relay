@@ -1,3 +1,4 @@
+import { createSign, randomUUID } from "crypto";
 import { config } from "../config";
 import { getHints, getSecret } from "./secretsVault";
 import type { DirectoryPerson } from "./instanceImport";
@@ -6,21 +7,31 @@ import type { DirectoryPerson } from "./instanceImport";
  * Okta Admin API client — read-only, used ONLY by the owner instance-seed
  * import. Okta is the source of truth for a person's isolated instance: the
  * same (city, department, whiteboard_number) profile attributes the OIDC login
- * already reads. Auth is the Okta "SSWS <token>" scheme. Every call is guarded
- * so an Okta hiccup yields null rather than throwing into a request.
+ * already reads. Every call is guarded so an Okta hiccup yields null rather
+ * than throwing into a request.
  *
- * The API token can be pasted in Integrations (encrypted at rest via the vault)
- * OR provided via env (OKTA_API_TOKEN) — in-app takes precedence, exactly like
- * the Slack/BambooHR credentials. NOTE: this is a dedicated Okta API token, not
- * the OIDC login client secret — the Users API needs its own token / a service
- * app with the okta.users.read scope.
+ * Two auth modes, in preference order:
+ *  1. OAuth 2.0 client-credentials (private_key_jwt) — an Okta "API Services"
+ *     app granted ONLY okta.users.read. We sign a short-lived JWT assertion
+ *     with the app's private key, exchange it at the org token endpoint for a
+ *     short-lived bearer access token, and cache that until it nears expiry.
+ *     This is the scoped, future-proof path (SSWS tokens are being deprecated).
+ *  2. SSWS API token — the legacy static token (read-only admin). Fallback.
+ *
+ * All credentials can be pasted in Integrations (encrypted at rest via the
+ * vault) OR provided via env — in-app takes precedence, like Slack/BambooHR.
  */
 
 /** Vault secret names for the Okta credentials. */
 export const OKTA_SECRET = {
   apiToken: "okta.api_token",
   orgUrl: "okta.org_url",
+  clientId: "okta.client_id",
+  privateKey: "okta.private_key",
 } as const;
+
+/** The OAuth scope this integration requests — read users only. */
+export const OKTA_SCOPE = "okta.users.read";
 
 export interface OktaCredHint {
   hasValue: boolean;
@@ -36,8 +47,12 @@ function resolveSecretOrEnv(name: string, envFallback: string): Promise<string> 
     .catch(() => envFallback);
 }
 
-/** The Okta API token: vault (in-app) → env. */
+/** The Okta API token (SSWS): vault (in-app) → env. */
 export const getOktaApiToken = () => resolveSecretOrEnv(OKTA_SECRET.apiToken, config.oktaApiToken);
+/** OAuth client id (not secret): vault → env. */
+export const getOktaClientId = () => resolveSecretOrEnv(OKTA_SECRET.clientId, config.oktaClientId);
+/** OAuth private key (PEM): vault → env. */
+export const getOktaPrivateKey = () => resolveSecretOrEnv(OKTA_SECRET.privateKey, config.oktaPrivateKey);
 
 /** Derive an org base URL from the OIDC issuer origin (login provider), or null. */
 function orgUrlFromIssuer(): string | null {
@@ -60,23 +75,109 @@ export async function getOktaOrgUrl(): Promise<string | null> {
   return val ? val.replace(/\/+$/, "") : null;
 }
 
-/** True when both an org URL and an API token are available (stored or env). */
+/** True when OAuth (client id + private key) credentials are available. */
+async function oauthConfigured(): Promise<boolean> {
+  return !!((await getOktaClientId()) && (await getOktaPrivateKey()));
+}
+
+/** True when the directory can be reached: an org URL AND either auth mode. */
 export async function oktaConfigured(): Promise<boolean> {
-  return !!((await getOktaOrgUrl()) && (await getOktaApiToken()));
+  if (!(await getOktaOrgUrl())) return false;
+  return (await oauthConfigured()) || !!(await getOktaApiToken());
+}
+
+/**
+ * Build a signed client_assertion JWT (private_key_jwt) for the Okta org token
+ * endpoint. Header alg RS256; claims iss=sub=clientId, aud=token endpoint,
+ * short lifetime, unique jti. Signed with the app's PEM private key.
+ */
+export function buildClientAssertion(tokenUrl: string, clientId: string, privateKeyPem: string, nowSec: number): string {
+  const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString("base64url");
+  const header = b64({ alg: "RS256", typ: "JWT" });
+  const payload = b64({ iss: clientId, sub: clientId, aud: tokenUrl, iat: nowSec, exp: nowSec + 300, jti: randomUUID() });
+  const signingInput = `${header}.${payload}`;
+  const signature = createSign("RSA-SHA256").update(signingInput).end().sign(privateKeyPem).toString("base64url");
+  return `${signingInput}.${signature}`;
+}
+
+// Cache the OAuth access token in memory until shortly before it expires, so we
+// don't mint one per request. Cleared implicitly on process restart.
+let tokenCache: { token: string; expiresAt: number } | null = null;
+
+/** Mint (or reuse a cached) OAuth bearer access token. Null on failure/misconfig. */
+async function getOktaAccessToken(org: string): Promise<string | null> {
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (tokenCache && tokenCache.expiresAt - 60 > nowSec) return tokenCache.token;
+
+  const clientId = await getOktaClientId();
+  const privateKey = await getOktaPrivateKey();
+  if (!clientId || !privateKey) return null;
+
+  const tokenUrl = `${org}/oauth2/v1/token`;
+  let assertion: string;
+  try {
+    assertion = buildClientAssertion(tokenUrl, clientId, privateKey, nowSec);
+  } catch {
+    return null; // bad/unparseable private key
+  }
+  const body = new URLSearchParams({
+    grant_type: "client_credentials",
+    scope: OKTA_SCOPE,
+    client_assertion_type: "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
+    client_assertion: assertion,
+  });
+  try {
+    const res = await fetch(tokenUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+      body,
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { access_token?: string; expires_in?: number };
+    if (!json.access_token) return null;
+    tokenCache = { token: json.access_token, expiresAt: nowSec + (json.expires_in ?? 3600) };
+    return json.access_token;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resolve the Authorization header for a directory call: OAuth bearer when a
+ * client id + private key are configured, else the SSWS token, else null.
+ */
+async function oktaAuthHeader(org: string): Promise<{ Authorization: string } | null> {
+  if (await oauthConfigured()) {
+    const access = await getOktaAccessToken(org);
+    return access ? { Authorization: `Bearer ${access}` } : null;
+  }
+  const token = await getOktaApiToken();
+  return token ? { Authorization: `SSWS ${token}` } : null;
 }
 
 const last4 = (s: string) => (s.length >= 4 ? s.slice(-4) : s);
 
-/** Per-credential status for the Integrations panel, reflecting vault + env. */
-export async function getOktaHints(): Promise<{ apiToken: OktaCredHint; orgUrl: OktaCredHint }> {
-  const vault = await getHints([OKTA_SECRET.apiToken, OKTA_SECRET.orgUrl]);
+/** Per-credential status for the Integrations panel, reflecting vault + env,
+ *  plus which auth mode is active (oauth / token / none). */
+export async function getOktaHints(): Promise<{
+  apiToken: OktaCredHint;
+  clientId: OktaCredHint;
+  privateKey: OktaCredHint;
+  orgUrl: OktaCredHint;
+  authMode: "oauth" | "token" | "none";
+}> {
+  const vault = await getHints([OKTA_SECRET.apiToken, OKTA_SECRET.clientId, OKTA_SECRET.privateKey, OKTA_SECRET.orgUrl]);
 
-  const tokenVault = vault[OKTA_SECRET.apiToken];
-  const apiToken: OktaCredHint = tokenVault?.hasValue
-    ? { hasValue: true, hint: tokenVault.hint, source: "in-app" }
-    : config.oktaApiToken
-      ? { hasValue: true, hint: last4(config.oktaApiToken), source: "env" }
-      : { hasValue: false, hint: null, source: null };
+  const secretHint = (name: string, env: string): OktaCredHint => {
+    const v = vault[name];
+    if (v?.hasValue) return { hasValue: true, hint: v.hint, source: "in-app" };
+    if (env) return { hasValue: true, hint: last4(env), source: "env" };
+    return { hasValue: false, hint: null, source: null };
+  };
+
+  const apiToken = secretHint(OKTA_SECRET.apiToken, config.oktaApiToken);
+  const clientId = secretHint(OKTA_SECRET.clientId, config.oktaClientId);
+  const privateKey = secretHint(OKTA_SECRET.privateKey, config.oktaPrivateKey);
 
   const orgVault = vault[OKTA_SECRET.orgUrl];
   const derived = orgUrlFromIssuer();
@@ -88,7 +189,9 @@ export async function getOktaHints(): Promise<{ apiToken: OktaCredHint; orgUrl: 
         ? { hasValue: true, hint: derived, source: "derived" }
         : { hasValue: false, hint: null, source: null };
 
-  return { apiToken, orgUrl };
+  const authMode = clientId.hasValue && privateKey.hasValue ? "oauth" : apiToken.hasValue ? "token" : "none";
+
+  return { apiToken, clientId, privateKey, orgUrl, authMode };
 }
 
 interface OktaUser {
@@ -104,8 +207,6 @@ interface OktaUser {
     whiteboard_number?: string | null;
   };
 }
-
-const authHeader = (token: string) => ({ Authorization: `SSWS ${token}`, Accept: "application/json" });
 
 function nextLink(linkHeader: string | null): string | null {
   if (!linkHeader) return null;
@@ -136,8 +237,9 @@ const mapUser = (u: OktaUser): DirectoryPerson => {
  */
 export async function fetchOktaDirectory(): Promise<DirectoryPerson[] | null> {
   const org = await getOktaOrgUrl();
-  const token = await getOktaApiToken();
-  if (!org || !token) return null;
+  if (!org) return null;
+  const auth = await oktaAuthHeader(org);
+  if (!auth) return null;
   const out: DirectoryPerson[] = [];
   // Only current/active users; 200 per page (Okta's max).
   let url: string | null = `${org}/api/v1/users?limit=200&filter=${encodeURIComponent('status eq "ACTIVE"')}`;
@@ -145,7 +247,7 @@ export async function fetchOktaDirectory(): Promise<DirectoryPerson[] | null> {
     let guard = 0;
     while (url && guard < 200) {
       guard += 1;
-      const res: Response = await fetch(url, { headers: authHeader(token) });
+      const res: Response = await fetch(url, { headers: { ...auth, Accept: "application/json" } });
       if (!res.ok) return null;
       const page = (await res.json()) as OktaUser[];
       for (const u of page) {
@@ -174,7 +276,7 @@ export async function diagnoseOktaDirectory(): Promise<{
   withBoard?: number;
   values?: Record<string, { value: string; count: number }[]>;
 }> {
-  if (!(await oktaConfigured())) return { ok: false, error: "Okta API not configured — paste an API token in Integrations (org URL defaults to your OIDC issuer)." };
+  if (!(await oktaConfigured())) return { ok: false, error: "Okta API not configured — add OAuth (client id + private key) or an SSWS API token in Integrations (org URL defaults to your OIDC issuer)." };
   const dir = await fetchOktaDirectory();
   if (dir === null) return { ok: false, error: "Could not reach the Okta API — check the token and org URL (needs read-only Users API access)." };
 

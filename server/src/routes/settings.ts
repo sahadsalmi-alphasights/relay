@@ -348,16 +348,20 @@ const settingsRoutes: FastifyPluginAsync = async (app) => {
     secretStore: secretCrypto().kind,
   }));
 
-  app.patch<{ Body: { apiToken?: string; orgUrl?: string; clear?: string } }>(
+  app.patch<{ Body: { apiToken?: string; orgUrl?: string; clientId?: string; privateKey?: string; clear?: string } }>(
     "/okta-integration/credentials",
     { preHandler: [app.requireOwner] },
     async (request) => {
       const b = request.body ?? {};
       const changed: string[] = [];
-      if (b.clear === "apiToken") { await clearSecret(OKTA_SECRET.apiToken); changed.push("cleared apiToken"); }
-      else if (typeof b.apiToken === "string" && b.apiToken.trim()) { await setSecret(OKTA_SECRET.apiToken, b.apiToken.trim()); changed.push("apiToken"); }
-      if (b.clear === "orgUrl") { await clearSecret(OKTA_SECRET.orgUrl); changed.push("cleared orgUrl"); }
-      else if (typeof b.orgUrl === "string" && b.orgUrl.trim()) { await setSecret(OKTA_SECRET.orgUrl, b.orgUrl.trim()); changed.push("orgUrl"); }
+      const field = (key: "apiToken" | "orgUrl" | "clientId" | "privateKey", val: string | undefined) => async () => {
+        if (b.clear === key) { await clearSecret(OKTA_SECRET[key]); changed.push(`cleared ${key}`); }
+        else if (typeof val === "string" && val.trim()) { await setSecret(OKTA_SECRET[key], val.trim()); changed.push(key); }
+      };
+      await field("apiToken", b.apiToken)();
+      await field("orgUrl", b.orgUrl)();
+      await field("clientId", b.clientId)();
+      await field("privateKey", b.privateKey)();
 
       await insertAuditLog({
         entityType: "instance_import",

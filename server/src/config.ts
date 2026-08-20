@@ -22,6 +22,13 @@ export const config = {
   // single OKTA_API_TOKEN is usually enough), overridable via OKTA_ORG_URL.
   oktaApiToken: (process.env.OKTA_API_TOKEN ?? "").trim(),
   oktaOrgUrl: (process.env.OKTA_ORG_URL ?? "").trim(),
+  // OAuth 2.0 client-credentials (private_key_jwt) — the preferred, scoped
+  // alternative to the SSWS token: an Okta "API Services" app granted only
+  // okta.users.read. Client id is not secret; the private key (PEM) is. Both
+  // env or in-app (vault). When a client id + private key are present, OAuth is
+  // used; otherwise we fall back to the SSWS token above.
+  oktaClientId: (process.env.OKTA_CLIENT_ID ?? "").trim(),
+  oktaPrivateKey: (process.env.OKTA_PRIVATE_KEY ?? "").trim(),
   // Slack integration (optional) — the Incoming Webhook URL is a credential,
   // so it lives in env (like the VAPID/OIDC secrets), never in the DB or code.
   // Unset = Slack disabled regardless of the in-app toggles. The DB holds only

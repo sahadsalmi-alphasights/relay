@@ -131,6 +131,18 @@ export default function Sidebar({
         <span className="nav-label">Sunday Coverage</span>
       </button>
 
+      {/* Vacation — sits right under Sunday Coverage. Owner-only for now. */}
+      {actor.isOwner && (
+        <button
+          className={"sunday-link" + (tab === "Vacation" ? " active" : "")}
+          onClick={() => setTab("Vacation")}
+          title="Vacation planner"
+        >
+          <span className="nav-icon" aria-hidden="true" style={{ fontSize: 13, lineHeight: 1 }}>🏖️</span>
+          <span className="nav-label">Vacation</span>
+        </button>
+      )}
+
       {/* FAQ — external link to the DeliveryGPT agent, opens in a new tab. */}
       <a
         className="sunday-link"
@@ -193,13 +205,6 @@ export default function Sidebar({
             <button className={tab === "Users" ? "active" : ""} onClick={() => setTab("Users")}>
               <span className="nav-icon ico" style={ico("users.png")} aria-hidden="true" />
               <span className="nav-label">Settings</span>
-            </button>
-          )}
-          {/* Owner-only for now — hidden from normal users. */}
-          {actor.isOwner && (
-            <button className={tab === "Vacation" ? "active" : ""} onClick={() => setTab("Vacation")}>
-              <span aria-hidden="true" style={{ fontSize: 15, width: 18, textAlign: "center" }}>🏖️</span>
-              <span className="nav-label">Vacation</span>
             </button>
           )}
         </div>

@@ -85,7 +85,10 @@ const OKTA_OFFICE_ALLOWLIST: Record<string, string[]> = {
 const ALLOWED_OFFICES = new Set<string>(
   Object.entries(OKTA_OFFICE_ALLOWLIST).flatMap(([loc, depts]) => depts.map((d) => `${loc.toLowerCase().trim()}||${d.toLowerCase().trim()}`))
 );
-const isAllowedOffice = (location: string, department: string): boolean =>
+/** True when a (location, department) is on the approved office allowlist.
+ *  Shared with the OIDC login path so a sign-in only ever auto-creates an
+ *  instance for an approved office. */
+export const isAllowedOffice = (location: string, department: string): boolean =>
   ALLOWED_OFFICES.has(`${location.toLowerCase().trim()}||${department.toLowerCase().trim()}`);
 
 // Full (city, department, board?) tuple identity — the SAME shape Okta sends.
@@ -113,13 +116,14 @@ export async function previewImport(fetchSource: DirectorySource): Promise<Impor
 
   const { usable, skippedNoEmail, skippedNoTuple, skippedNotAllowed } = classify(dir);
 
-  // Group by the full (city, department, board?) tuple.
+  // Group by (city, department) — whiteboard/board is intentionally ignored for
+  // now, so we create one instance per department, not per board.
   const groups = new Map<string, { city: string; department: string; board: string | null; people: number }>();
   let withBoard = 0;
   for (const p of usable) {
-    if (p.board) withBoard += 1;
-    const id = tupleId(p.location!, p.department!, p.board);
-    const g = groups.get(id) ?? { city: p.location!, department: p.department!, board: p.board, people: 0 };
+    if (p.board) withBoard += 1; // informational only
+    const id = tupleId(p.location!, p.department!, null);
+    const g = groups.get(id) ?? { city: p.location!, department: p.department!, board: null, people: 0 };
     g.people += 1;
     groups.set(id, g);
   }
@@ -193,11 +197,11 @@ export async function applyImport(
   const tupleKeys = new Map<string, string>();
   let instancesCreated = 0;
   const uniqueTuples = new Map<string, { city: string; department: string; board: string | null }>();
-  for (const p of usable) uniqueTuples.set(tupleId(p.location!, p.department!, p.board), { city: p.location!, department: p.department!, board: p.board });
+  for (const p of usable) uniqueTuples.set(tupleId(p.location!, p.department!, null), { city: p.location!, department: p.department!, board: null });
   for (const [id, t] of uniqueTuples) {
-    const existing = await findInstanceByTuple(t.city, t.department, t.board);
+    const existing = await findInstanceByTuple(t.city, t.department, null);
     if (!existing) instancesCreated += 1;
-    tupleKeys.set(id, await deriveInstanceKey(t.city, t.department, t.board));
+    tupleKeys.set(id, await deriveInstanceKey(t.city, t.department, null));
   }
 
   // 2. Users — SKIPPED in instancesOnly mode (nothing but instances is fed from
@@ -210,7 +214,7 @@ export async function applyImport(
     const toCreate = new Map<string, { email: string; name: string; businessUnit: string }>();
     const reassignByKey = new Map<string, string[]>();
     for (const p of usable) {
-      const key = tupleKeys.get(tupleId(p.location!, p.department!, p.board))!;
+      const key = tupleKeys.get(tupleId(p.location!, p.department!, null))!;
       const known = existingPeople.get(p.email);
       if (!known) {
         if (!toCreate.has(p.email)) toCreate.set(p.email, { email: p.email, name: p.name || p.email, businessUnit: key });

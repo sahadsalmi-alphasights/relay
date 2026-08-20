@@ -46,6 +46,7 @@ export interface ImportPreview {
   totalEmployees?: number;
   skippedNoEmail?: number;
   skippedNoTuple?: number;
+  skippedNotAllowed?: number; // real office, not on the approved list
   withTuple?: number;
   withBoard?: number; // usable people carrying a board/whiteboard value
   groups?: ImportGroup[];
@@ -56,10 +57,36 @@ export interface ImportPreview {
 }
 
 interface Classified {
-  usable: DirectoryPerson[]; // has email + city + department (board optional)
+  usable: DirectoryPerson[]; // has email + city + department, and an allowed office
   skippedNoEmail: number;
   skippedNoTuple: number;
+  skippedNotAllowed: number; // real office, but not on the approved list below
 }
+
+/**
+ * Approved office taxonomy — the ONLY (location → departments) combos we seed.
+ * Okta returns far more (Remote, Technology and Strategy, etc.); anything not
+ * listed here is skipped. Keyed on the exact (location, department) pair
+ * because departments intentionally cross-prefix (e.g. "HK SC - GROWTH - SEAA"
+ * under Tokyo, "NY - Executive Partnerships" under San Francisco). A board
+ * (whiteboard_number) under an allowed department is still imported.
+ */
+const OKTA_OFFICE_ALLOWLIST: Record<string, string[]> = {
+  Tokyo: ["HK SC - GROWTH - SEAA", "TYO - CAP", "TYO - PE", "TYO SC - BCG", "TYO SC - GROWTH", "TYO SC - GROWTH - CORPORATE STRATEGY", "TYO SC - McKinsey"],
+  Hamburg: ["HAM - Executive Partnerships", "HAM - PE", "HAM SC - GROWTH", "HAM SC - MBB"],
+  "San Francisco": ["NY - Executive Partnerships", "SF PE"],
+  Shanghai: ["SH - PE", "SH CORP", "SH SC - Consulting"],
+  London: ["LON - AlphaGlobal", "LON - Executive Partnerships", "LON - Research", "LON - SC", "LON - Surveys", "LON CAP", "LON CORP", "LON PE"],
+  "New York": ["NY - Executive Partnerships", "NY - Research", "NY - Surveys", "NY CAP", "NY CORP", "NY CORP International", "NY PE", "NY SC - BCG", "NY SC - Bain", "NY SC - Growth", "NY SC - McKinsey"],
+  "Hong Kong": ["Asia Surveys", "HK - CAP", "HK - CORP", "HK - Executive Partnerships", "HK - India Consulting", "HK - PE", "HK - Research", "HK SC - GROWTH - SEAA", "HK SC BCG - SEAA", "HK SC Bain - SEAA"],
+  Dubai: ["DUB - Consulting", "DUB - Non-Consulting"],
+  Seoul: ["SEL - CORP", "SEL - PE", "SEL SC - BCG", "SEL SC - Bain", "SEL SC - Growth", "SEL SC - McKinsey"],
+};
+const ALLOWED_OFFICES = new Set<string>(
+  Object.entries(OKTA_OFFICE_ALLOWLIST).flatMap(([loc, depts]) => depts.map((d) => `${loc.toLowerCase().trim()}||${d.toLowerCase().trim()}`))
+);
+const isAllowedOffice = (location: string, department: string): boolean =>
+  ALLOWED_OFFICES.has(`${location.toLowerCase().trim()}||${department.toLowerCase().trim()}`);
 
 // Full (city, department, board?) tuple identity — the SAME shape Okta sends.
 const tupleId = (city: string, department: string, board: string | null): string =>
@@ -68,13 +95,15 @@ const tupleId = (city: string, department: string, board: string | null): string
 function classify(dir: DirectoryPerson[]): Classified {
   let skippedNoEmail = 0;
   let skippedNoTuple = 0;
+  let skippedNotAllowed = 0;
   const usable: DirectoryPerson[] = [];
   for (const p of dir) {
     if (!p.email) { skippedNoEmail += 1; continue; }
     if (!p.location || !p.department) { skippedNoTuple += 1; continue; }
+    if (!isAllowedOffice(p.location, p.department)) { skippedNotAllowed += 1; continue; }
     usable.push(p);
   }
-  return { usable, skippedNoEmail, skippedNoTuple };
+  return { usable, skippedNoEmail, skippedNoTuple, skippedNotAllowed };
 }
 
 /** Read-only dry run. Never writes. */
@@ -82,7 +111,7 @@ export async function previewImport(fetchSource: DirectorySource): Promise<Impor
   const dir = await fetchSource();
   if (dir === null) return { ok: false, error: "Could not reach the directory source — check the Okta API token / org URL." };
 
-  const { usable, skippedNoEmail, skippedNoTuple } = classify(dir);
+  const { usable, skippedNoEmail, skippedNoTuple, skippedNotAllowed } = classify(dir);
 
   // Group by the full (city, department, board?) tuple.
   const groups = new Map<string, { city: string; department: string; board: string | null; people: number }>();
@@ -120,6 +149,7 @@ export async function previewImport(fetchSource: DirectorySource): Promise<Impor
     totalEmployees: dir.length,
     skippedNoEmail,
     skippedNoTuple,
+    skippedNotAllowed,
     withTuple: usable.length,
     withBoard,
     groups: out,
@@ -139,6 +169,7 @@ export interface ImportResult {
   usersReassigned?: number;
   skippedNoEmail?: number;
   skippedNoTuple?: number;
+  skippedNotAllowed?: number;
 }
 
 /** Perform the import. Idempotent: existing instances/users are reused, and a
@@ -147,7 +178,7 @@ export async function applyImport(actorId: string, fetchSource: DirectorySource)
   const dir = await fetchSource();
   if (dir === null) return { ok: false, error: "Could not reach the directory source — check the Okta API token / org URL." };
 
-  const { usable, skippedNoEmail, skippedNoTuple } = classify(dir);
+  const { usable, skippedNoEmail, skippedNoTuple, skippedNotAllowed } = classify(dir);
 
   // 1. Resolve every office to an instance key, creating any that are new.
   //    Do this BEFORE touching people: the home-instance trigger references
@@ -193,7 +224,7 @@ export async function applyImport(actorId: string, fetchSource: DirectorySource)
     entityId: "00000000-0000-0000-0000-000000000000",
     actorId,
     action: "okta_import",
-    newValue: { instancesCreated, instancesTotal: uniqueTuples.size, usersCreated, usersReassigned, skippedNoEmail, skippedNoTuple },
+    newValue: { instancesCreated, instancesTotal: uniqueTuples.size, usersCreated, usersReassigned, skippedNoEmail, skippedNoTuple, skippedNotAllowed },
   });
 
   return {
@@ -204,5 +235,6 @@ export async function applyImport(actorId: string, fetchSource: DirectorySource)
     usersReassigned,
     skippedNoEmail,
     skippedNoTuple,
+    skippedNotAllowed,
   };
 }

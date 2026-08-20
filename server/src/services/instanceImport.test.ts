@@ -6,11 +6,12 @@ const dir = (rows: Partial<DirectoryPerson>[]): DirectoryPerson[] =>
   rows.map((r, i) => ({ employeeId: String(i + 1), email: "", name: "", location: null, department: null, board: null, ...r }));
 
 const SAMPLE = dir([
-  { email: "kai@x.test", name: "Kai", location: "Dubai", department: "DUB - Consulting" }, // existing person, existing instance
-  { email: "new1@x.test", name: "New One", location: "London", department: "LON - PE", board: "Board 3" }, // new user, board-specific instance
-  { email: "new2@x.test", name: "New Two", location: "London", department: "LON - PE", board: "Board 3" }, // new user, same board instance
-  { email: "", name: "No Email", location: "London", department: "LON - PE" }, // skipped — no email
+  { email: "kai@x.test", name: "Kai", location: "Dubai", department: "DUB - Consulting" }, // allowed, existing instance
+  { email: "new1@x.test", name: "New One", location: "London", department: "LON PE", board: "Board 3" }, // allowed, board-specific instance
+  { email: "new2@x.test", name: "New Two", location: "London", department: "LON PE", board: "Board 3" }, // allowed, same board instance
+  { email: "", name: "No Email", location: "London", department: "LON PE" }, // skipped — no email
   { email: "notuple@x.test", name: "No Office", location: null, department: null }, // skipped — no tuple
+  { email: "offlist@x.test", name: "Off List", location: "London", department: "Technology and Strategy" }, // skipped — not on the allowlist
 ]);
 
 // Directory sources passed to the (source-agnostic) importer.
@@ -35,10 +36,11 @@ describe("directory instance/user import (Okta tuple derivation)", () => {
     const before = await pool.query(`SELECT count(*)::int n FROM person`);
     const p = await previewImport(source);
     expect(p.ok).toBe(true);
-    expect(p.totalEmployees).toBe(5);
-    expect(p.withTuple).toBe(3);
+    expect(p.totalEmployees).toBe(6);
+    expect(p.withTuple).toBe(3); // off-list + no-email + no-tuple all excluded
     expect(p.skippedNoEmail).toBe(1);
     expect(p.skippedNoTuple).toBe(1);
+    expect(p.skippedNotAllowed).toBe(1); // London · Technology and Strategy is off-list
     expect(p.newInstances).toBe(1);
     expect(p.existingInstances).toBe(1);
     expect(p.matchedUsers).toBe(1);
@@ -58,7 +60,7 @@ describe("directory instance/user import (Okta tuple derivation)", () => {
     expect(r.usersReassigned).toBe(0); // kai's derived key equals his current home
 
     const inst = await pool.query(`SELECT key, city, department, board FROM instance WHERE key = 'london_lon_pe_board_3'`);
-    expect(inst.rows[0]).toMatchObject({ city: "London", department: "LON - PE", board: "Board 3" });
+    expect(inst.rows[0]).toMatchObject({ city: "London", department: "LON PE", board: "Board 3" });
 
     // New users are members of the London instance via the home trigger.
     const members = await pool.query(

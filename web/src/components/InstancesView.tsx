@@ -58,7 +58,7 @@ export default function InstancesView({
 
   // BambooHR seed import (preview-then-apply).
   type Group = { city: string; department: string; board: string | null; key: string | null; existing: boolean; people: number };
-  type Preview = { ok: boolean; error?: string; totalEmployees?: number; skippedNoEmail?: number; skippedNoTuple?: number; withTuple?: number; withBoard?: number; groups?: Group[]; newInstances?: number; existingInstances?: number; matchedUsers?: number; newUsers?: number };
+  type Preview = { ok: boolean; error?: string; totalEmployees?: number; skippedNoEmail?: number; skippedNoTuple?: number; skippedNotAllowed?: number; withTuple?: number; withBoard?: number; groups?: Group[]; newInstances?: number; existingInstances?: number; matchedUsers?: number; newUsers?: number };
   type Applied = { ok: boolean; error?: string; instancesCreated?: number; instancesTotal?: number; usersCreated?: number; usersReassigned?: number; skippedNoEmail?: number; skippedNoTuple?: number };
   const [importOpen, setImportOpen] = useState(false);
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -253,8 +253,8 @@ export default function InstancesView({
                   <span><b style={{ color: "var(--green)" }}>{preview.newInstances}</b> new instance(s), {preview.existingInstances} existing</span>
                   <span><b style={{ color: "var(--green)" }}>{preview.newUsers}</b> user(s) to create, {preview.matchedUsers} already here</span>
                   <span>{preview.withBoard ? `${preview.withBoard} with a board` : "no board values"}</span>
-                  {(preview.skippedNoTuple || preview.skippedNoEmail) ? (
-                    <span style={{ color: "var(--amber)" }}>skipped {preview.skippedNoTuple} without office, {preview.skippedNoEmail} without email</span>
+                  {(preview.skippedNoTuple || preview.skippedNoEmail || preview.skippedNotAllowed) ? (
+                    <span style={{ color: "var(--amber)" }}>skipped {preview.skippedNotAllowed ?? 0} off-list, {preview.skippedNoTuple} without office, {preview.skippedNoEmail} without email</span>
                   ) : null}
                 </div>
                 <div style={{ maxHeight: 240, overflow: "auto", border: "1px solid var(--line)", borderRadius: 8 }}>

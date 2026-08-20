@@ -113,7 +113,7 @@ export default function Sidebar({
         onClick={toggleLunch}
         title={actor.outToLunch ? "Out to Lunch ON — no new allocations. Tap to come back." : "Out to Lunch OFF — tap when you head out"}
       >
-        <span className="nav-icon" aria-hidden="true" style={{ fontSize: 13, lineHeight: 1 }}>🍱</span>
+        <span className="nav-icon ico" style={ico("lunch.svg")} aria-hidden="true" />
         <span className="nav-label">Out to Lunch</span>
         <span className={"toggle-switch lunch " + (actor.outToLunch ? "on" : "")}>
           <span className="thumb" />
@@ -127,7 +127,7 @@ export default function Sidebar({
         onClick={() => setTab("SundayRota")}
         title="Sunday coverage — the whole BU's Sunday rota"
       >
-        <span className="nav-icon" aria-hidden="true" style={{ fontSize: 13, lineHeight: 1 }}>🗓</span>
+        <span className="nav-icon ico" style={ico("sunday.svg")} aria-hidden="true" />
         <span className="nav-label">Sunday Coverage</span>
       </button>
 
@@ -138,7 +138,7 @@ export default function Sidebar({
           onClick={() => setTab("Vacation")}
           title="Vacation planner"
         >
-          <span className="nav-icon" aria-hidden="true" style={{ fontSize: 13, lineHeight: 1 }}>🏖️</span>
+          <span className="nav-icon ico" style={ico("vacation.svg")} aria-hidden="true" />
           <span className="nav-label">Vacation</span>
         </button>
       )}
@@ -151,7 +151,7 @@ export default function Sidebar({
         rel="noopener noreferrer"
         title="FAQ — opens DeliveryGPT in a new tab"
       >
-        <span className="nav-icon" aria-hidden="true" style={{ fontSize: 13, lineHeight: 1 }}>❓</span>
+        <span className="nav-icon ico" style={ico("faq.svg")} aria-hidden="true" />
         <span className="nav-label">FAQ</span>
         <span aria-hidden="true" style={{ marginLeft: "auto", fontSize: 11, opacity: 0.6 }}>↗</span>
       </a>

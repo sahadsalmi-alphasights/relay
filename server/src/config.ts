@@ -15,6 +15,13 @@ export const config = {
   oidcClientId: process.env.OIDC_CLIENT_ID ?? "",
   oidcClientSecret: process.env.OIDC_CLIENT_SECRET ?? "",
   oidcRedirectUri: process.env.OIDC_REDIRECT_URI ?? "",
+  // Okta Admin API (optional) — used ONLY by the owner instance-seed import to
+  // read the directory (email + the same city/department/whiteboard_number
+  // attributes the OIDC login already uses). The token is a credential → env
+  // only. The org base URL defaults to the ORIGIN of the OIDC issuer (so a
+  // single OKTA_API_TOKEN is usually enough), overridable via OKTA_ORG_URL.
+  oktaApiToken: (process.env.OKTA_API_TOKEN ?? "").trim(),
+  oktaOrgUrl: (process.env.OKTA_ORG_URL ?? "").trim(),
   // Slack integration (optional) — the Incoming Webhook URL is a credential,
   // so it lives in env (like the VAPID/OIDC secrets), never in the DB or code.
   // Unset = Slack disabled regardless of the in-app toggles. The DB holds only

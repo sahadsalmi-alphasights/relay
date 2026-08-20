@@ -64,7 +64,7 @@ export default function InstancesView({
   const [preview, setPreview] = useState<Preview | null>(null);
   const [importBusy, setImportBusy] = useState<"preview" | "apply" | "fields" | null>(null);
   const [applied, setApplied] = useState<Applied | null>(null);
-  type Fields = { ok: boolean; error?: string; boardFieldDetected?: string | null; allFields?: { id: string; name: string }[]; values?: Record<string, { value: string; count: number }[]> };
+  type Fields = { ok: boolean; error?: string; users?: number; withTuple?: number; withBoard?: number; values?: Record<string, { value: string; count: number }[]> };
   const [fields, setFields] = useState<Fields | null>(null);
 
   // Members of the selected instance (paginated, searchable).
@@ -199,16 +199,16 @@ export default function InstancesView({
       <div className="card" style={{ padding: 12 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           <div style={{ flex: 1, minWidth: 200 }}>
-            <div style={{ fontSize: 13, fontWeight: 700 }}>Seed from BambooHR</div>
+            <div style={{ fontSize: 13, fontWeight: 700 }}>Seed from Okta</div>
             <div style={{ fontSize: 12, color: "var(--soft)" }}>
-              Creates instances and users from the BambooHR directory — the same (city · department) mapping Okta uses at login. Preview first; nothing is written until you apply.
+              Creates instances and users from the Okta directory — each person's city · department · whiteboard_number, the same attributes the login uses. Preview first; nothing is written until you apply.
             </div>
           </div>
           <button className="btn-sm btn-ghost" disabled={importBusy !== null} onClick={() => { setImportOpen((o) => !o); if (!importOpen && !preview) runPreview(); }}>
-            {importOpen ? "Hide" : "Import from BambooHR"}
+            {importOpen ? "Hide" : "Import from Okta"}
           </button>
           <button className="btn-sm btn-ghost" disabled={importBusy !== null} onClick={() => { setImportOpen(true); runFields(); }}>
-            {importBusy === "fields" ? "Inspecting…" : "Inspect fields"}
+            {importBusy === "fields" ? "Checking…" : "Check Okta directory"}
           </button>
         </div>
 
@@ -216,13 +216,14 @@ export default function InstancesView({
           <div style={{ marginTop: 12, borderTop: "1px solid var(--line)", paddingTop: 12 }}>
             {fields && (
               <div style={{ marginBottom: 14, padding: 12, border: "1px solid var(--line)", borderRadius: 8, background: "var(--bg)" }}>
-                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>BambooHR field inspector</div>
+                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>Okta directory check</div>
                 {!fields.ok && <div className="err-line">{fields.error}</div>}
                 {fields.ok && (
                   <>
-                    <div style={{ fontSize: 12, color: "var(--soft)", marginBottom: 8 }}>
-                      Detected board field: <b style={{ color: fields.boardFieldDetected ? "var(--green)" : "var(--amber)" }}>{fields.boardFieldDetected ?? "none found"}</b>.
-                      Compare the value sets below — pick which field holds the office (Consulting/Non-Consulting) and which holds the board.
+                    <div style={{ fontSize: 12, color: "var(--soft)", marginBottom: 8, display: "flex", gap: 16, flexWrap: "wrap" }}>
+                      <span><b style={{ color: "var(--ink)", fontVariantNumeric: "tabular-nums" }}>{fields.users}</b> active users</span>
+                      <span><b style={{ color: "var(--ink)", fontVariantNumeric: "tabular-nums" }}>{fields.withTuple}</b> with city + department</span>
+                      <span style={{ color: fields.withBoard ? "var(--green)" : "var(--amber)" }}><b>{fields.withBoard}</b> with a whiteboard_number</span>
                     </div>
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
                       {Object.entries(fields.values ?? {}).map(([field, vals]) => (
@@ -239,17 +240,11 @@ export default function InstancesView({
                         </div>
                       ))}
                     </div>
-                    <details style={{ marginTop: 8 }}>
-                      <summary style={{ fontSize: 12, color: "var(--soft)", cursor: "pointer" }}>All BambooHR fields ({fields.allFields?.length ?? 0})</summary>
-                      <div style={{ fontSize: 11, color: "var(--soft)", marginTop: 6, maxHeight: 160, overflow: "auto", fontFamily: "var(--mono, monospace)" }}>
-                        {fields.allFields?.map((f) => <div key={f.id}>{f.id} — {f.name}</div>)}
-                      </div>
-                    </details>
                   </>
                 )}
               </div>
             )}
-            {importBusy === "preview" && <div style={{ fontSize: 13, color: "var(--soft)" }}>Reading the BambooHR directory…</div>}
+            {importBusy === "preview" && <div style={{ fontSize: 13, color: "var(--soft)" }}>Reading the Okta directory…</div>}
             {preview && !preview.ok && <div className="err-line">{preview.error}</div>}
             {preview && preview.ok && (
               <>

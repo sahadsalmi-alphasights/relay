@@ -22,7 +22,7 @@ let actorId: string;
 beforeEach(async () => {
   await pool.query(`TRUNCATE TABLE person, audit_log RESTART IDENTITY CASCADE`);
   // Remove any London instance a prior run created so instance state is clean.
-  await pool.query(`DELETE FROM instance WHERE key = 'london_lon_pe_board_3'`);
+  await pool.query(`DELETE FROM instance WHERE key = 'london_lon_pe'`);
   // An existing Dubai Consulting user (home = 'non_consulting' after the swap)
   // that also serves as the audit actor.
   const { rows } = await pool.query<{ id: string }>(
@@ -60,8 +60,8 @@ describe("directory instance/user import (Okta tuple derivation)", () => {
     expect(r.usersCreated).toBe(0);
     expect(r.usersReassigned).toBe(0);
 
-    const inst = await pool.query(`SELECT city, department, board FROM instance WHERE key = 'london_lon_pe_board_3'`);
-    expect(inst.rows[0]).toMatchObject({ city: "London", department: "LON PE", board: "Board 3" });
+    const inst = await pool.query(`SELECT city, department, board FROM instance WHERE key = 'london_lon_pe'`);
+    expect(inst.rows[0]).toMatchObject({ city: "London", department: "LON PE", board: null }); // board ignored for now
     // No new people created.
     const after = await pool.query(`SELECT count(*)::int n FROM person`);
     expect(after.rows[0].n).toBe(before.rows[0].n);
@@ -74,7 +74,7 @@ describe("directory instance/user import (Okta tuple derivation)", () => {
 
     const members = await pool.query(
       `SELECT p.email FROM person p JOIN person_instance pi ON pi.person_id = p.id
-       WHERE pi.instance_key = 'london_lon_pe_board_3' ORDER BY p.email`
+       WHERE pi.instance_key = 'london_lon_pe' ORDER BY p.email`
     );
     expect(members.rows.map((x) => x.email)).toEqual(["new1@x.test", "new2@x.test"]);
   });

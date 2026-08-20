@@ -15,6 +15,7 @@ import {
   type PersonRow,
 } from "../repositories/people";
 import { deriveInstanceKey } from "../repositories/instances";
+import { isAllowedOffice } from "../services/instanceImport";
 
 const OIDC_TXN_COOKIE = "relay_oidc_txn";
 
@@ -84,13 +85,15 @@ const authRoutes: FastifyPluginAsync = async (app) => {
       const isOwnerEmail = config.ownerEmails.includes(identity.email.toLowerCase());
       let person = await findOrCreatePersonByEmail(identity.email, identity.name);
 
-      // Instance assignment from Okta: the (city, department, board?) tuple
-      // resolves to an isolated instance (auto-created for a new office combo,
-      // or the matching existing one). Only act when BOTH city and department
-      // are present — a missing claim leaves the person's current instance
-      // untouched, so nothing changes until Okta actually sends the fields.
-      if (identity.city && identity.department) {
-        const key = await deriveInstanceKey(identity.city, identity.department, identity.board ?? null);
+      // Instance assignment from Okta: the (city, department) resolves to an
+      // isolated instance (auto-created for a new office, or the matching
+      // existing one) and becomes the person's home. Gated by the approved
+      // office allowlist so a sign-in never creates an off-list instance;
+      // whiteboard/board is intentionally ignored for now (department-level
+      // only). A missing/off-list office leaves the person's current instance
+      // untouched.
+      if (identity.city && identity.department && isAllowedOffice(identity.city, identity.department)) {
+        const key = await deriveInstanceKey(identity.city, identity.department, null);
         if (key !== person.businessUnit) {
           await setPersonBusinessUnit(person.id, key); // trigger adds the membership
           person = { ...person, businessUnit: key };

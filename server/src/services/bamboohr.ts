@@ -126,7 +126,7 @@ export function interpretWriteProbe(status: number): { canWrite: boolean; detail
  * employee id 0 + empty body) so BambooHR rejects it at auth/validation before
  * any record is persisted, then interprets the status (see interpretWriteProbe).
  */
-export async function diagnoseTimeOffWrite(): Promise<{ ok: boolean; canWrite?: boolean; status?: number; detail?: string; error?: string }> {
+export async function diagnoseTimeOffWrite(actorEmail?: string): Promise<{ ok: boolean; canWrite?: boolean; status?: number; detail?: string; error?: string }> {
   let creds: { apiKey: string; subdomain: string } | null;
   try {
     creds = await getBambooCreds();
@@ -134,15 +134,30 @@ export async function diagnoseTimeOffWrite(): Promise<{ ok: boolean; canWrite?: 
     return { ok: false, error: `credential decryption failed (KMS/IAM?): ${e instanceof Error ? e.message : "unknown"}` };
   }
   if (!creds) return { ok: false, error: "BambooHR not configured — paste an API key + subdomain in Integrations." };
+
+  // Probe against a REAL employee (the caller's own BambooHR record, matched by
+  // email) so the request reaches the permission/validation layer. An empty body
+  // then fails validation (400) if authorized, or 403 if not — without ever
+  // creating a record. A placeholder id would just 404 (employee not found) and
+  // tell us nothing about write permission.
+  let empId: string | null = null;
+  const dir = await fetchDirectoryEmails();
+  if (dir && actorEmail) {
+    const want = actorEmail.trim().toLowerCase();
+    for (const [id, em] of dir) if (em === want) { empId = id; break; }
+  }
+  if (!empId) {
+    return { ok: false, error: "Couldn't match your email to a BambooHR employee to test against — the probe needs a real employee record. (Directory unreachable, or your work email doesn't match BambooHR.)" };
+  }
+
   try {
-    // Bogus employee id + empty body ⇒ rejected before anything is created.
-    const res = await fetch(`${baseUrl(creds.subdomain)}/employees/0/time_off/request/`, {
+    const res = await fetch(`${baseUrl(creds.subdomain)}/employees/${encodeURIComponent(empId)}/time_off/request/`, {
       method: "PUT",
       headers: { Authorization: authHeader(creds.apiKey), Accept: "application/json", "Content-Type": "application/json" },
-      body: "{}",
+      body: "{}", // empty ⇒ rejected at validation before anything is created
     });
     const { canWrite, detail } = interpretWriteProbe(res.status);
-    return { ok: true, canWrite, status: res.status, detail };
+    return { ok: true, canWrite, status: res.status, detail: `${detail} (tested against your own BambooHR record)` };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "network error reaching BambooHR" };
   }

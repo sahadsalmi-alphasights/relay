@@ -278,6 +278,7 @@ function Diagnostics() {
     { key: "timeoff", label: "Time-off fetch", hint: "Approved time-off in the sync window." },
     { key: "holidays", label: "Public holidays", hint: "Read the office's public holidays from BambooHR (next 12 months)." },
     { key: "matching", label: "People matching", hint: "Do BambooHR emails match CapTracker people?" },
+    { key: "canbook", label: "Can book time off?", hint: "Safely probes whether the token can CREATE time-off requests (no record is created)." },
   ] as const;
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [results, setResults] = useState<Record<string, { ok: boolean; text: string }>>({});
@@ -289,6 +290,10 @@ function Diagnostics() {
       const ok = r.ok !== false && !r.error;
       let text: string;
       if (key === "connection") text = ok ? `✓ Reachable — ${r.employees} employees, ${r.withEmail} with a work email` : `✕ ${r.error}`;
+      else if (key === "canbook")
+        text = ok
+          ? `${r.canWrite ? "✓ Can book" : "✕ Cannot book (read-only)"} — ${r.detail}`
+          : `✕ ${r.error}`;
       else if (key === "timeoff")
         text = ok
           ? `✓ ${r.count} request(s) — ${r.approved} approved, ${r.pending} pending${r.other ? `, ${r.other} other` : ""} · dates ${r.earliest ?? "—"} → ${r.latest ?? "—"}`
@@ -307,7 +312,9 @@ function Diagnostics() {
         ? `✓ ${r.matched}/${r.peopleInBu} people matched · ${r.bambooWithTimeOff} BambooHR people have time-off` +
           ((r.unmatchedBambooEmails as string[])?.length ? ` · unmatched BambooHR emails: ${(r.unmatchedBambooEmails as string[]).join(", ")}` : "")
         : `✕ ${r.error}`;
-      setResults((p) => ({ ...p, [key]: { ok, text } }));
+      // For the write probe, colour by whether booking is possible, not by whether the request succeeded.
+      const displayOk = key === "canbook" ? ok && r.canWrite === true : ok;
+      setResults((p) => ({ ...p, [key]: { ok: displayOk, text } }));
     } catch (e) {
       setResults((p) => ({ ...p, [key]: { ok: false, text: `✕ ${e instanceof ApiError ? e.message : "request failed"}` } }));
     } finally {

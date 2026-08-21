@@ -100,6 +100,54 @@ async function getJsonDetailed<T>(path: string): Promise<{ ok: boolean; error?: 
   }
 }
 
+/**
+ * Interpret the HTTP status of a deliberately-invalid "create time-off request"
+ * probe into a write-capability verdict. Pure (no I/O) so it's unit-testable.
+ *  - 401 → auth rejected (bad key)
+ *  - 403 → authenticated but NOT permitted to write time off (read-only token)
+ *  - 400/409/422 → authorized to write; the empty probe payload was rejected at
+ *    VALIDATION, which proves the token can create requests (nothing persisted)
+ *  - 200/201 → write accepted (unexpected for the bogus id — treat as writable)
+ *  - 404 → endpoint/employee not found; usually no write access / plan lacks it
+ */
+export function interpretWriteProbe(status: number): { canWrite: boolean; detail: string } {
+  if (status === 401) return { canWrite: false, detail: "401 — API key not accepted." };
+  if (status === 403) return { canWrite: false, detail: "403 Forbidden — this token is read-only; it cannot book time off. Booking needs a token whose BambooHR user has time-off edit rights." };
+  if (status === 400 || status === 409 || status === 422)
+    return { canWrite: true, detail: `${status} — the token IS authorized to create time-off requests (the empty probe payload was rejected at validation; no record was created).` };
+  if (status === 200 || status === 201) return { canWrite: true, detail: `${status} — write authorized.` };
+  if (status === 404) return { canWrite: false, detail: "404 — time-off write endpoint/employee not found; likely no write access or the plan doesn't expose it." };
+  return { canWrite: false, detail: `Unexpected HTTP ${status} — treat as no confirmed write access.` };
+}
+
+/**
+ * Owner diagnostics — SAFELY test whether the token can BOOK time off, without
+ * creating a real request. Sends an intentionally-invalid create call (bogus
+ * employee id 0 + empty body) so BambooHR rejects it at auth/validation before
+ * any record is persisted, then interprets the status (see interpretWriteProbe).
+ */
+export async function diagnoseTimeOffWrite(): Promise<{ ok: boolean; canWrite?: boolean; status?: number; detail?: string; error?: string }> {
+  let creds: { apiKey: string; subdomain: string } | null;
+  try {
+    creds = await getBambooCreds();
+  } catch (e) {
+    return { ok: false, error: `credential decryption failed (KMS/IAM?): ${e instanceof Error ? e.message : "unknown"}` };
+  }
+  if (!creds) return { ok: false, error: "BambooHR not configured — paste an API key + subdomain in Integrations." };
+  try {
+    // Bogus employee id + empty body ⇒ rejected before anything is created.
+    const res = await fetch(`${baseUrl(creds.subdomain)}/employees/0/time_off/request/`, {
+      method: "PUT",
+      headers: { Authorization: authHeader(creds.apiKey), Accept: "application/json", "Content-Type": "application/json" },
+      body: "{}",
+    });
+    const { canWrite, detail } = interpretWriteProbe(res.status);
+    return { ok: true, canWrite, status: res.status, detail };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "network error reaching BambooHR" };
+  }
+}
+
 /** Owner diagnostics — directory reachability + how many people carry a work email. */
 export async function diagnoseDirectory(): Promise<{ ok: boolean; error?: string; employees?: number; withEmail?: number }> {
   const r = await getJsonDetailed<{ employees?: { workEmail?: string | null }[] }>("/employees/directory");

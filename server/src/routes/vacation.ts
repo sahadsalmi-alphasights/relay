@@ -5,7 +5,7 @@ import { listPeopleForVacation, setSeniority } from "../repositories/people";
 import { listTeams } from "../repositories/teams";
 import { upcomingQuarters } from "../rules/quarters";
 import { vacationsByEmail } from "../services/vacation";
-import { diagnoseDirectory, diagnoseHolidays, diagnoseTimeOff, hrConfigured } from "../services/bamboohr";
+import { diagnoseDirectory, diagnoseHolidays, diagnoseTimeOff, diagnoseTimeOffWrite, hrConfigured } from "../services/bamboohr";
 import { activeInstanceKey } from "../auth/activeInstance";
 import { findInstanceByKey } from "../repositories/instances";
 import { dmPerson, postToSlack, slackConfigured, slackDmConfigured } from "../services/slack";
@@ -99,6 +99,7 @@ const vacationRoutes: FastifyPluginAsync = async (app) => {
       const check = request.query.check;
 
       if (check === "connection") return diagnoseDirectory();
+      if (check === "canbook") return diagnoseTimeOffWrite();
       if (check === "timeoff") {
         // Look ~13 months ahead so the breakdown covers the upcoming planning
         // quarters (e.g. Q1 next year), not just the near-term window.

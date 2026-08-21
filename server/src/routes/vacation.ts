@@ -99,7 +99,7 @@ const vacationRoutes: FastifyPluginAsync = async (app) => {
       const check = request.query.check;
 
       if (check === "connection") return diagnoseDirectory();
-      if (check === "canbook") return diagnoseTimeOffWrite();
+      if (check === "canbook") return diagnoseTimeOffWrite(actor.email);
       if (check === "timeoff") {
         // Look ~13 months ahead so the breakdown covers the upcoming planning
         // quarters (e.g. Q1 next year), not just the near-term window.

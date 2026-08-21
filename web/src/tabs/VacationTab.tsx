@@ -49,6 +49,7 @@ const BUSY_TEXTURE = "repeating-linear-gradient(45deg, rgba(11,11,11,0.28) 0 1.5
 const NOT_SUB_BG = "repeating-linear-gradient(45deg,#f3d9d9 0 4px,#fce8e8 4px 8px)";
 const BAMBOOHR_URL = "https://www.bamboohr.com/";
 const SUB_TABS = [
+  { key: "dash", label: "Dashboard" },
   { key: "mine", label: "My Vacation" },
   { key: "team", label: "Team View" },
   { key: "plan", label: "Plan My Trip" },
@@ -60,7 +61,7 @@ export default function VacationTab({ reloadTick }: { reloadTick: number }) {
   const { actor } = useApp();
   const [data, setData] = useState<VacationData | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [sub, setSub] = useState<Sub>("mine");
+  const [sub, setSub] = useState<Sub>("dash");
   const [teamId, setTeamId] = useState<string>("");
   const [busy, setBusy] = useState(false);
   const [bannerDismissed, setBannerDismissed] = useState(false);
@@ -117,11 +118,156 @@ export default function VacationTab({ reloadTick }: { reloadTick: number }) {
       </div>
       {error && <div className="err-line" style={{ marginBottom: 12 }}>{error}</div>}
 
+      {sub === "dash" && <Dashboard data={data} me={me} meId={actor.id} goto={setSub} />}
       {sub === "mine" && <MyVacation data={data} me={me} />}
       {sub === "team" && <TeamView data={data} teamId={teamId} setTeamId={setTeamId} meId={actor.id} />}
       {sub === "plan" && <PlanTrip data={data} meEmail={data.me.email} />}
       {sub === "admin" && <AdminPanel data={data} busy={busy} mutate={mutate} />}
     </div>
+  );
+}
+
+/* ----------------------------- Dashboard (overview of all three) ----------------------------- */
+function Dashboard({ data, me, meId, goto }: { data: VacationData; me: Member | undefined; meId: string; goto: (s: Sub) => void }) {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const open = openQuarter(data);
+  const inWin = (v: VacBlock, s: Date, e: Date) => overlap(d(v.start), d(v.end), s, e);
+
+  // My stats
+  const myBlocks = (me?.vacations ?? []).slice().sort((a, b) => d(a.start).getTime() - d(b.start).getTime());
+  const myDays = myBlocks.reduce((n, v) => n + Math.max(1, daysBetween(d(v.start), d(v.end)) + 1), 0);
+  const myUpcoming = myBlocks.filter((v) => d(v.end) >= today);
+  const meLoggedOpen = !!(open && myBlocks.some((v) => inWin(v, d(open.start), d(open.end))));
+
+  // Team stats
+  const outToday = data.members.filter((m) => m.vacations.some((v) => inWin(v, today, today)));
+  const notSub = (m: Member) => !!(data.bambooConfigured && open && !m.vacations.some((v) => inWin(v, d(open.start), d(open.end))));
+  const unplanned = open ? data.members.filter(notSub) : [];
+
+  // Team snapshot — next 5 half-weeks (counts + colour)
+  const periods = halfPeriods(startOfWeek(today), 5);
+  const outCount = (s: Date, e: Date) => whoOut(data, s, e).length;
+  const heatColor = (n: number) => (n >= 4 ? "var(--red)" : n === 3 ? "#ec835a" : n === 2 ? "#fab219" : n === 1 ? VAC : "var(--line)");
+
+  // Plan — quietest half-weeks over the next 6 weeks (excluding me)
+  const quiet = halfPeriods(startOfWeek(today), 6)
+    .map((p) => ({ p, count: data.members.filter((m) => m.id !== meId && m.vacations.some((v) => inWin(v, p.start, p.end))).length }))
+    .sort((a, b) => a.count - b.count)
+    .slice(0, 4);
+  const quietMax = Math.max(1, ...quiet.map((q) => q.count));
+
+  const tile: CSSProperties = { flex: 1, minWidth: 130, background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 12, padding: "12px 14px" };
+  const tileK: CSSProperties = { fontSize: 11, textTransform: "uppercase", letterSpacing: ".05em", color: "var(--soft)", marginBottom: 4 };
+  const tileV: CSSProperties = { fontSize: 22, fontWeight: 700, fontVariantNumeric: "tabular-nums" };
+  const chipBtn: CSSProperties = { fontSize: 12, fontWeight: 600, color: VAC, background: "transparent", border: 0, cursor: "pointer", padding: 0 };
+
+  return (
+    <>
+      {/* KPI row */}
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
+        <div style={tile}><div style={tileK}>Your days off</div><div style={tileV}>{myDays}<span style={{ fontSize: 12, color: "var(--soft)", fontWeight: 500 }}> in view</span></div></div>
+        <div style={tile}><div style={tileK}>Out today</div><div style={tileV}>{outToday.length}<span style={{ fontSize: 12, color: "var(--soft)", fontWeight: 500 }}> / {data.members.length}</span></div></div>
+        <div style={tile}>
+          <div style={tileK}>Unplanned this quarter</div>
+          <div style={{ ...tileV, color: unplanned.length ? "var(--amber, #b7791f)" : "var(--green)" }}>{open ? unplanned.length : "—"}</div>
+        </div>
+        <div style={tile}>
+          <div style={tileK}>Open window</div>
+          <div style={{ fontSize: 15, fontWeight: 700 }}>{open ? open.label : "None"}</div>
+          {open && <div style={{ fontSize: 11.5, color: "var(--soft)" }}>due {fmtLong(d(open.deadline))}</div>}
+        </div>
+      </div>
+
+      {/* Prompt to book if the open window isn't planned */}
+      {open && !meLoggedOpen && (
+        <div style={{ ...card, borderLeft: "3px solid var(--amber, #b7791f)", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 13.5 }}>You haven't logged any time off for <strong>{open.label}</strong> yet — planning closes {fmtLong(d(open.deadline))}.</span>
+          <button className="btn-sm btn-pl" style={{ marginLeft: "auto" }} onClick={() => goto("plan")}>Plan my trip</button>
+        </div>
+      )}
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }} className="vac-dash-grid">
+        {/* ---- left: My vacation ---- */}
+        <div style={card}>
+          <h2 style={{ fontSize: 14, margin: "0 0 12px", display: "flex", alignItems: "center" }}>
+            My upcoming time off <span style={{ color: "var(--soft)", fontWeight: 500, marginLeft: 6 }}>· from BambooHR</span>
+            <button style={{ ...chipBtn, marginLeft: "auto" }} onClick={() => goto("mine")}>Details →</button>
+          </h2>
+          {!data.bambooConfigured ? (
+            <div style={{ fontSize: 13, color: "var(--soft)" }}>BambooHR isn't connected — bookings will appear here once it is.</div>
+          ) : myUpcoming.length === 0 ? (
+            <div style={{ fontSize: 13, color: "var(--soft)" }}>Nothing booked ahead. <button style={chipBtn} onClick={() => goto("plan")}>Find a good week →</button></div>
+          ) : (
+            myUpcoming.slice(0, 5).map((v, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderBottom: "1px solid var(--line)", fontSize: 13 }}>
+                <span style={swatch(VAC)} />
+                <span style={{ fontWeight: 600 }}>{fmt(d(v.start))} – {fmt(d(v.end))}</span>
+                <span style={{ color: "var(--soft)", fontSize: 12 }}>{v.type}</span>
+                <span style={{ marginLeft: "auto", color: "var(--soft)", fontSize: 12 }}>{Math.max(1, daysBetween(d(v.start), d(v.end)) + 1)}d</span>
+              </div>
+            ))
+          )}
+          <h3 style={{ fontSize: 12.5, color: "var(--soft)", margin: "16px 0 8px", textTransform: "uppercase", letterSpacing: ".04em" }}>Planning windows</h3>
+          {data.quarters.slice(0, 3).map((q) => (
+            <div key={q.label} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", fontSize: 13 }}>
+              <span style={{ fontWeight: 600 }}>{q.label}</span>
+              <span style={{ marginLeft: "auto", color: "var(--soft)", fontSize: 12 }}>due {fmtLong(d(q.deadline))}</span>
+              {open && q.label === open.label && <span className="mini free" style={{ fontSize: 10 }}>Open</span>}
+            </div>
+          ))}
+        </div>
+
+        {/* ---- right: Team + Plan ---- */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={card}>
+            <h2 style={{ fontSize: 14, margin: "0 0 12px", display: "flex", alignItems: "center" }}>
+              Team — next 5 half-weeks
+              <button style={{ ...chipBtn, marginLeft: "auto" }} onClick={() => goto("team")}>Team view →</button>
+            </h2>
+            <div style={{ display: "flex", gap: 6 }}>
+              {periods.map((p, i) => {
+                const n = outCount(p.start, p.end);
+                return (
+                  <div key={i} style={{ flex: 1, textAlign: "center" }}>
+                    <div title={`${n} out`} style={{ height: 40, borderRadius: 8, background: heatColor(n), display: "grid", placeItems: "center", color: n >= 1 ? "#fff" : "var(--soft)", fontWeight: 700, fontSize: 13 }}>{n}</div>
+                    <div style={{ fontSize: 9.5, color: "var(--faint, var(--soft))", marginTop: 4 }}>{fmt(p.start)}</div>
+                    <div style={{ fontSize: 9.5, color: "var(--soft)", fontWeight: 600 }}>{p.tag}</div>
+                  </div>
+                );
+              })}
+            </div>
+            {outToday.length > 0 && (
+              <div style={{ fontSize: 12.5, color: "var(--soft)", marginTop: 12 }}>
+                Out today: {outToday.slice(0, 6).map((m) => m.name).join(", ")}{outToday.length > 6 ? ` +${outToday.length - 6}` : ""}
+              </div>
+            )}
+            {open && unplanned.length > 0 && (
+              <div style={{ fontSize: 12.5, marginTop: 8, color: "var(--amber, #b7791f)" }}>
+                {unplanned.length} haven't planned {open.label} · <button style={chipBtn} onClick={() => goto("team")}>nudge on Slack →</button>
+              </div>
+            )}
+          </div>
+
+          <div style={card}>
+            <h2 style={{ fontSize: 14, margin: "0 0 12px", display: "flex", alignItems: "center" }}>
+              Best weeks to book <span style={{ color: "var(--soft)", fontWeight: 500, marginLeft: 6 }}>· next 6 weeks</span>
+              <button style={{ ...chipBtn, marginLeft: "auto" }} onClick={() => goto("plan")}>Plan →</button>
+            </h2>
+            {quiet.map((b, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 0", fontSize: 13 }}>
+                <div style={{ width: 128, fontWeight: 600 }}>{fmt(b.p.start)} <span style={{ color: "var(--soft)", fontWeight: 500 }}>{b.p.tag}</span></div>
+                <div style={{ flex: 1, height: 8, borderRadius: 4, background: "var(--line)", overflow: "hidden" }}>
+                  <div style={{ height: "100%", width: `${(b.count / quietMax) * 100 || 4}%`, background: b.count >= 3 ? "#ec835a" : b.count === 2 ? "#fab219" : "var(--green)" }} />
+                </div>
+                <div style={{ width: 52, textAlign: "right", color: "var(--soft)", fontSize: 12 }}>{b.count} out</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <style>{`@media (max-width: 760px){ .vac-dash-grid{ grid-template-columns: 1fr !important; } }`}</style>
+    </>
   );
 }
 

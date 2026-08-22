@@ -127,146 +127,215 @@ export default function VacationTab({ reloadTick }: { reloadTick: number }) {
   );
 }
 
-/* ----------------------------- Dashboard (overview of all three) ----------------------------- */
+/* ----------------------------- Dashboard (Timeline / gantt) ----------------------------- */
+const HEAVY_FRAC = 0.3; // ≥30% of the team off in a week ⇒ capacity risk (heuristic until a real coverage baseline exists)
+
 function Dashboard({ data, me, meId, goto }: { data: VacationData; me: Member | undefined; meId: string; goto: (s: Sub) => void }) {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const open = openQuarter(data);
-  const inWin = (v: VacBlock, s: Date, e: Date) => overlap(d(v.start), d(v.end), s, e);
 
-  // My stats
-  const myBlocks = (me?.vacations ?? []).slice().sort((a, b) => d(a.start).getTime() - d(b.start).getTime());
-  const myDays = myBlocks.reduce((n, v) => n + Math.max(1, daysBetween(d(v.start), d(v.end)) + 1), 0);
-  const myUpcoming = myBlocks.filter((v) => d(v.end) >= today);
-  const meLoggedOpen = !!(open && myBlocks.some((v) => inWin(v, d(open.start), d(open.end))));
+  // Timeline window: 8 weeks from the start of this week.
+  const WEEKS = 8, totalDays = WEEKS * 7;
+  const win0 = startOfWeek(today);
+  const winEnd = addDays(win0, totalDays - 1);
+  const pct = (dt: Date) => Math.max(0, Math.min(1, (dt.getTime() - win0.getTime()) / 86400000 / totalDays)) * 100;
+  const barFor = (s: Date, e: Date) => { const left = pct(s); return { left, width: Math.max(1.4, pct(addDays(e, 1)) - left) }; };
 
-  // Team stats
-  const outToday = data.members.filter((m) => m.vacations.some((v) => inWin(v, today, today)));
-  const notSub = (m: Member) => !!(data.bambooConfigured && open && !m.vacations.some((v) => inWin(v, d(open.start), d(open.end))));
-  const unplanned = open ? data.members.filter(notSub) : [];
+  // Widget 4 — "my team": scope to the whiteboard team. Whiteboard isn't wired
+  // yet (deferred), so we scope by the app team (teamId) as the stand-in, always
+  // including me. Falls back to the whole BU when I have no team.
+  const team = (me?.teamId ? data.members.filter((m) => m.teamId === me.teamId || m.id === meId) : data.members)
+    .slice()
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const size = team.length || 1;
 
-  // Team snapshot — next 5 half-weeks (counts + colour)
-  const periods = halfPeriods(startOfWeek(today), 5);
-  const outCount = (s: Date, e: Date) => whoOut(data, s, e).length;
-  const heatColor = (n: number) => (n >= 4 ? "var(--red)" : n === 3 ? "#ec835a" : n === 2 ? "#fab219" : n === 1 ? VAC : "var(--line)");
+  // Per-week capacity risk (widget 6).
+  const weeks = Array.from({ length: WEEKS }, (_, i) => {
+    const ws = addDays(win0, i * 7), we = addDays(ws, 6);
+    const outNames = team.filter((m) => m.vacations.some((v) => overlap(d(v.start), d(v.end), ws, we))).map((m) => m.name);
+    return { i, ws, we, outNames };
+  });
+  const heavy = (n: number) => n >= 2 && n / size >= HEAVY_FRAC;
+  const heavyWeeks = weeks.filter((w) => heavy(w.outNames.length));
 
-  // Plan — quietest half-weeks over the next 6 weeks (excluding me)
-  const quiet = halfPeriods(startOfWeek(today), 6)
-    .map((p) => ({ p, count: data.members.filter((m) => m.id !== meId && m.vacations.some((v) => inWin(v, p.start, p.end))).length }))
-    .sort((a, b) => a.count - b.count)
-    .slice(0, 4);
-  const quietMax = Math.max(1, ...quiet.map((q) => q.count));
+  // Overlay bands (holidays + closures) within the window.
+  const bands = [
+    ...data.closures.filter((c) => overlap(d(c.startDate), d(c.endDate), win0, winEnd)).map((c) => ({ s: d(c.startDate), e: d(c.endDate), color: "rgba(27,175,122,0.16)", label: c.name })),
+    ...data.publicHolidays.filter((h) => overlap(d(h.holidayDate), d(h.holidayDate), win0, winEnd)).map((h) => ({ s: d(h.holidayDate), e: d(h.holidayDate), color: "rgba(232,123,164,0.20)", label: h.name })),
+  ];
+  const deadlineIn = open && d(open.deadline) >= win0 && d(open.deadline) <= winEnd ? pct(d(open.deadline)) : null;
 
-  const tile: CSSProperties = { flex: 1, minWidth: 130, background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 12, padding: "12px 14px" };
-  const tileK: CSSProperties = { fontSize: 11, textTransform: "uppercase", letterSpacing: ".05em", color: "var(--soft)", marginBottom: 4 };
-  const tileV: CSSProperties = { fontSize: 22, fontWeight: 700, fontVariantNumeric: "tabular-nums" };
+  // Supporting widgets' data.
+  const myUpcoming = (me?.vacations ?? []).filter((v) => d(v.end) >= today).sort((a, b) => d(a.start).getTime() - d(b.start).getTime());
+  const holidaysUpcoming = [
+    ...data.closures.map((c) => ({ date: c.startDate, name: c.name, kind: "Closure" as const })),
+    ...data.publicHolidays.map((h) => ({ date: h.holidayDate, name: h.name, kind: "Holiday" as const })),
+  ].filter((x) => d(x.date) >= today).sort((a, b) => d(a.date).getTime() - d(b.date).getTime()).slice(0, 6);
+  const quiet = halfPeriods(win0, 6)
+    .map((p) => ({ p, count: team.filter((m) => m.id !== meId && m.vacations.some((v) => overlap(d(v.start), d(v.end), p.start, p.end))).length }))
+    .filter((x) => !isClosure(data, x.p.start, x.p.end))
+    .sort((a, b) => a.count - b.count).slice(0, 4);
+  const coverage = data.publicHolidays.map((h) => ({ h, short: Math.max(0, h.reqTotal - h.coverage.length) })).slice(0, 6);
+
+  const LABEL = 140;
   const chipBtn: CSSProperties = { fontSize: 12, fontWeight: 600, color: VAC, background: "transparent", border: 0, cursor: "pointer", padding: 0 };
+  const wCard: CSSProperties = { ...card, margin: 0 };
+  const wH: CSSProperties = { fontSize: 13, fontWeight: 700, margin: "0 0 10px", display: "flex", alignItems: "center", gap: 6 };
+  const riskColor = (n: number) => (heavy(n) ? "var(--red)" : n / size >= 0.15 ? "#ec835a" : n >= 1 ? "#fab219" : "var(--line)");
 
   return (
     <>
-      {/* KPI row */}
-      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
-        <div style={tile}><div style={tileK}>Your days off</div><div style={tileV}>{myDays}<span style={{ fontSize: 12, color: "var(--soft)", fontWeight: 500 }}> in view</span></div></div>
-        <div style={tile}><div style={tileK}>Out today</div><div style={tileV}>{outToday.length}<span style={{ fontSize: 12, color: "var(--soft)", fontWeight: 500 }}> / {data.members.length}</span></div></div>
-        <div style={tile}>
-          <div style={tileK}>Unplanned this quarter</div>
-          <div style={{ ...tileV, color: unplanned.length ? "var(--amber, #b7791f)" : "var(--green)" }}>{open ? unplanned.length : "—"}</div>
+      {/* ---- header / request-by ---- */}
+      <div style={{ ...card, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 700 }}>Team time-off timeline</div>
+          <div style={{ fontSize: 12.5, color: "var(--soft)" }}>
+            {me?.teamName ? `${me.teamName} · ` : "Whole BU · "}next {WEEKS} weeks
+            {open && <> · <strong>{open.label}</strong> requests due {fmtLong(d(open.deadline))}</>}
+          </div>
         </div>
-        <div style={tile}>
-          <div style={tileK}>Open window</div>
-          <div style={{ fontSize: 15, fontWeight: 700 }}>{open ? open.label : "None"}</div>
-          {open && <div style={{ fontSize: 11.5, color: "var(--soft)" }}>due {fmtLong(d(open.deadline))}</div>}
+        <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+          <button className="btn-sm btn-ghost" onClick={() => goto("team")}>Full team view</button>
+          <button className="btn-sm btn-pl" onClick={() => goto("plan")}>Request time off</button>
         </div>
       </div>
 
-      {/* Prompt to book if the open window isn't planned */}
-      {open && !meLoggedOpen && (
-        <div style={{ ...card, borderLeft: "3px solid var(--amber, #b7791f)", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 13.5 }}>You haven't logged any time off for <strong>{open.label}</strong> yet — planning closes {fmtLong(d(open.deadline))}.</span>
-          <button className="btn-sm btn-pl" style={{ marginLeft: "auto" }} onClick={() => goto("plan")}>Plan my trip</button>
-        </div>
-      )}
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }} className="vac-dash-grid">
-        {/* ---- left: My vacation ---- */}
-        <div style={card}>
-          <h2 style={{ fontSize: 14, margin: "0 0 12px", display: "flex", alignItems: "center" }}>
-            My upcoming time off <span style={{ color: "var(--soft)", fontWeight: 500, marginLeft: 6 }}>· from BambooHR</span>
-            <button style={{ ...chipBtn, marginLeft: "auto" }} onClick={() => goto("mine")}>Details →</button>
-          </h2>
-          {!data.bambooConfigured ? (
-            <div style={{ fontSize: 13, color: "var(--soft)" }}>BambooHR isn't connected — bookings will appear here once it is.</div>
-          ) : myUpcoming.length === 0 ? (
-            <div style={{ fontSize: 13, color: "var(--soft)" }}>Nothing booked ahead. <button style={chipBtn} onClick={() => goto("plan")}>Find a good week →</button></div>
-          ) : (
-            myUpcoming.slice(0, 5).map((v, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderBottom: "1px solid var(--line)", fontSize: 13 }}>
-                <span style={swatch(VAC)} />
-                <span style={{ fontWeight: 600 }}>{fmt(d(v.start))} – {fmt(d(v.end))}</span>
-                <span style={{ color: "var(--soft)", fontSize: 12 }}>{v.type}</span>
-                <span style={{ marginLeft: "auto", color: "var(--soft)", fontSize: 12 }}>{Math.max(1, daysBetween(d(v.start), d(v.end)) + 1)}d</span>
+      {/* ---- GANTT hero ---- */}
+      <div style={card}>
+        {heavyWeeks.length > 0 && (
+          <div style={{ borderRadius: 9, padding: "8px 12px", background: "rgba(209,67,74,0.12)", border: "1px solid var(--red)", color: "var(--red)", fontSize: 12.5, fontWeight: 600, marginBottom: 12 }}>
+            ⚠ Capacity risk: {heavyWeeks.map((w) => fmt(w.ws)).join(", ")} — ≥{Math.round(HEAVY_FRAC * 100)}% of the team off. Discourage new leave / arrange cover.
+          </div>
+        )}
+        {!data.bambooConfigured ? (
+          <div style={{ fontSize: 13, color: "var(--soft)" }}>BambooHR isn't connected — the timeline fills in once it is.</div>
+        ) : (
+          <div style={{ position: "relative", overflowX: "auto" }}>
+            {/* week axis */}
+            <div style={{ display: "flex", marginLeft: LABEL, borderBottom: "1px solid var(--line)", paddingBottom: 4, marginBottom: 6 }}>
+              {weeks.map((w) => (
+                <div key={w.i} style={{ flex: 1, fontSize: 10, color: "var(--soft)", textAlign: "center", fontWeight: 600 }}>{fmt(w.ws)}</div>
+              ))}
+            </div>
+            {/* body with overlay */}
+            <div style={{ position: "relative" }}>
+              {/* overlay: bands + today + deadline (aligned to tracks) */}
+              <div style={{ position: "absolute", left: LABEL, right: 0, top: 0, bottom: 0, pointerEvents: "none" }}>
+                {bands.map((b, i) => { const { left, width } = barFor(b.s, b.e); return <div key={i} title={b.label} style={{ position: "absolute", left: `${left}%`, width: `${width}%`, top: 0, bottom: 0, background: b.color }} />; })}
+                <div title="Today" style={{ position: "absolute", left: `${pct(today)}%`, top: 0, bottom: 0, width: 2, background: "var(--ink)", opacity: 0.35 }} />
+                {deadlineIn !== null && <div title="Requests due" style={{ position: "absolute", left: `${deadlineIn}%`, top: 0, bottom: 0, width: 2, background: "var(--amber, #b7791f)" }} />}
               </div>
-            ))
-          )}
-          <h3 style={{ fontSize: 12.5, color: "var(--soft)", margin: "16px 0 8px", textTransform: "uppercase", letterSpacing: ".04em" }}>Planning windows</h3>
-          {data.quarters.slice(0, 3).map((q) => (
-            <div key={q.label} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", fontSize: 13 }}>
+              {/* rows */}
+              {team.map((m) => {
+                const blocks = m.vacations.filter((v) => overlap(d(v.start), d(v.end), win0, winEnd));
+                return (
+                  <div key={m.id} style={{ display: "flex", alignItems: "center", height: 26 }}>
+                    <div style={{ width: LABEL, flex: "none", fontSize: 12, fontWeight: m.id === meId ? 700 : 500, color: m.id === meId ? YOU : "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", paddingRight: 8 }}>
+                      {m.name}{m.id === meId ? " (you)" : ""}
+                    </div>
+                    <div style={{ position: "relative", flex: 1, height: 18, borderRadius: 4, background: "repeating-linear-gradient(90deg, transparent 0 calc(12.5% - 1px), var(--line) calc(12.5% - 1px) 12.5%)" }}>
+                      {blocks.map((v, i) => { const { left, width } = barFor(d(v.start), d(v.end)); return <div key={i} title={`${v.type}: ${v.start}–${v.end}`} style={{ position: "absolute", left: `${left}%`, width: `${width}%`, top: 2, bottom: 2, background: VAC, borderRadius: 4 }} />; })}
+                    </div>
+                  </div>
+                );
+              })}
+              {team.length === 0 && <div style={{ fontSize: 13, color: "var(--soft)", padding: 8 }}>No one in your team scope.</div>}
+              {/* risk strip */}
+              <div style={{ display: "flex", alignItems: "center", height: 30, marginTop: 8, borderTop: "1px solid var(--line)", paddingTop: 8 }}>
+                <div style={{ width: LABEL, flex: "none", fontSize: 11, fontWeight: 700, color: "var(--soft)" }}>Off / capacity</div>
+                <div style={{ flex: 1, display: "flex", gap: 3 }}>
+                  {weeks.map((w) => (
+                    <div key={w.i} title={w.outNames.join(", ") || "no one"} style={{ flex: 1, height: 18, borderRadius: 4, background: riskColor(w.outNames.length), color: w.outNames.length ? "#fff" : "var(--soft)", fontSize: 10.5, fontWeight: 700, display: "grid", placeItems: "center" }}>{w.outNames.length}</div>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 14, fontSize: 11.5, color: "var(--soft)", marginTop: 12 }}>
+              <span style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={swatch(VAC)} /> Time off</span>
+              <span style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ ...swatch("rgba(27,175,122,0.5)") }} /> Closure</span>
+              <span style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ ...swatch("rgba(232,123,164,0.6)"), borderRadius: "50%" }} /> Public holiday</span>
+              <span style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ width: 10, height: 10, background: "var(--amber, #b7791f)" }} /> Requests due</span>
+              <span style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={swatch("var(--red)")} /> ≥{Math.round(HEAVY_FRAC * 100)}% off (risk)</span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ---- supporting widgets ---- */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }} className="vac-dash-grid">
+        {/* 1 · My submitted time off */}
+        <div style={wCard}>
+          <h2 style={wH}>My time off <button style={{ ...chipBtn, marginLeft: "auto" }} onClick={() => goto("mine")}>Details →</button></h2>
+          {myUpcoming.length === 0 ? <div style={{ fontSize: 12.5, color: "var(--soft)" }}>Nothing booked ahead. <button style={chipBtn} onClick={() => goto("plan")}>Book →</button></div>
+            : myUpcoming.slice(0, 5).map((v, i) => (
+              <div key={i} style={{ display: "flex", gap: 8, alignItems: "center", padding: "5px 0", borderBottom: "1px solid var(--line)", fontSize: 12.5 }}>
+                <span style={swatch(VAC)} /><span style={{ fontWeight: 600 }}>{fmt(d(v.start))}–{fmt(d(v.end))}</span><span style={{ color: "var(--soft)", marginLeft: "auto", fontSize: 11.5 }}>{v.type}</span>
+              </div>
+            ))}
+        </div>
+
+        {/* 2 · Company holidays */}
+        <div style={wCard}>
+          <h2 style={wH}>Company holidays</h2>
+          {holidaysUpcoming.length === 0 ? <div style={{ fontSize: 12.5, color: "var(--soft)" }}>None upcoming.</div>
+            : holidaysUpcoming.map((h, i) => (
+              <div key={i} style={{ display: "flex", gap: 8, alignItems: "center", padding: "5px 0", borderBottom: "1px solid var(--line)", fontSize: 12.5 }}>
+                <span style={{ ...swatch(h.kind === "Closure" ? CLOSE : PUB), borderRadius: h.kind === "Holiday" ? "50%" : 3 }} />
+                <span style={{ fontWeight: 600 }}>{fmt(d(h.date))}</span><span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.name}</span>
+              </div>
+            ))}
+        </div>
+
+        {/* 3 · Quarterly planning window */}
+        <div style={wCard}>
+          <h2 style={wH}>Planning windows</h2>
+          {data.quarters.slice(0, 4).map((q) => (
+            <div key={q.label} style={{ display: "flex", gap: 8, alignItems: "center", padding: "5px 0", fontSize: 12.5 }}>
               <span style={{ fontWeight: 600 }}>{q.label}</span>
-              <span style={{ marginLeft: "auto", color: "var(--soft)", fontSize: 12 }}>due {fmtLong(d(q.deadline))}</span>
+              <span style={{ marginLeft: "auto", color: "var(--soft)", fontSize: 11.5 }}>due {fmtLong(d(q.deadline))}</span>
               {open && q.label === open.label && <span className="mini free" style={{ fontSize: 10 }}>Open</span>}
             </div>
           ))}
         </div>
 
-        {/* ---- right: Team + Plan ---- */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <div style={card}>
-            <h2 style={{ fontSize: 14, margin: "0 0 12px", display: "flex", alignItems: "center" }}>
-              Team — next 5 half-weeks
-              <button style={{ ...chipBtn, marginLeft: "auto" }} onClick={() => goto("team")}>Team view →</button>
-            </h2>
-            <div style={{ display: "flex", gap: 6 }}>
-              {periods.map((p, i) => {
-                const n = outCount(p.start, p.end);
-                return (
-                  <div key={i} style={{ flex: 1, textAlign: "center" }}>
-                    <div title={`${n} out`} style={{ height: 40, borderRadius: 8, background: heatColor(n), display: "grid", placeItems: "center", color: n >= 1 ? "#fff" : "var(--soft)", fontWeight: 700, fontSize: 13 }}>{n}</div>
-                    <div style={{ fontSize: 9.5, color: "var(--faint, var(--soft))", marginTop: 4 }}>{fmt(p.start)}</div>
-                    <div style={{ fontSize: 9.5, color: "var(--soft)", fontWeight: 600 }}>{p.tag}</div>
-                  </div>
-                );
-              })}
+        {/* 5 · Lower-overlap half-weeks */}
+        <div style={wCard}>
+          <h2 style={wH}>Best weeks to book <button style={{ ...chipBtn, marginLeft: "auto" }} onClick={() => goto("plan")}>Plan →</button></h2>
+          {quiet.map((b, i) => (
+            <div key={i} style={{ display: "flex", gap: 8, alignItems: "center", padding: "4px 0", fontSize: 12.5 }}>
+              <span style={{ width: 96, fontWeight: 600 }}>{fmt(b.p.start)} <span style={{ color: "var(--soft)", fontWeight: 500, fontSize: 11 }}>{b.p.tag}</span></span>
+              <div style={{ flex: 1, height: 7, borderRadius: 4, background: "var(--line)", overflow: "hidden" }}><div style={{ height: "100%", width: `${Math.min(100, (b.count / size) * 100) || 4}%`, background: heavy(b.count) ? "var(--red)" : b.count ? "#fab219" : "var(--green)" }} /></div>
+              <span style={{ width: 44, textAlign: "right", color: "var(--soft)", fontSize: 11 }}>{b.count} off</span>
             </div>
-            {outToday.length > 0 && (
-              <div style={{ fontSize: 12.5, color: "var(--soft)", marginTop: 12 }}>
-                Out today: {outToday.slice(0, 6).map((m) => m.name).join(", ")}{outToday.length > 6 ? ` +${outToday.length - 6}` : ""}
-              </div>
-            )}
-            {open && unplanned.length > 0 && (
-              <div style={{ fontSize: 12.5, marginTop: 8, color: "var(--amber, #b7791f)" }}>
-                {unplanned.length} haven't planned {open.label} · <button style={chipBtn} onClick={() => goto("team")}>nudge on Slack →</button>
-              </div>
-            )}
-          </div>
+          ))}
+        </div>
 
-          <div style={card}>
-            <h2 style={{ fontSize: 14, margin: "0 0 12px", display: "flex", alignItems: "center" }}>
-              Best weeks to book <span style={{ color: "var(--soft)", fontWeight: 500, marginLeft: 6 }}>· next 6 weeks</span>
-              <button style={{ ...chipBtn, marginLeft: "auto" }} onClick={() => goto("plan")}>Plan →</button>
-            </h2>
-            {quiet.map((b, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 0", fontSize: 13 }}>
-                <div style={{ width: 128, fontWeight: 600 }}>{fmt(b.p.start)} <span style={{ color: "var(--soft)", fontWeight: 500 }}>{b.p.tag}</span></div>
-                <div style={{ flex: 1, height: 8, borderRadius: 4, background: "var(--line)", overflow: "hidden" }}>
-                  <div style={{ height: "100%", width: `${(b.count / quietMax) * 100 || 4}%`, background: b.count >= 3 ? "#ec835a" : b.count === 2 ? "#fab219" : "var(--green)" }} />
-                </div>
-                <div style={{ width: 52, textAlign: "right", color: "var(--soft)", fontSize: 12 }}>{b.count} out</div>
+        {/* 6 · Heavy overlap — who's off */}
+        <div style={wCard}>
+          <h2 style={wH}>Heavy-overlap weeks</h2>
+          {heavyWeeks.length === 0 ? <div style={{ fontSize: 12.5, color: "var(--green)" }}>No weeks below capacity in the next {WEEKS}. 🎉</div>
+            : heavyWeeks.map((w) => (
+              <div key={w.i} style={{ padding: "5px 0", borderBottom: "1px solid var(--line)", fontSize: 12.5 }}>
+                <div style={{ fontWeight: 700, color: "var(--red)" }}>{fmt(w.ws)}–{fmt(w.we)} · {w.outNames.length}/{size} off</div>
+                <div style={{ color: "var(--soft)", fontSize: 11.5 }}>{w.outNames.join(", ")}</div>
               </div>
             ))}
-          </div>
+        </div>
+
+        {/* 7 · Public-holiday coverage */}
+        <div style={wCard}>
+          <h2 style={wH}>Holiday coverage <button style={{ ...chipBtn, marginLeft: "auto" }} onClick={() => goto("admin")}>Manage →</button></h2>
+          {coverage.length === 0 ? <div style={{ fontSize: 12.5, color: "var(--soft)" }}>No public holidays configured.</div>
+            : coverage.map(({ h, short }) => (
+              <div key={h.id} style={{ display: "flex", gap: 8, alignItems: "center", padding: "5px 0", borderBottom: "1px solid var(--line)", fontSize: 12.5 }}>
+                <span style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.name}</span>
+                <span style={{ marginLeft: "auto" }} className={short ? "mini off" : "mini free"}>{short ? `${short} short` : "Covered"}</span>
+              </div>
+            ))}
         </div>
       </div>
 
-      <style>{`@media (max-width: 760px){ .vac-dash-grid{ grid-template-columns: 1fr !important; } }`}</style>
+      <style>{`@media (max-width: 900px){ .vac-dash-grid{ grid-template-columns: 1fr !important; } }`}</style>
     </>
   );
 }

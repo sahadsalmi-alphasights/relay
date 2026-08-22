@@ -163,6 +163,72 @@ export async function diagnoseTimeOffWrite(actorEmail?: string): Promise<{ ok: b
   }
 }
 
+/** A BambooHR time-off type the user can request against. */
+export interface TimeOffType { id: string; name: string; unit: string }
+
+/** The company's time-off types (Vacation/Sick/…) with their unit (hours/days),
+ *  so the booking form only offers real options. Null on failure. */
+export async function fetchTimeOffTypes(): Promise<TimeOffType[] | null> {
+  const raw = await getJson<{ timeOffTypes?: { id?: string | number; name?: string; units?: string }[] } | { id?: string | number; name?: string; units?: string }[]>(
+    "/meta/time_off/types/"
+  );
+  if (!raw) return null;
+  const list = Array.isArray(raw) ? raw : raw.timeOffTypes ?? [];
+  return list
+    .filter((t) => t.id != null && t.name)
+    .map((t) => ({ id: String(t.id), name: String(t.name), unit: (t.units || "days").toLowerCase() }));
+}
+
+/** Look up a BambooHR employeeId by work email (from the directory). */
+export async function findEmployeeIdByEmail(email: string): Promise<string | null> {
+  const dir = await fetchDirectoryEmails();
+  if (!dir) return null;
+  const want = email.trim().toLowerCase();
+  for (const [id, em] of dir) if (em === want) return id;
+  return null;
+}
+
+/**
+ * Create a time-off request in BambooHR as `requested` (enters the normal
+ * approval chain — never auto-approved). `unit` picks a sensible per-day amount
+ * (8 for hours, 1 for days). Returns a readable ok/error; the caller resolves
+ * the employeeId (self-service = the signed-in user's own record).
+ */
+export async function createTimeOffRequest(
+  employeeId: string,
+  req: { start: string; end: string; timeOffTypeId: string; unit: string; note?: string }
+): Promise<{ ok: boolean; status?: number; error?: string }> {
+  let creds: { apiKey: string; subdomain: string } | null;
+  try {
+    creds = await getBambooCreds();
+  } catch (e) {
+    return { ok: false, error: `credential decryption failed (KMS/IAM?): ${e instanceof Error ? e.message : "unknown"}` };
+  }
+  if (!creds) return { ok: false, error: "BambooHR not configured." };
+  const amount = req.unit === "hours" ? "8" : "1";
+  const body = JSON.stringify({
+    status: "requested",
+    start: req.start,
+    end: req.end,
+    timeOffTypeId: req.timeOffTypeId,
+    amount,
+    notes: { employee: req.note?.trim() || "Requested via CapTracker" },
+  });
+  try {
+    const res = await fetch(`${baseUrl(creds.subdomain)}/employees/${encodeURIComponent(employeeId)}/time_off/request/`, {
+      method: "PUT",
+      headers: { Authorization: authHeader(creds.apiKey), Accept: "application/json", "Content-Type": "application/json" },
+      body,
+    });
+    if (res.status === 200 || res.status === 201) return { ok: true, status: res.status };
+    const txt = (await res.text().catch(() => "")).slice(0, 200);
+    if (res.status === 403) return { ok: false, status: 403, error: "BambooHR rejected the write (403) — the token lost time-off edit permission." };
+    return { ok: false, status: res.status, error: `BambooHR returned ${res.status}${txt ? `: ${txt}` : ""}` };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "network error reaching BambooHR" };
+  }
+}
+
 /** Owner diagnostics — directory reachability + how many people carry a work email. */
 export async function diagnoseDirectory(): Promise<{ ok: boolean; error?: string; employees?: number; withEmail?: number }> {
   const r = await getJsonDetailed<{ employees?: { workEmail?: string | null }[] }>("/employees/directory");

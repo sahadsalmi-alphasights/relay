@@ -5,7 +5,7 @@ import { listPeopleForVacation, setSeniority } from "../repositories/people";
 import { listTeams } from "../repositories/teams";
 import { upcomingQuarters } from "../rules/quarters";
 import { vacationsByEmail } from "../services/vacation";
-import { diagnoseDirectory, diagnoseHolidays, diagnoseTimeOff, diagnoseTimeOffWrite, hrConfigured } from "../services/bamboohr";
+import { createTimeOffRequest, diagnoseDirectory, diagnoseHolidays, diagnoseTimeOff, diagnoseTimeOffWrite, fetchTimeOffTypes, findEmployeeIdByEmail, hrConfigured } from "../services/bamboohr";
 import { activeInstanceKey } from "../auth/activeInstance";
 import { findInstanceByKey } from "../repositories/instances";
 import { dmPerson, postToSlack, slackConfigured, slackDmConfigured } from "../services/slack";
@@ -140,6 +140,47 @@ const vacationRoutes: FastifyPluginAsync = async (app) => {
 
   const audit = (actorId: string, entityType: string, entityId: string, action: string, newValue?: unknown) =>
     insertAuditLog({ entityType, entityId, actorId, action, newValue });
+
+  // ---- self-service time-off booking (writes to BambooHR) -------------------
+  // Any signed-in user can request their OWN leave; the request is created as
+  // "requested" in BambooHR (normal approval chain). A user can never book for
+  // someone else here — the employeeId is always resolved from their own email.
+  app.get("/leave-types", { preHandler: [app.requireAuth] }, async () => {
+    const types = await fetchTimeOffTypes();
+    if (types === null) return { ok: false, error: "Could not read leave types from BambooHR.", types: [] };
+    return { ok: true, types };
+  });
+
+  app.post<{ Body: { start?: string; end?: string; timeOffTypeId?: string; unit?: string; note?: string } }>(
+    "/request",
+    { preHandler: [app.requireAuth] },
+    async (request) => {
+      const actor = request.actor!;
+      const b = request.body ?? {};
+      if (!isDate(b.start) || !isDate(b.end)) throw badRequest("start and end dates are required (YYYY-MM-DD)");
+      if (b.end! < b.start!) throw badRequest("end must be on or after start");
+      if (!b.timeOffTypeId) throw badRequest("a leave type is required");
+
+      // Self-service: resolve the caller's OWN BambooHR employee by their email.
+      const employeeId = await findEmployeeIdByEmail(actor.email);
+      if (!employeeId) {
+        throw badRequest("We couldn't match your account to a BambooHR employee — ask an admin to check your work email.");
+      }
+      const result = await createTimeOffRequest(employeeId, {
+        start: b.start!,
+        end: b.end!,
+        timeOffTypeId: String(b.timeOffTypeId),
+        unit: (b.unit || "days").toLowerCase(),
+        note: b.note,
+      });
+      // Audit either way (attempt + outcome); never store the note verbatim beyond the request.
+      await audit(actor.id, "time_off_request", employeeId, result.ok ? "book_requested" : "book_failed", {
+        start: b.start, end: b.end, timeOffTypeId: b.timeOffTypeId, status: result.status, ok: result.ok,
+      });
+      if (!result.ok) throw badRequest(result.error || "BambooHR rejected the request");
+      return { ok: true };
+    }
+  );
 
   // ---- closures -------------------------------------------------------------
   app.post<{ Body: { name?: string; startDate?: string; endDate?: string } }>(

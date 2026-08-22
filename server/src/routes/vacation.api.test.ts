@@ -105,4 +105,25 @@ describe("vacation planner API (owner-only)", () => {
     expect(res.json().ok).toBe(false);
     expect(res.json().error).toMatch(/slack/i);
   });
+
+  describe("self-service booking (POST /vacation/request)", () => {
+    it("requires auth", async () => {
+      expect((await app.inject({ method: "POST", url: "/vacation/request", payload: {} })).statusCode).toBe(401);
+    });
+
+    it("validates dates and leave type before touching BambooHR", async () => {
+      const member = await loginAs(app, fx.delivererAlpha);
+      expect((await post(member, "/vacation/request", {})).statusCode).toBe(400); // missing dates
+      expect((await post(member, "/vacation/request", { start: "2027-03-10", end: "2027-03-05", timeOffTypeId: "1" })).statusCode).toBe(400); // end before start
+      expect((await post(member, "/vacation/request", { start: "2027-03-10", end: "2027-03-12" })).statusCode).toBe(400); // no type
+    });
+
+    it("with valid input but BambooHR not configured, fails to resolve the employee (never books for anyone else)", async () => {
+      const member = await loginAs(app, fx.delivererAlpha);
+      const res = await post(member, "/vacation/request", { start: "2027-03-10", end: "2027-03-12", timeOffTypeId: "1" });
+      // No BAMBOOHR_* in the test env → can't match the caller's own record → 400, not a write.
+      expect(res.statusCode).toBe(400);
+      expect(String(res.json().message ?? res.json().error)).toMatch(/match|bamboohr/i);
+    });
+  });
 });

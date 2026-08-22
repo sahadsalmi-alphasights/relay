@@ -599,6 +599,85 @@ function TeamView({ data, teamId, setTeamId, meId }: { data: VacationData; teamI
 }
 
 /* ----------------------------- Plan My Trip ----------------------------- */
+/* ----------------------------- Book time off (BambooHR write) ----------------------------- */
+function BookTimeOff({ data, meEmail }: { data: VacationData; meEmail: string }) {
+  const [types, setTypes] = useState<{ id: string; name: string; unit: string }[]>([]);
+  const [typesErr, setTypesErr] = useState<string | null>(null);
+  const [start, setStart] = useState("");
+  const [end, setEnd] = useState("");
+  const [typeId, setTypeId] = useState("");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.get<{ ok: boolean; error?: string; types: { id: string; name: string; unit: string }[] }>("/vacation/leave-types")
+      .then((r) => { if (r.ok) { setTypes(r.types); if (r.types[0]) setTypeId(r.types[0].id); } else setTypesErr(r.error || "Couldn't load leave types"); })
+      .catch((e) => setTypesErr(e instanceof ApiError ? e.message : "Couldn't load leave types"));
+  }, []);
+
+  const valid = start && end && end >= start && typeId;
+  // Capacity signal for the chosen range (excludes me).
+  const overlapNames = valid ? data.members.filter((m) => m.email.toLowerCase() !== meEmail.toLowerCase() && m.vacations.some((v) => overlap(d(v.start), d(v.end), d(start), d(end)))).map((m) => m.name) : [];
+  const busyHit = valid ? data.busyPeriods.find((b) => overlap(d(b.startDate), d(b.endDate), d(start), d(end))) : undefined;
+
+  const submit = async () => {
+    setBusy(true); setErr(null); setMsg(null);
+    try {
+      const unit = types.find((t) => t.id === typeId)?.unit || "days";
+      await api.post("/vacation/request", { start, end, timeOffTypeId: typeId, unit, note });
+      setMsg("Request submitted to BambooHR — it's now pending approval. It'll appear here once BambooHR reflects it.");
+      setConfirming(false); setNote("");
+    } catch (e) { setErr(e instanceof ApiError ? e.message : "Could not submit the request"); }
+    finally { setBusy(false); }
+  };
+
+  const inp: CSSProperties = { font: "inherit", padding: "6px 8px", borderRadius: 7, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)" };
+
+  return (
+    <div style={card}>
+      <h2 style={{ fontSize: 14, margin: "0 0 4px" }}>Request time off <span style={{ color: "var(--soft)", fontWeight: 500 }}>· books straight into BambooHR</span></h2>
+      <p style={{ fontSize: 12, color: "var(--soft)", margin: "0 0 12px" }}>Submits a request for your own record as “pending” — your manager approves it in the normal BambooHR flow.</p>
+      {!data.bambooConfigured || typesErr ? (
+        <div style={{ fontSize: 13, color: "var(--soft)" }}>{typesErr ?? "BambooHR isn't connected — booking is unavailable."}</div>
+      ) : (
+        <>
+          <div style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
+            <label style={{ fontSize: 12 }}>From<br /><input type="date" value={start} onChange={(e) => { setStart(e.target.value); setConfirming(false); }} style={inp} /></label>
+            <label style={{ fontSize: 12 }}>To<br /><input type="date" value={end} onChange={(e) => { setEnd(e.target.value); setConfirming(false); }} style={inp} /></label>
+            <label style={{ fontSize: 12 }}>Type<br /><select value={typeId} onChange={(e) => setTypeId(e.target.value)} style={inp}>{types.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
+            <label style={{ fontSize: 12, flex: 1, minWidth: 160 }}>Note (optional)<br /><input value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. family holiday" style={{ ...inp, width: "100%" }} /></label>
+          </div>
+
+          {valid && (overlapNames.length >= 2 || busyHit) && (
+            <div style={{ marginTop: 12, border: "1px solid #ec835a", background: "rgba(236,131,90,0.08)", borderRadius: 9, padding: "10px 12px", fontSize: 12.5 }}>
+              {overlapNames.length >= 2 && <div>⚠ <strong>{overlapNames.length} teammate(s) already off</strong> then ({overlapNames.slice(0, 5).join(", ")}{overlapNames.length > 5 ? "…" : ""}) — this may push the week below coverage.</div>}
+              {busyHit && <div style={{ marginTop: overlapNames.length >= 2 ? 4 : 0 }}>⚠ Overlaps “{busyHit.label}”, a high-stakes period.</div>}
+              <div style={{ color: "var(--soft)", marginTop: 4 }}>You can still submit — your PL/manager sees it before approving.</div>
+            </div>
+          )}
+
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12 }}>
+            {!confirming ? (
+              <button className="btn-sm btn-pl" disabled={busy || !valid} onClick={() => { setErr(null); setMsg(null); setConfirming(true); }}>Request time off</button>
+            ) : (
+              <>
+                <span style={{ fontSize: 13 }}>Submit {start} → {end} ({types.find((t) => t.id === typeId)?.name})?</span>
+                <button className="btn-sm btn-pl" disabled={busy} onClick={submit}>{busy ? "Submitting…" : "Confirm"}</button>
+                <button className="btn-sm btn-ghost" disabled={busy} onClick={() => setConfirming(false)}>Cancel</button>
+              </>
+            )}
+          </div>
+          {msg && <div style={{ fontSize: 12.5, color: "var(--green)", marginTop: 8 }}>{msg}</div>}
+          {err && <div className="err-line" style={{ marginTop: 8 }}>{err}</div>}
+        </>
+      )}
+    </div>
+  );
+}
+
 function PlanTrip({ data, meEmail }: { data: VacationData; meEmail: string }) {
   const [from, setFrom] = useState(data.window.from);
   const [to, setTo] = useState(addDays(d(data.window.from), 4).toISOString().slice(0, 10));
@@ -621,6 +700,7 @@ function PlanTrip({ data, meEmail }: { data: VacationData; meEmail: string }) {
 
   return (
     <>
+      <BookTimeOff data={data} meEmail={meEmail} />
       <div style={card}>
         <h2 style={{ fontSize: 14, margin: "0 0 12px" }}>Who's off in my team, when?</h2>
         <div style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap", marginBottom: 14 }}>

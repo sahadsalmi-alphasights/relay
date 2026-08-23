@@ -176,9 +176,10 @@ const vacationRoutes: FastifyPluginAsync = async (app) => {
         amount,
         note: b.note,
       });
-      // Audit either way (attempt + outcome); never store the note verbatim beyond the request.
-      await audit(actor.id, "time_off_request", employeeId, result.ok ? "book_requested" : "book_failed", {
-        start: b.start, end: b.end, timeOffTypeId: b.timeOffTypeId, status: result.status, ok: result.ok,
+      // Audit either way (attempt + outcome). entity_id must be a UUID, so use
+      // the actor's id; the BambooHR employeeId goes in the payload.
+      await audit(actor.id, "time_off_request", actor.id, result.ok ? "book_requested" : "book_failed", {
+        employeeId, start: b.start, end: b.end, timeOffTypeId: b.timeOffTypeId, amount, status: result.status, ok: result.ok,
       });
       if (!result.ok) throw badRequest(result.error || "BambooHR rejected the request");
       return { ok: true };

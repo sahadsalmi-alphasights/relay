@@ -207,13 +207,15 @@ export async function createTimeOffRequest(
   if (!creds) return { ok: false, error: "BambooHR not configured." };
   // Per-day amount: the caller picks it (full/half day, or hours); fall back to
   // a sensible default from the type's unit (8 hours, or 1 day).
-  const amount = req.amount && Number(req.amount) > 0 ? req.amount : req.unit === "hours" ? "8" : "1";
+  const amountNum = req.amount && Number(req.amount) > 0 ? Number(req.amount) : req.unit === "hours" ? 8 : 1;
+  const typeIdNum = Number(req.timeOffTypeId);
   const body = JSON.stringify({
     status: "requested",
     start: req.start,
     end: req.end,
-    timeOffTypeId: req.timeOffTypeId,
-    amount,
+    // BambooHR expects a numeric type id; strings can 400.
+    timeOffTypeId: Number.isFinite(typeIdNum) ? typeIdNum : req.timeOffTypeId,
+    amount: amountNum,
     notes: { employee: req.note?.trim() || "Requested via CapTracker" },
   });
   try {
@@ -223,9 +225,12 @@ export async function createTimeOffRequest(
       body,
     });
     if (res.status === 200 || res.status === 201) return { ok: true, status: res.status };
-    const txt = (await res.text().catch(() => "")).slice(0, 200);
+    // BambooHR returns validation detail in a HEADER, not the body.
+    const hdr = res.headers.get("x-bamboohr-error-message") || res.headers.get("X-BambooHR-Error-Message");
+    const txt = (await res.text().catch(() => "")).trim().slice(0, 200);
+    const detail = hdr || txt;
     if (res.status === 403) return { ok: false, status: 403, error: "BambooHR rejected the write (403) — the token lost time-off edit permission." };
-    return { ok: false, status: res.status, error: `BambooHR returned ${res.status}${txt ? `: ${txt}` : ""}` };
+    return { ok: false, status: res.status, error: `BambooHR returned ${res.status}${detail ? `: ${detail}` : " (no detail provided)"}` };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "network error reaching BambooHR" };
   }

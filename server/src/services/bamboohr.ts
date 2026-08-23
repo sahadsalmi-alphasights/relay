@@ -196,7 +196,7 @@ export async function findEmployeeIdByEmail(email: string): Promise<string | nul
  */
 export async function createTimeOffRequest(
   employeeId: string,
-  req: { start: string; end: string; timeOffTypeId: string; unit: string; note?: string }
+  req: { start: string; end: string; timeOffTypeId: string; unit: string; note?: string; amount?: string }
 ): Promise<{ ok: boolean; status?: number; error?: string }> {
   let creds: { apiKey: string; subdomain: string } | null;
   try {
@@ -205,7 +205,9 @@ export async function createTimeOffRequest(
     return { ok: false, error: `credential decryption failed (KMS/IAM?): ${e instanceof Error ? e.message : "unknown"}` };
   }
   if (!creds) return { ok: false, error: "BambooHR not configured." };
-  const amount = req.unit === "hours" ? "8" : "1";
+  // Per-day amount: the caller picks it (full/half day, or hours); fall back to
+  // a sensible default from the type's unit (8 hours, or 1 day).
+  const amount = req.amount && Number(req.amount) > 0 ? req.amount : req.unit === "hours" ? "8" : "1";
   const body = JSON.stringify({
     status: "requested",
     start: req.start,

@@ -675,6 +675,7 @@ function BookTimeOff({ data, meEmail }: { data: VacationData; meEmail: string })
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
   const [typeId, setTypeId] = useState("");
+  const [amount, setAmount] = useState("1"); // per-day: days (1 / 0.5) or hours
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -687,7 +688,10 @@ function BookTimeOff({ data, meEmail }: { data: VacationData; meEmail: string })
       .catch((e) => setTypesErr(e instanceof ApiError ? e.message : "Couldn't load leave types"));
   }, []);
 
-  const valid = start && end && end >= start && typeId;
+  const selUnit = types.find((t) => t.id === typeId)?.unit || "days";
+  // Default the per-day amount whenever the selected type's unit changes.
+  useEffect(() => { setAmount(selUnit === "hours" ? "8" : "1"); }, [selUnit]);
+  const valid = !!(start && end && end >= start && typeId && Number(amount) > 0);
   // Capacity signal for the chosen range (excludes me).
   const overlapNames = valid ? data.members.filter((m) => m.email.toLowerCase() !== meEmail.toLowerCase() && m.vacations.some((v) => overlap(d(v.start), d(v.end), d(start), d(end)))).map((m) => m.name) : [];
   const busyHit = valid ? data.busyPeriods.find((b) => overlap(d(b.startDate), d(b.endDate), d(start), d(end))) : undefined;
@@ -695,8 +699,7 @@ function BookTimeOff({ data, meEmail }: { data: VacationData; meEmail: string })
   const submit = async () => {
     setBusy(true); setErr(null); setMsg(null);
     try {
-      const unit = types.find((t) => t.id === typeId)?.unit || "days";
-      await api.post("/vacation/request", { start, end, timeOffTypeId: typeId, unit, note });
+      await api.post("/vacation/request", { start, end, timeOffTypeId: typeId, unit: selUnit, amount, note });
       setMsg("Request submitted to BambooHR — it's now pending approval. It'll appear here once BambooHR reflects it.");
       setConfirming(false); setNote("");
     } catch (e) { setErr(e instanceof ApiError ? e.message : "Could not submit the request"); }
@@ -716,7 +719,17 @@ function BookTimeOff({ data, meEmail }: { data: VacationData; meEmail: string })
           <div style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
             <label style={{ fontSize: 12 }}>From<br /><input type="date" value={start} onChange={(e) => { setStart(e.target.value); setConfirming(false); }} style={inp} /></label>
             <label style={{ fontSize: 12 }}>To<br /><input type="date" value={end} onChange={(e) => { setEnd(e.target.value); setConfirming(false); }} style={inp} /></label>
-            <label style={{ fontSize: 12 }}>Type<br /><select value={typeId} onChange={(e) => setTypeId(e.target.value)} style={inp}>{types.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
+            <label style={{ fontSize: 12 }}>Type<br /><select value={typeId} onChange={(e) => { setTypeId(e.target.value); setConfirming(false); }} style={inp}>{types.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
+            <label style={{ fontSize: 12 }}>Amount / day<br />
+              {selUnit === "hours" ? (
+                <input type="number" min={0.5} max={24} step={0.5} value={amount} onChange={(e) => { setAmount(e.target.value); setConfirming(false); }} style={{ ...inp, width: 96 }} title="Hours per day" />
+              ) : (
+                <select value={amount} onChange={(e) => { setAmount(e.target.value); setConfirming(false); }} style={inp}>
+                  <option value="1">Full day</option>
+                  <option value="0.5">Half day</option>
+                </select>
+              )}
+            </label>
             <label style={{ fontSize: 12, flex: 1, minWidth: 160 }}>Note (optional)<br /><input value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. family holiday" style={{ ...inp, width: "100%" }} /></label>
           </div>
 
@@ -733,7 +746,7 @@ function BookTimeOff({ data, meEmail }: { data: VacationData; meEmail: string })
               <button className="btn-sm btn-pl" disabled={busy || !valid} onClick={() => { setErr(null); setMsg(null); setConfirming(true); }}>Request time off</button>
             ) : (
               <>
-                <span style={{ fontSize: 13 }}>Submit {start} → {end} ({types.find((t) => t.id === typeId)?.name})?</span>
+                <span style={{ fontSize: 13 }}>Submit {start} → {end} · {types.find((t) => t.id === typeId)?.name} · {selUnit === "hours" ? `${amount}h/day` : amount === "0.5" ? "half day" : "full day"}?</span>
                 <button className="btn-sm btn-pl" disabled={busy} onClick={submit}>{busy ? "Submitting…" : "Confirm"}</button>
                 <button className="btn-sm btn-ghost" disabled={busy} onClick={() => setConfirming(false)}>Cancel</button>
               </>

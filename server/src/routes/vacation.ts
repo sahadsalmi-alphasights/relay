@@ -151,7 +151,7 @@ const vacationRoutes: FastifyPluginAsync = async (app) => {
     return { ok: true, types };
   });
 
-  app.post<{ Body: { start?: string; end?: string; timeOffTypeId?: string; unit?: string; note?: string } }>(
+  app.post<{ Body: { start?: string; end?: string; timeOffTypeId?: string; unit?: string; amount?: string | number; note?: string } }>(
     "/request",
     { preHandler: [app.requireAuth] },
     async (request) => {
@@ -160,6 +160,8 @@ const vacationRoutes: FastifyPluginAsync = async (app) => {
       if (!isDate(b.start) || !isDate(b.end)) throw badRequest("start and end dates are required (YYYY-MM-DD)");
       if (b.end! < b.start!) throw badRequest("end must be on or after start");
       if (!b.timeOffTypeId) throw badRequest("a leave type is required");
+      const amount = b.amount != null && b.amount !== "" ? String(b.amount) : undefined;
+      if (amount != null && !(Number(amount) > 0)) throw badRequest("amount must be a positive number");
 
       // Self-service: resolve the caller's OWN BambooHR employee by their email.
       const employeeId = await findEmployeeIdByEmail(actor.email);
@@ -171,6 +173,7 @@ const vacationRoutes: FastifyPluginAsync = async (app) => {
         end: b.end!,
         timeOffTypeId: String(b.timeOffTypeId),
         unit: (b.unit || "days").toLowerCase(),
+        amount,
         note: b.note,
       });
       // Audit either way (attempt + outcome); never store the note verbatim beyond the request.

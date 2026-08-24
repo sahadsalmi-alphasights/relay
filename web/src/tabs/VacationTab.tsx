@@ -142,12 +142,14 @@ function Dashboard({ data, me, meId, goto }: { data: VacationData; me: Member | 
   const barFor = (s: Date, e: Date) => { const left = pct(s); return { left, width: Math.max(1.4, pct(addDays(e, 1)) - left) }; };
 
   // Widget 4 — "my team": scope to the whiteboard team. Whiteboard isn't wired
-  // yet (deferred), so we scope by the app team (teamId) as the stand-in, always
-  // including me. Falls back to the whole BU when I have no team.
-  const team = (me?.teamId ? data.members.filter((m) => m.teamId === me.teamId || m.id === meId) : data.members)
+  // yet (deferred), so we scope by the app team (teamId) as the stand-in. A
+  // switcher lets you view any team or the whole BU; default to my own team.
+  const [scope, setScope] = useState<string>(me?.teamId ?? "all"); // teamId | "all"
+  const team = (scope === "all" ? data.members : data.members.filter((m) => m.teamId === scope))
     .slice()
     .sort((a, b) => a.name.localeCompare(b.name));
   const size = team.length || 1;
+  const scopeLabel = scope === "all" ? "Whole BU" : data.teams.find((t) => t.id === scope)?.name ?? "Team";
 
   // Per-week capacity risk (widget 6).
   const weeks = Array.from({ length: WEEKS }, (_, i) => {
@@ -187,12 +189,24 @@ function Dashboard({ data, me, meId, goto }: { data: VacationData; me: Member | 
     <>
       {/* ---- header / request-by ---- */}
       <div style={{ ...card, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-        <div>
-          <div style={{ fontSize: 15, fontWeight: 700 }}>Team time-off timeline</div>
-          <div style={{ fontSize: 12.5, color: "var(--soft)" }}>
-            {me?.teamName ? `${me.teamName} · ` : "Whole BU · "}next {WEEKS} weeks
-            {open && <> · <strong>{open.label}</strong> requests due {fmtLong(d(open.deadline))}</>}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 700 }}>Team time-off timeline</div>
+            <div style={{ fontSize: 12.5, color: "var(--soft)" }}>
+              {scopeLabel} · {size} {size === 1 ? "person" : "people"} · next {WEEKS} weeks
+              {open && <> · <strong>{open.label}</strong> requests due {fmtLong(d(open.deadline))}</>}
+            </div>
           </div>
+          <select
+            value={scope}
+            onChange={(e) => setScope(e.target.value)}
+            title="Which team to show"
+            style={{ font: "inherit", fontSize: 12.5, fontWeight: 600, padding: "6px 10px", borderRadius: 7, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)" }}
+          >
+            {me?.teamId && <option value={me.teamId}>My team ({me.teamName ?? "—"})</option>}
+            <option value="all">Whole BU ({data.members.length})</option>
+            {data.teams.filter((t) => t.id !== me?.teamId).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
         </div>
         <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
           <button className="btn-sm btn-ghost" onClick={() => goto("team")}>Full team view</button>

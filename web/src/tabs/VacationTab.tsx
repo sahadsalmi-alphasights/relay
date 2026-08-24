@@ -47,7 +47,6 @@ const swatch = (bg: string): CSSProperties => ({ width: 10, height: 10, borderRa
 const VAC = "#2a78d6", CLOSE = "#1baf7a", PUB = "#e87ba4", YOU = "#4a3aa7";
 const BUSY_TEXTURE = "repeating-linear-gradient(45deg, rgba(11,11,11,0.28) 0 1.5px, transparent 1.5px 5px)";
 const NOT_SUB_BG = "repeating-linear-gradient(45deg,#f3d9d9 0 4px,#fce8e8 4px 8px)";
-const BAMBOOHR_URL = "https://www.bamboohr.com/";
 const SUB_TABS = [
   { key: "dash", label: "Dashboard" },
   { key: "mine", label: "My Vacation" },
@@ -64,7 +63,6 @@ export default function VacationTab({ reloadTick }: { reloadTick: number }) {
   const [sub, setSub] = useState<Sub>("dash");
   const [teamId, setTeamId] = useState<string>("");
   const [busy, setBusy] = useState(false);
-  const [bannerDismissed, setBannerDismissed] = useState(false);
 
   const load = async () => {
     setError(null);
@@ -98,16 +96,10 @@ export default function VacationTab({ reloadTick }: { reloadTick: number }) {
 
   const me = data.members.find((m) => m.email.toLowerCase() === data.me.email.toLowerCase());
   const open = openQuarter(data);
-  const meLoggedOpen = !!(open && me && me.vacations.some((v) => overlap(d(v.start), d(v.end), d(open.start), d(open.end))));
 
   return (
     <div>
       <div className="section-lbl" style={{ marginBottom: 4 }}>Vacation Planner</div>
-
-      {/* Persistent deadline banner */}
-      {open && !meLoggedOpen && !bannerDismissed && (
-        <DeadlineBanner quarter={open} onSeeTeam={() => setSub("team")} onDismiss={() => setBannerDismissed(true)} />
-      )}
 
       <div className="dl-view-switch settings-subnav" role="group" aria-label="Vacation section" style={{ marginBottom: 14 }}>
         {SUB_TABS.map((t) => (
@@ -428,27 +420,6 @@ function Diagnostics() {
   );
 }
 
-function DeadlineBanner({ quarter, onSeeTeam, onDismiss }: { quarter: Quarter; onSeeTeam: () => void; onDismiss: () => void }) {
-  const left = daysBetween(new Date(), d(quarter.deadline));
-  return (
-    <div style={{ display: "flex", gap: 12, alignItems: "flex-start", background: "#fff8ea", border: "1px solid #f2d799", borderRadius: 10, padding: "12px 14px", marginBottom: 16 }}>
-      <div style={{ fontSize: 18 }}>⏳</div>
-      <div style={{ flex: 1 }}>
-        <div style={{ fontWeight: 700, marginBottom: 2, color: "#3a2c00" }}>
-          {quarter.label} vacation is due {left >= 0 ? `in ${left} days` : "— window closed"} — you haven't logged anything yet
-        </div>
-        <div style={{ color: "#6b5a1f", fontSize: 13 }}>
-          Submission window closes <strong>{fmtLong(d(quarter.deadline))}</strong>. Log your time off in BambooHR before then — late requests can be declined.
-        </div>
-        <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-          <a className="btn-sm btn-pl" href={BAMBOOHR_URL} target="_blank" rel="noopener noreferrer">Open BambooHR ↗</a>
-          <button className="btn-sm btn-ghost" onClick={onSeeTeam}>See who's off in your team</button>
-        </div>
-      </div>
-      <button className="btn-sm btn-ghost" style={{ border: "none" }} title="Dismiss" onClick={onDismiss}>✕</button>
-    </div>
-  );
-}
 
 /* ----------------------------- shared calc ----------------------------- */
 function isClosure(data: VacationData, s: Date, e: Date) {

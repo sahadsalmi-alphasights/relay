@@ -232,7 +232,7 @@ export async function createTimeOffRequest(
     const hdr = res.headers.get("x-bamboohr-error-message") || res.headers.get("X-BambooHR-Error-Message");
     const txt = (await res.text().catch(() => "")).trim().slice(0, 200);
     const detail = hdr || txt;
-    if (res.status === 403) return { ok: false, status: 403, error: "BambooHR rejected the write (403) — the token lost time-off edit permission." };
+    if (res.status === 403) return { ok: false, status: 403, error: "BambooHR rejected the write (403) — the API token's BambooHR user can't add time off for this employee. It needs company-wide “add time-off requests” permission (an HR/API user with full time-off access), not just its own record." };
     return { ok: false, status: res.status, error: `BambooHR returned ${res.status}${detail ? `: ${detail}` : " (no detail provided)"}` };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "network error reaching BambooHR" };

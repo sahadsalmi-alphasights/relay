@@ -209,6 +209,7 @@ export async function createTimeOffRequest(
   // a sensible default from the type's unit (8 hours, or 1 day).
   const amountNum = req.amount && Number(req.amount) > 0 ? Number(req.amount) : req.unit === "hours" ? 8 : 1;
   const typeIdNum = Number(req.timeOffTypeId);
+  const noteText = req.note?.trim() || "Requested via CapTracker";
   const body = JSON.stringify({
     status: "requested",
     start: req.start,
@@ -216,7 +217,9 @@ export async function createTimeOffRequest(
     // BambooHR expects a numeric type id; strings can 400.
     timeOffTypeId: Number.isFinite(typeIdNum) ? typeIdNum : req.timeOffTypeId,
     amount: amountNum,
-    notes: { employee: req.note?.trim() || "Requested via CapTracker" },
+    // Each note must declare who it's "from" (employee|manager) — the keyed
+    // {employee: "..."} shape 400s with "Missing required from attribute".
+    notes: [{ from: "employee", note: noteText }],
   });
   try {
     const res = await fetch(`${baseUrl(creds.subdomain)}/employees/${encodeURIComponent(employeeId)}/time_off/request/`, {

@@ -440,6 +440,11 @@ a.client:hover { text-decoration:underline; }
   background:
     radial-gradient(680px 220px at 92% -40%, color-mix(in srgb, var(--pl) 20%, transparent), transparent 62%),
     linear-gradient(180deg, var(--surface), color-mix(in srgb, var(--surface) 90%, var(--pl-soft))); }
+/* Page header band — the hero panel used as a tab's top title strip. Holds the
+   title (+ subnav/controls) in one gradient band, consistent across screens. */
+.page-head { display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:12px 16px; margin-bottom:14px; }
+.page-head > .section-lbl { margin:0; }
+.page-head .settings-subnav, .page-head .subtabs { margin:0; border:0; }
 [data-theme="dark"] .hero-panel {
   background:
     radial-gradient(680px 220px at 90% -40%, color-mix(in srgb, var(--pl) 42%, transparent), transparent 60%),

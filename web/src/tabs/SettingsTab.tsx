@@ -27,15 +27,17 @@ export default function SettingsTab({ reloadTick, onReload }: { reloadTick: numb
 
   return (
     <>
-      <div className="section-lbl" style={{ marginBottom: 4 }}>Settings</div>
-      <div className="dl-view-switch settings-subnav" role="group" aria-label="Settings section">
-        {tab("coverage", "Coverage settings")}
-        {tab("notifications", "Notifications")}
-        {tab("integrations", "Integrations")}
-        {tab("whoout", "Who is out")}
-        {tab("rota", "Sunday rota")}
-        {tab("users", "User management")}
-        {tab("analytics", "Analytics")}
+      <div className="hero-panel page-head">
+        <div className="section-lbl">Settings</div>
+        <div className="dl-view-switch settings-subnav" role="group" aria-label="Settings section" style={{ marginLeft: "auto" }}>
+          {tab("coverage", "Coverage settings")}
+          {tab("notifications", "Notifications")}
+          {tab("integrations", "Integrations")}
+          {tab("whoout", "Who is out")}
+          {tab("rota", "Sunday rota")}
+          {tab("users", "User management")}
+          {tab("analytics", "Analytics")}
+        </div>
       </div>
 
       {view === "coverage" && <CoverageSettings onSaved={onReload} />}

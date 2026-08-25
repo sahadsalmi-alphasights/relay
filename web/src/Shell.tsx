@@ -41,7 +41,21 @@ export interface NotesTarget {
 export default function Shell() {
   const { sunday, nowMs, reloadPeople, reloadTeams } = useApp();
   const { isDesktop } = useViewport();
-  const [tab, setTab] = useState<Tab>("PL");
+  // Persist the active tab so a page refresh keeps you where you were instead of
+  // snapping back to PL (the home board). Restored from localStorage on load.
+  const TAB_KEY = "relay.activeTab";
+  const VALID_TABS: Tab[] = ["PL", "Delivery", "Ranking", "GhostRanking", "FirstDel", "AuditLog", "Users", "SundayRota", "Vacation"];
+  const [tab, setTab] = useState<Tab>(() => {
+    try {
+      const saved = localStorage.getItem(TAB_KEY) as Tab | null;
+      return saved && VALID_TABS.includes(saved) ? saved : "PL";
+    } catch {
+      return "PL";
+    }
+  });
+  useEffect(() => {
+    try { localStorage.setItem(TAB_KEY, tab); } catch { /* ignore storage errors */ }
+  }, [tab]);
   const [scope, setScope] = useState<Scope>("mine");
   // Team view target: "" = own team (default), "all" = whole BU, else a team id.
   const [teamView, setTeamView] = useState<string>("");

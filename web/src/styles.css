@@ -3,6 +3,9 @@
 body { margin:0; }
 :root { --bg:#F1F2F4; --surface:#FFF; --ink:#14212E; --soft:#6A7A88; --line:#E4E7EB;
   --pl:#FC8300; --pl-soft:#FFF1E0; --dl:#0E8C7F; --dl-soft:#E3F4F1;
+  /* Enterprise gradient polish — light/shade of the brand hues for dimensional
+     gradients (buttons, fab, hero glow). Tight deltas, not a rainbow. */
+  --pl-2:#FF9A38; --pl-3:#E5730A; --dl-2:#22B3A2;
   --green:#2C9E63; --amber:#C77D12; --red:#D14343; --green-bg:#E5F4EC; --amber-bg:#FBF0DE; --red-bg:#FBE7E7;
   /* Manager feedback batch, item 8 — a distinct fourth bar/label colour for
      "overdelivered," separate from the green/amber/red on-pace language.
@@ -21,6 +24,7 @@ body { margin:0; }
 [data-theme="dark"] {
   --bg:#0B1220; --surface:#131C2A; --ink:#E6EBF1; --soft:#93A4B5; --line:#223042;
   --pl-soft:#33230E; --dl:#2FAE9C; --dl-soft:#0F2E29;
+  --pl-2:#FFA04D; --pl-3:#E0690F; --dl-2:#4FD0BD;
   --green:#3FBF7F; --amber:#E0A24A; --red:#F0716A;
   --green-bg:#11301F; --amber-bg:#33260F; --red-bg:#391A18;
   --overdelivered:#D9B45A; --overdelivered-bg:#2E2712;
@@ -421,7 +425,27 @@ a.client:hover { text-decoration:underline; }
    weight/colour as the header divider (item 6, .assignees) -- no new style. */
 .actions-row2 { padding-top:10px; border-top:2px solid var(--line); }
 .btn { flex:1; padding:9px; border-radius:10px; font-size:13px; font-weight:700; text-align:center; }
-.btn-ghost { background:var(--bg); color:var(--ink); } .btn-pl { background:var(--pl); color:#fff; } .btn-dl { background:var(--dl); color:#fff; }
+.btn-ghost { background:var(--bg); color:var(--ink); }
+/* Enterprise gradient finish: tight vertical sheen + lit top edge + grounded,
+   brand-tinted shadow. Works in both themes off the --pl*/--dl* tokens. */
+.btn-pl { background:linear-gradient(180deg, var(--pl-2), var(--pl) 60%, var(--pl-3)); color:#fff;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.4), 0 1px 1px rgba(0,0,0,.14), 0 10px 20px -10px var(--pl); transition:filter .15s ease, transform .06s ease; }
+.btn-dl { background:linear-gradient(180deg, var(--dl-2), var(--dl)); color:#fff;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.32), 0 1px 1px rgba(0,0,0,.14), 0 10px 20px -10px var(--dl); transition:filter .15s ease, transform .06s ease; }
+.btn-pl:hover, .btn-dl:hover { filter:brightness(1.04); } .btn-pl:active, .btn-dl:active { transform:translateY(1px); }
+
+/* Theme-matched hero/feature panel (Option B): brand glow on a surface that
+   follows the theme — light panel in light mode, dark in dark mode. */
+.hero-panel { position:relative; overflow:hidden; border:1px solid var(--line); border-radius:16px;
+  background:
+    radial-gradient(680px 220px at 92% -40%, color-mix(in srgb, var(--pl) 20%, transparent), transparent 62%),
+    linear-gradient(180deg, var(--surface), color-mix(in srgb, var(--surface) 90%, var(--pl-soft))); }
+[data-theme="dark"] .hero-panel {
+  background:
+    radial-gradient(680px 220px at 90% -40%, color-mix(in srgb, var(--pl) 42%, transparent), transparent 60%),
+    radial-gradient(460px 200px at 0% 130%, color-mix(in srgb, var(--dl) 34%, transparent), transparent 60%),
+    linear-gradient(180deg, #161d2b, #0f1622);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.06); }
 .btn-sm { padding:7px 12px; font-size:12px; font-weight:700; border-radius:8px; }
 /* (bug fix, three-across) tighter chrome scoped to the per-assignee actions
    row only -- .btn-sm is used app-wide (sidebar, notifications, sheets) and
@@ -622,7 +646,7 @@ a.client:hover { text-decoration:underline; }
 .rota-date.sel { border-color:var(--pl); background:var(--pl-soft); }
 .rota-date.mine b { color:var(--dl); }
 .rank-load { text-align:right; } .rank-load b { font-family:'Space Grotesk'; font-weight:700; font-size:16px; display:block; color:var(--ink); } .rank-load small { font-size:10px; color:var(--soft); }
-.fab { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); z-index:30; background:var(--pl); color:#fff; font-weight:700; font-size:14px; padding:14px 22px; border-radius:999px; box-shadow:0 6px 20px rgba(59,65,201,.4); display:flex; align-items:center; gap:8px; }
+.fab { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); z-index:30; background:linear-gradient(180deg, var(--pl-2), var(--pl) 60%, var(--pl-3)); color:#fff; font-weight:700; font-size:14px; padding:14px 22px; border-radius:999px; box-shadow:inset 0 1px 0 rgba(255,255,255,.4), 0 8px 22px -6px var(--pl); display:flex; align-items:center; gap:8px; }
 .scrim { position:fixed; inset:0; background:rgba(20,26,34,.45); z-index:40; display:flex; align-items:flex-end; justify-content:center; }
 .sheet { background:var(--surface); width:100%; max-width:480px; border-radius:22px 22px 0 0; padding:20px 18px 8px; max-height:92vh; overflow-y:auto; animation:up .25s ease; }
 @keyframes up { from{ transform:translateY(30px); opacity:.6 } to{ transform:translateY(0); opacity:1 } }

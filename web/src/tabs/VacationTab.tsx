@@ -180,7 +180,7 @@ function Dashboard({ data, me, meId, goto }: { data: VacationData; me: Member | 
   return (
     <>
       {/* ---- header / request-by ---- */}
-      <div style={{ ...card, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+      <div className="hero-panel" style={{ ...card, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <div>
             <div style={{ fontSize: 15, fontWeight: 700 }}>Team time-off timeline</div>

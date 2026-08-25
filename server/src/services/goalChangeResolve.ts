@@ -5,7 +5,7 @@ import {
   resolveGoalChangeRequest,
   type GoalChangeRequestRow,
 } from "../repositories/goalChangeRequests";
-import { findProjectById, setProjectStatus } from "../repositories/projects";
+import { findProjectById, closeDeliveryForProject } from "../repositories/projects";
 import { goalChangeTargetLabel, isStageTarget } from "../rules/goalChange";
 import type { Stage } from "../rules/types";
 import { notify } from "./notify";
@@ -30,8 +30,9 @@ export interface ResolveResult {
 /**
  * Apply + resolve a goal-change request in one place, shared by the HTTP
  * resolve route and the inbound Slack Accept handler. Accepting applies the
- * requested goal and *delivery stage* (or archives the project when the target
- * is "Archive"); a PL may override either at accept time, which flags the
+ * requested goal and *delivery stage* (or, when the target is "Archive", takes
+ * the project off the deliverers' boards while leaving it on the PL board); a
+ * PL may override either at accept time, which flags the
  * result as "accepted with changes". Declining touches nothing. Idempotent on
  * an already-resolved request. The CALLER performs the permission check.
  *
@@ -63,7 +64,13 @@ export async function applyAndResolveGoalChange(
       await updateAssignmentGoal(assignment.id, { goal: appliedGoal });
     }
     if (appliedStatus) {
-      if (appliedStatus === "Archive") await setProjectStatus(project.id, "archived");
+      // "Archive" from a deliverer's goal-change is a *board-level* action: it
+      // takes the project off every deliverer's board (delivery_closed_at) but
+      // leaves it live on the PL board — the PL can reopen delivery later. It
+      // must NOT flip the whole project to 'archived' (that used to remove it
+      // from the PL board too, which is the bug we're fixing). A PL who wants a
+      // true project archive still uses POST /projects/:id/archive.
+      if (appliedStatus === "Archive") await closeDeliveryForProject(project.id);
       else if (isStageTarget(appliedStatus)) await setAssignmentStage(assignment.id, appliedStatus as Stage);
     }
   }

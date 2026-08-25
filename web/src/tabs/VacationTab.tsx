@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { api, ApiError } from "../api/client";
 import { useApp } from "../state/AppContext";
+import { usePersistentState } from "../lib/persistentState";
 
 /* ----------------------------- types ----------------------------- */
 interface VacBlock { start: string; end: string; type: string }
@@ -60,7 +61,7 @@ export default function VacationTab({ reloadTick }: { reloadTick: number }) {
   const { actor } = useApp();
   const [data, setData] = useState<VacationData | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [sub, setSub] = useState<Sub>("dash");
+  const [sub, setSub] = usePersistentState<Sub>("relay.vacation.sub", "dash", SUB_TABS.map((t) => t.key));
   const [teamId, setTeamId] = useState<string>("");
   const [busy, setBusy] = useState(false);
 

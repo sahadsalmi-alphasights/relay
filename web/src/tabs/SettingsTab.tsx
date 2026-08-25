@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { usePersistentState } from "../lib/persistentState";
 import AnalyticsView from "../components/AnalyticsView";
 import CoverageSettings from "../components/CoverageSettings";
 import NotificationSettings from "../components/NotificationSettings";
@@ -18,7 +18,7 @@ type SettingsView = "coverage" | "notifications" | "integrations" | "whoout" | "
  * section also enforces its own permissions server-side.
  */
 export default function SettingsTab({ reloadTick, onReload }: { reloadTick: number; onReload: () => void }) {
-  const [view, setView] = useState<SettingsView>("coverage");
+  const [view, setView] = usePersistentState<SettingsView>("relay.settings.view", "coverage", ["coverage", "notifications", "integrations", "whoout", "rota", "users", "analytics"]);
   const tab = (v: SettingsView, label: string) => (
     <button className={"btn-sm " + (view === v ? "btn-pl" : "btn-ghost")} onClick={() => setView(v)}>
       {label}

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { usePersistentState } from "../lib/persistentState";
 import { api, ApiError } from "../api/client";
 import type { AdminUser, Instance, PermissionMatrix, PermissionRole, PersonStatus, Role, Team } from "../api/types";
 import InstancesView from "../components/InstancesView";
@@ -52,7 +53,7 @@ export default function UserManagementTab({ reloadTick }: { reloadTick: number }
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [view, setView] = useState<"users" | "groups" | "teams" | "instances">("users");
+  const [view, setView] = usePersistentState<"users" | "groups" | "teams" | "instances">("relay.users.view", "users", ["users", "groups", "teams", "instances"]);
   const [search, setSearch] = useState("");
   // Paginated, instance-scoped roster for the Users tab (scales to thousands).
   const LIMIT = 50;

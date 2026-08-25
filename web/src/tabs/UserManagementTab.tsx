@@ -378,27 +378,29 @@ export default function UserManagementTab({ reloadTick }: { reloadTick: number }
 
   const header = (
     <>
-      <div className="section-lbl">
-        User management {view === "users" && <span className="count">{rosterTotal}</span>}
-      </div>
-      <div className="scope-note">
-        {view === "users"
-          ? "Scoped to your active instance — filter by location, department or board, or search."
-          : "Owner portal."}
-      </div>
-      <div className="subtabs">
-        <button className={"subtab" + (view === "users" ? " on" : "")} onClick={() => setView("users")}>
-          Users
-        </button>
-        <button className={"subtab" + (view === "groups" ? " on" : "")} onClick={() => setView("groups")}>
-          User groups
-        </button>
-        <button className={"subtab" + (view === "teams" ? " on" : "")} onClick={() => setView("teams")}>
-          Teams
-        </button>
-        <button className={"subtab" + (view === "instances" ? " on" : "")} onClick={() => setView("instances")}>
-          Instances
-        </button>
+      <div className="hero-panel page-head" style={{ display: "block" }}>
+        <div className="section-lbl">
+          User management {view === "users" && <span className="count">{rosterTotal}</span>}
+        </div>
+        <div className="scope-note">
+          {view === "users"
+            ? "Scoped to your active instance — filter by location, department or board, or search."
+            : "Owner portal."}
+        </div>
+        <div className="subtabs" style={{ marginTop: 8 }}>
+          <button className={"subtab" + (view === "users" ? " on" : "")} onClick={() => setView("users")}>
+            Users
+          </button>
+          <button className={"subtab" + (view === "groups" ? " on" : "")} onClick={() => setView("groups")}>
+            User groups
+          </button>
+          <button className={"subtab" + (view === "teams" ? " on" : "")} onClick={() => setView("teams")}>
+            Teams
+          </button>
+          <button className={"subtab" + (view === "instances" ? " on" : "")} onClick={() => setView("instances")}>
+            Instances
+          </button>
+        </div>
       </div>
       {view === "users" && (
         <div className="audit-filters" style={{ flexWrap: "wrap" }}>

@@ -270,7 +270,7 @@ describe("Batch S — goal-change request accept/decline", () => {
     expect(rows[0].stage).toBe("Hail Mary");
   });
 
-  it("accepting an 'Archive' target archives the project", async () => {
+  it("accepting an 'Archive' target closes delivery (off deliverer boards) but keeps the project live on the PL board", async () => {
     const requestId = await createRequest(3, "Archive");
     const plCookie = await loginAs(app, fx.plAlpha);
     const res = await app.inject({
@@ -280,8 +280,14 @@ describe("Batch S — goal-change request accept/decline", () => {
       payload: { outcome: "accepted" },
     });
     expect(res.statusCode).toBe(200);
-    const { rows: projectRows } = await pool.query(`SELECT status FROM project WHERE id = $1`, [fx.project]);
-    expect(projectRows[0].status).toBe("archived");
+    const { rows: projectRows } = await pool.query(
+      `SELECT status, delivery_closed_at FROM project WHERE id = $1`,
+      [fx.project]
+    );
+    // The bug fix: Archive no longer flips the whole project to 'archived'
+    // (which removed it from the PL board too) — it only closes delivery.
+    expect(projectRows[0].status).not.toBe("archived");
+    expect(projectRows[0].delivery_closed_at).not.toBeNull();
   });
 
   it("declining leaves the goal untouched", async () => {

@@ -325,7 +325,7 @@ export default function InstancesView({
           <div style={{ padding: 10, borderTop: "1px solid var(--line)", display: "flex", gap: 6 }}>
             <input style={inputStyle} placeholder="New instance name…" value={newName}
               onChange={(e) => setNewName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && create()} />
-            <button className="btn-sm btn-pl" disabled={creating || !newName.trim()} onClick={create} style={{ whiteSpace: "nowrap" }}>＋ Create</button>
+            <button className="btn-sm btn-pl" disabled={creating || !newName.trim()} onClick={create} style={{ whiteSpace: "nowrap" }}><Icon name="plus" size={13} /> Create</button>
           </div>
         </aside>
 
@@ -344,7 +344,7 @@ export default function InstancesView({
                   </div>
                 </div>
                 <button className="btn-sm btn-pl" onClick={() => { setDrawerOpen((o) => !o); setCandSearch(""); }}>
-                  {drawerOpen ? "Close" : "＋ Add members"}
+                  {drawerOpen ? "Close" : <><Icon name="plus" size={13} /> Add members</>}
                 </button>
               </div>
 
@@ -362,7 +362,7 @@ export default function InstancesView({
                           <div style={{ fontSize: 13, fontWeight: 600 }}>{c.name}</div>
                           <div style={{ fontSize: 11, color: "var(--soft)" }}>{c.email} · {(c.instanceKeys ?? []).length} instance(s)</div>
                         </div>
-                        <button className="btn-sm btn-pl" disabled={busyId === c.id} onClick={() => addMember(c)}>＋ Add</button>
+                        <button className="btn-sm btn-pl" disabled={busyId === c.id} onClick={() => addMember(c)}><Icon name="plus" size={12} /> Add</button>
                       </li>
                     ))}
                     {!loadingCand && candidates.length === 0 && (
@@ -436,9 +436,9 @@ export default function InstancesView({
 
               {pageCount > 1 && (
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, padding: 12, borderTop: "1px solid var(--line)" }}>
-                  <button className="btn-sm btn-ghost" disabled={memberPage <= 1} onClick={() => setMemberPage((p) => Math.max(1, p - 1))}>‹ Prev</button>
+                  <button className="btn-sm btn-ghost" disabled={memberPage <= 1} onClick={() => setMemberPage((p) => Math.max(1, p - 1))}><Icon name="chevron-left" size={12} /> Prev</button>
                   <span style={{ fontSize: 12, color: "var(--soft)" }}>Page {memberPage} of {pageCount} · {memberTotal} members</span>
-                  <button className="btn-sm btn-ghost" disabled={memberPage >= pageCount} onClick={() => setMemberPage((p) => Math.min(pageCount, p + 1))}>Next ›</button>
+                  <button className="btn-sm btn-ghost" disabled={memberPage >= pageCount} onClick={() => setMemberPage((p) => Math.min(pageCount, p + 1))}>Next <Icon name="chevron-right" size={12} /></button>
                 </div>
               )}
             </>

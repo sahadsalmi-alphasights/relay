@@ -367,7 +367,7 @@ export default function Shell() {
 
       {tab === "PL" && (
         <button className="fab" onClick={() => setIntakeOpen(true)} aria-label="New project" title="New project">
-          ＋
+          <Icon name="plus" size={18} />
         </button>
       )}
 

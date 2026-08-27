@@ -27,7 +27,7 @@ export default function HrIntegrationSettings({ onSaved }: { onSaved: () => void
   const [busy, setBusy] = useState(false);
   const [ok, setOk] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [msg, setMsg] = useState<string | null>(null);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   // Credential inputs — write-only. apiKeyInput is never pre-filled.
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [subdomainInput, setSubdomainInput] = useState("");
@@ -44,7 +44,7 @@ export default function HrIntegrationSettings({ onSaved }: { onSaved: () => void
       if (subdomainInput.trim()) body.subdomain = subdomainInput.trim();
       const updated = await api.patch<HR>("/settings/hr-integration", body);
       setDraft(updated); setSaved(updated); setApiKeyInput(""); setSubdomainInput(updated.subdomain ?? "");
-      setMsg(clear ? "Key cleared." : "Credentials saved (encrypted).");
+      setMsg({ ok: true, text: clear ? "Key cleared." : "Credentials saved (encrypted)." });
       onSaved();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not save credentials");
@@ -72,9 +72,9 @@ export default function HrIntegrationSettings({ onSaved }: { onSaved: () => void
     setBusy(true); setMsg(null); setError(null);
     try {
       const res = await api.post<{ ok: boolean; employees: number }>("/settings/hr-integration/test");
-      setMsg(res.ok ? `Connected ✓ — ${res.employees} employees in the directory.` : "BambooHR rejected the request — check the API key and subdomain.");
+      setMsg({ ok: res.ok, text: res.ok ? `Connected — ${res.employees} employees in the directory.` : "BambooHR rejected the request — check the API key and subdomain." });
     } catch (err) {
-      setMsg(err instanceof ApiError ? err.message : "Could not reach BambooHR");
+      setMsg({ ok: false, text: err instanceof ApiError ? err.message : "Could not reach BambooHR" });
     } finally { setBusy(false); }
   };
 
@@ -82,11 +82,11 @@ export default function HrIntegrationSettings({ onSaved }: { onSaved: () => void
     setBusy(true); setMsg(null); setError(null);
     try {
       const res = await api.post<{ summary: string }>("/settings/hr-integration/sync");
-      setMsg(res.summary);
+      setMsg({ ok: true, text: res.summary });
       await load();
       onSaved();
     } catch (err) {
-      setMsg(err instanceof ApiError ? err.message : "Sync failed");
+      setMsg({ ok: false, text: err instanceof ApiError ? err.message : "Sync failed" });
     } finally { setBusy(false); }
   };
 
@@ -105,7 +105,7 @@ export default function HrIntegrationSettings({ onSaved }: { onSaved: () => void
             <div className="cs-rl">Connection</div>
             <div className="cs-rs">
               {draft.hasKey ? <>Key stored (ends <code>••••{draft.hint}</code>), encrypted via <strong>{draft.secretStore === "kms" ? "Google Cloud KMS" : "local key"}</strong>.</> : "No key stored yet — paste one below."}
-              {draft.secretStore === "local" && <> <span style={{ color: "var(--amber, #a5770b)" }}>⚠ dev encryption — set <code>KMS_KEY_NAME</code> on the server for KMS.</span></>}
+              {draft.secretStore === "local" && <> <span style={{ color: "var(--amber, #a5770b)" }}><Icon name="alert" size={12} /> dev encryption — set <code>KMS_KEY_NAME</code> on the server for KMS.</span></>}
             </div>
           </div>
           <div className="cs-controls">
@@ -167,7 +167,7 @@ export default function HrIntegrationSettings({ onSaved }: { onSaved: () => void
             )}
           </div>
         </div>
-        {msg && <div className="cs-rs" style={{ marginTop: 6 }}>{msg}</div>}
+        {msg && <div className="cs-rs" style={{ marginTop: 6 }}><Icon name={msg.ok ? "check" : "x"} size={12} /> {msg.text}</div>}
       </div>
 
       {error && <div className="err-line">{error}</div>}

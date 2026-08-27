@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { api, ApiError } from "../api/client";
 import { useApp } from "../state/AppContext";
+import { Icon } from "./Icon";
 
 interface Hint { hasValue: boolean; hint: string | null; source: "in-app" | "env" | "derived" | null }
 interface OktaState {
@@ -116,7 +117,7 @@ export default function OktaIntegrationSettings({ onSaved }: { onSaved: () => vo
           <div className="cs-rs">
             Directory API: {s.oktaConfigured ? "on" : "off"}
             {s.oktaConfigured && <> · auth: <strong>{authMode === "oauth" ? "OAuth (okta.users.read)" : "SSWS token"}</strong></>}. Powers the instance seed (Instances → Seed from Okta).
-            {s.secretStore === "local" && <> <span style={{ color: "var(--amber, #a5770b)" }}>⚠ dev encryption — set <code>KMS_KEY_NAME</code> for KMS.</span></>}
+            {s.secretStore === "local" && <> <span style={{ color: "var(--amber, #a5770b)" }}><Icon name="alert" size={12} /> dev encryption — set <code>KMS_KEY_NAME</code> for KMS.</span></>}
           </div>
         </div>
         <div className="cs-controls">
@@ -159,8 +160,8 @@ export default function OktaIntegrationSettings({ onSaved }: { onSaved: () => vo
           {test && (
             <div className="cs-rs" style={{ marginTop: 6 }}>
               {test.ok
-                ? <span style={{ color: "var(--green)" }}>✓ {test.users} active users — {test.withTuple} with city + department, {test.withBoard} with a whiteboard_number.</span>
-                : <span style={{ color: "var(--red)" }}>✕ {test.error}</span>}
+                ? <span style={{ color: "var(--green)" }}><Icon name="check" size={12} /> {test.users} active users — {test.withTuple} with city + department, {test.withBoard} with a whiteboard_number.</span>
+                : <span style={{ color: "var(--red)" }}><Icon name="x" size={12} /> {test.error}</span>}
             </div>
           )}
         </>

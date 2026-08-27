@@ -217,7 +217,7 @@ function AdminSection({ notes, onChanged }: { notes: PersonalNote[]; onChanged: 
           placeholder="Write a reminder for yourself…"
         />
         <button className="btn-sm btn-pl" disabled={busy || !txt.trim()} onClick={add}>
-          ＋ Add
+          <Icon name="plus" size={13} /> Add
         </button>
       </div>
     </div>

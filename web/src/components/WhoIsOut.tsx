@@ -27,7 +27,7 @@ export default function WhoIsOut() {
         Who's currently unavailable across the BU — anyone not set to “Available”. Leave synced from BambooHR shows under On vacation with a leave tag.
       </div>
 
-      {outCount === 0 && <div className="empty">Everyone's available right now. 🎉</div>}
+      {outCount === 0 && <div className="empty">Everyone's available right now. <Icon name="trophy" size={14} /></div>}
 
       {OUT_GROUPS.map((g) => {
         const rows = active

@@ -54,19 +54,19 @@ export default function MoreSheet({
       <button className="more-item" onClick={() => go("GhostRanking")}>
         <span className="ico" style={ico("ghost.png")} aria-hidden="true" />
         Ghost Ranking
-        <span className="more-chevron">›</span>
+        <span className="more-chevron"><Icon name="chevron-right" size={13} /></span>
       </button>
 
       <button className="more-item" onClick={() => { onClose(); onOpenTeam(); }}>
         <span className="ico" style={ico("team.png")} aria-hidden="true" />
         My Team
-        <span className="more-chevron">›</span>
+        <span className="more-chevron"><Icon name="chevron-right" size={13} /></span>
       </button>
 
       <button className="more-item" onClick={() => { onClose(); onOpenRota(); }}>
         <span aria-hidden="true" style={{ fontSize: 15, width: 18, textAlign: "center" }}><Icon name="calendar" size={15} /></span>
         Sunday Coverage
-        <span className="more-chevron">›</span>
+        <span className="more-chevron"><Icon name="chevron-right" size={13} /></span>
       </button>
 
       {/* FAQ — external DeliveryGPT agent, opens in a new tab. */}

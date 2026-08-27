@@ -37,7 +37,7 @@ export default function NotificationSettings({ onSaved }: { onSaved: () => void 
   const [busy, setBusy] = useState(false);
   const [ok, setOk] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [testMsg, setTestMsg] = useState<string | null>(null);
+  const [testMsg, setTestMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   useEffect(() => {
     api.get<NS>("/settings/notifications").then((s) => { setDraft(s); setSaved(s); });
@@ -67,9 +67,9 @@ export default function NotificationSettings({ onSaved }: { onSaved: () => void 
     setBusy(true); setTestMsg(null); setError(null);
     try {
       const res = await api.post<{ ok: boolean }>("/settings/notifications/test");
-      setTestMsg(res.ok ? "Test message sent to Slack ✓" : "Slack rejected the test — check the webhook URL.");
+      setTestMsg({ ok: res.ok, text: res.ok ? "Test message sent to Slack" : "Slack rejected the test — check the webhook URL." });
     } catch (err) {
-      setTestMsg(err instanceof ApiError ? err.message : "Could not send test");
+      setTestMsg({ ok: false, text: err instanceof ApiError ? err.message : "Could not send test" });
     } finally { setBusy(false); }
   };
 
@@ -77,9 +77,9 @@ export default function NotificationSettings({ onSaved }: { onSaved: () => void 
     setBusy(true); setTestMsg(null); setError(null);
     try {
       const res = await api.post<{ ok: boolean; sent: number }>("/settings/notifications/sample-all");
-      setTestMsg(res.ok ? `Sent ${res.sent} sample messages to Slack ✓` : "Slack rejected the samples — check the webhook URL.");
+      setTestMsg({ ok: res.ok, text: res.ok ? `Sent ${res.sent} sample messages to Slack` : "Slack rejected the samples — check the webhook URL." });
     } catch (err) {
-      setTestMsg(err instanceof ApiError ? err.message : "Could not send samples");
+      setTestMsg({ ok: false, text: err instanceof ApiError ? err.message : "Could not send samples" });
     } finally { setBusy(false); }
   };
 
@@ -89,9 +89,9 @@ export default function NotificationSettings({ onSaved }: { onSaved: () => void 
     setBusy(true); setTestMsg(null); setError(null);
     try {
       const res = await api.post<{ ok: boolean; sent: number; hint?: string }>("/settings/notifications/sample-dm", { event });
-      setTestMsg(res.ok ? `DM'd ${res.sent} sample${res.sent > 1 ? "s" : ""} to you ✓ — check your Slack.` : (res.hint ?? "No DM sent."));
+      setTestMsg({ ok: res.ok, text: res.ok ? `DM'd ${res.sent} sample${res.sent > 1 ? "s" : ""} to you — check your Slack.` : (res.hint ?? "No DM sent.") });
     } catch (err) {
-      setTestMsg(err instanceof ApiError ? err.message : "Could not send DM");
+      setTestMsg({ ok: false, text: err instanceof ApiError ? err.message : "Could not send DM" });
     } finally { setBusy(false); }
   };
 
@@ -162,7 +162,7 @@ export default function NotificationSettings({ onSaved }: { onSaved: () => void 
             </div>
           </div>
         )}
-        {testMsg && <div className="cs-rs" style={{ marginTop: 6 }}>{testMsg}</div>}
+        {testMsg && <div className="cs-rs" style={{ marginTop: 6 }}><Icon name={testMsg.ok ? "check" : "x"} size={12} /> {testMsg.text}</div>}
       </div>
 
       <div className="card cs-card">

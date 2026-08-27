@@ -152,13 +152,9 @@ function AssigneeGoalEditor({
   return (
     <div className="assignee-num" style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
       <div className="step">
-        <button disabled={busy} onClick={() => patch(Math.max(0, assignment.goal - 1))}>
-          −
-        </button>
+        <button disabled={busy} onClick={() => patch(Math.max(0, assignment.goal - 1))}><Icon name="minus" size={15} /></button>
         <span className="val">{assignment.goal}</span>
-        <button disabled={busy} onClick={() => patch(assignment.goal + 1)}>
-          +
-        </button>
+        <button disabled={busy} onClick={() => patch(assignment.goal + 1)}><Icon name="plus" size={15} /></button>
       </div>
       <button className="btn-sm btn-ghost" onClick={() => setOpen(false)}>
         <Icon name="check" size={14} /> Done
@@ -210,13 +206,9 @@ function ResolveRequestPanel({
   return (
     <div className="assignee-num" style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
       <div className="step">
-        <button disabled={busy} onClick={() => setGoal((g) => Math.max(0, g - 1))}>
-          −
-        </button>
+        <button disabled={busy} onClick={() => setGoal((g) => Math.max(0, g - 1))}><Icon name="minus" size={15} /></button>
         <span className="val">{goal}</span>
-        <button disabled={busy} onClick={() => setGoal((g) => g + 1)}>
-          +
-        </button>
+        <button disabled={busy} onClick={() => setGoal((g) => g + 1)}><Icon name="plus" size={15} /></button>
       </div>
       <select
         className="stage-select"
@@ -278,13 +270,9 @@ function StageDropdown({ assignment, onSave }: { assignment: Assignment; onSave:
           New goal for {stageLabel(pendingStage)}
         </span>
         <div className="step">
-          <button disabled={busy} onClick={() => setGoal((g) => Math.max(0, g - 1))}>
-            −
-          </button>
+          <button disabled={busy} onClick={() => setGoal((g) => Math.max(0, g - 1))}><Icon name="minus" size={15} /></button>
           <span className="val">{goal}</span>
-          <button disabled={busy} onClick={() => setGoal((g) => g + 1)}>
-            +
-          </button>
+          <button disabled={busy} onClick={() => setGoal((g) => g + 1)}><Icon name="plus" size={15} /></button>
         </div>
         <button className="btn-sm btn-pl" disabled={busy} onClick={confirm}>
           Confirm
@@ -353,13 +341,9 @@ function CallsSoldEditor({ angles, onSave }: { angles: Angle[]; onSave: () => vo
             Calls sold <span style={{ color: "var(--soft)", fontWeight: 500 }}>· of {ang.callsN}</span>
           </span>
           <div className="step">
-            <button disabled={busy} onClick={() => patch(ang.id, Math.max(0, ang.callsSold - 1))}>
-              −
-            </button>
+            <button disabled={busy} onClick={() => patch(ang.id, Math.max(0, ang.callsSold - 1))}><Icon name="minus" size={15} /></button>
             <span className="val">{ang.callsSold}</span>
-            <button disabled={busy} onClick={() => patch(ang.id, ang.callsSold + 1)}>
-              +
-            </button>
+            <button disabled={busy} onClick={() => patch(ang.id, ang.callsSold + 1)}><Icon name="plus" size={15} /></button>
           </div>
         </div>
       ))}
@@ -639,7 +623,7 @@ export default function ProjectLeadingTab({
         // capped pct). Exceeded wins over everything, including Hail Mary.
         const exceeded = (p.callsN > 0 && p.callsSold > p.callsN) || (goal > 0 && done > goal);
         const pace = exceeded
-          ? { color: "var(--green)", label: "Exceeded 🎉" }
+          ? { color: "var(--green)", label: "Exceeded" }
           : paceInfo(pct, p.earliestStage ?? "First Deliverable");
         const readOnly = foreignReadOnly && p.plId !== actor.id;
         const ps = poolState(p.expertPool, effectiveHour);
@@ -813,7 +797,7 @@ export default function ProjectLeadingTab({
               {p.earliestStage && (
                 <span className="pace" style={{ color: pace.color }}>
                   <span className="dot" style={{ background: pace.color }} />
-                  {pace.label}
+                  {pace.label}{exceeded && <> <Icon name="trophy" size={12} /></>}
                 </span>
               )}
             </div>

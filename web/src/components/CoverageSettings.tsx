@@ -27,9 +27,9 @@ function TimeField({ value, onChange, disabled }: { value: number; onChange: (v:
 function DurationField({ value, step, onChange, disabled }: { value: number; step: number; onChange: (v: number) => void; disabled: boolean }) {
   return (
     <span className="cs-stepper">
-      <button disabled={disabled} onClick={() => onChange(Math.max(1, value - step))}>−</button>
+      <button disabled={disabled} onClick={() => onChange(Math.max(1, value - step))}><Icon name="minus" size={13} /></button>
       <span className="val">{value}</span>
-      <button disabled={disabled} onClick={() => onChange(Math.min(480, value + step))}>＋</button>
+      <button disabled={disabled} onClick={() => onChange(Math.min(480, value + step))}><Icon name="plus" size={13} /></button>
       <span className="cs-unit">min</span>
     </span>
   );

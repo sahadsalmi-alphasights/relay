@@ -861,3 +861,52 @@ a.client:hover { text-decoration:underline; }
 .sheet-panel { border-radius:0; width:440px; max-width:90vw; height:100vh; max-height:100vh; animation:slideInRight .22s ease; }
 @keyframes fadeInScale { from{ opacity:0; transform:scale(.97) } to{ opacity:1; transform:scale(1) } }
 @keyframes slideInRight { from{ opacity:.6; transform:translateX(24px) } to{ opacity:1; transform:translateX(0) } }
+
+/* ==========================================================================
+   Capacity-ranking delivery-card panel (click a row) + clickable rows.
+   Right-side drawer; leads with availability, then the load breakdown.
+   ========================================================================== */
+.rank-clickable { cursor:pointer; }
+tr.rank-clickable:hover, .rank-row.rank-clickable:hover { background:var(--bg); }
+tr.rank-open, .rank-row.rank-open { box-shadow:inset 3px 0 0 var(--pl); background:var(--pl-soft); }
+.dp-scrim { position:fixed; inset:0; z-index:60; background:rgba(10,16,26,.34); display:flex; justify-content:flex-end; animation:dpFade .15s ease; }
+[data-theme="dark"] .dp-scrim { background:rgba(0,0,0,.55); }
+.dp-panel { width:400px; max-width:92vw; height:100%; background:var(--surface); border-left:1px solid var(--line); display:flex; flex-direction:column; overflow-y:auto; animation:dpSlide .2s ease; }
+@keyframes dpFade { from { opacity:0; } } @keyframes dpSlide { from { transform:translateX(16px); opacity:.6; } }
+@media (prefers-reduced-motion: reduce) { .dp-scrim, .dp-panel { animation:none; } }
+.dp-top { padding:16px 18px 14px; border-bottom:1px solid var(--line); }
+.dp-id { display:flex; align-items:center; gap:11px; }
+.dp-id .avatar { width:42px; height:42px; border-radius:12px; font-size:14px; }
+.dp-name { font-family:'Space Grotesk'; font-weight:700; font-size:16px; color:var(--ink); }
+.dp-sub { font-size:12px; color:var(--soft); margin-top:1px; }
+.dp-x { margin-left:auto; width:28px; height:28px; border:1px solid var(--line); border-radius:8px; color:var(--soft); display:flex; align-items:center; justify-content:center; background:none; }
+.dp-x:hover { color:var(--ink); border-color:var(--soft); }
+.dp-lunch { margin-top:14px; padding:11px 12px; border-radius:11px; background:var(--amber-bg); border:1px solid #F0DCB0; }
+[data-theme="dark"] .dp-lunch { border-color:#4A3A14; }
+.dp-lunch-r { display:flex; align-items:center; gap:9px; font-size:13px; color:var(--ink); }
+.dp-lunch-r b { font-weight:600; }
+.dp-meter { height:5px; border-radius:3px; background:rgba(199,125,18,.22); margin-top:8px; overflow:hidden; }
+.dp-meter i { display:block; height:100%; background:var(--amber); border-radius:3px; }
+.dp-avail { margin-top:14px; display:flex; align-items:center; gap:9px; font-size:12.5px; color:var(--soft); }
+.dp-stats { display:flex; gap:10px; margin-top:14px; }
+.dp-stat { flex:1; background:var(--bg); border-radius:10px; padding:9px 11px; }
+.dp-stat .k { font-size:10.5px; letter-spacing:.03em; text-transform:uppercase; color:var(--soft); }
+.dp-stat .v { font-family:'Space Grotesk'; font-weight:700; font-size:19px; color:var(--ink); font-feature-settings:"tnum"; margin-top:1px; }
+.dp-stat .v small { font-size:11px; font-weight:500; color:var(--soft); }
+.dp-sec { font-size:11px; font-weight:600; letter-spacing:.05em; text-transform:uppercase; color:var(--soft); padding:16px 18px 8px; }
+.dp-cards { padding:0 14px 6px; display:flex; flex-direction:column; gap:8px; }
+.dp-card { border:1px solid var(--line); border-radius:11px; padding:10px 12px; background:var(--surface); }
+.dp-card.zero { opacity:.6; }
+.dp-card-r1 { display:flex; align-items:center; gap:8px; }
+.dp-client { font-weight:600; font-size:13px; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.dp-stg { font-size:10.5px; font-weight:600; border-radius:6px; padding:2px 7px; white-space:nowrap; }
+.dp-stg.fd { background:var(--red-bg); color:#A82F2F; } .dp-stg.sd { background:var(--amber-bg); color:#9A5F0C; }
+.dp-stg.hm { background:#E1E9FC; color:#2A50C8; } .dp-stg.se { background:var(--bg); color:var(--soft); }
+.dp-lc { margin-left:auto; font-family:'Space Grotesk'; font-weight:700; font-size:13px; color:var(--ink); font-feature-settings:"tnum"; }
+.dp-card-r2 { display:flex; align-items:center; gap:8px; margin-top:8px; }
+.dp-angle { font-size:11.5px; color:var(--soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:42%; }
+.dp-bar { flex:1; height:6px; border-radius:3px; background:var(--bg); overflow:hidden; }
+.dp-bar i { display:block; height:100%; border-radius:3px; background:var(--pl); }
+.dp-rem { font-size:11px; color:var(--soft); white-space:nowrap; font-feature-settings:"tnum"; }
+.dp-foot { margin-top:auto; border-top:1px solid var(--line); padding:12px 18px; font-size:11.5px; color:var(--soft); }
+.dp-foot b { color:var(--ink); font-weight:600; }

@@ -16,6 +16,8 @@ export interface CandidateWithAssignments {
   eveningCoverage: boolean;
   /** "Out to Lunch" — live self-serve toggle; feeds isEligible() the same way eveningCoverage does. */
   outToLunch: boolean;
+  /** When the current lunch started — powers the "back in ~Nm" countdown the allocation picker shows on a blocked-for-lunch candidate. Null when not at lunch. */
+  outToLunchSince: string | null;
   practiceArea: string | null;
   teamId: string | null;
   assignments: WeightedAssignment[];
@@ -53,6 +55,7 @@ export async function listAvailableCandidatesWithAssignments(
   // required so no caller can silently mix BUs.
   const { rows: people } = await pool.query(
     `SELECT id, status, evening_coverage AS "eveningCoverage", out_to_lunch AS "outToLunch",
+            out_to_lunch_since AS "outToLunchSince",
             practice_area AS "practiceArea", team_id AS "teamId"
      FROM person
      WHERE status = 'Available' AND is_manager = false AND is_owner = false AND is_ghost = $1

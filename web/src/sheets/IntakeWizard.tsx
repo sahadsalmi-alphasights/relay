@@ -4,6 +4,7 @@ import type { ExpertPool, RankedCandidate } from "../api/types";
 import Sheet from "../components/Sheet";
 import { Icon } from "../components/Icon";
 import { CLIENT_ENTITY_IDS, entityName, initials, previewCustomGoal } from "../lib/format";
+import { lunchLabel, lunchTiming } from "../lib/lunch";
 import { track } from "../lib/track";
 import { useApp } from "../state/AppContext";
 
@@ -92,7 +93,7 @@ function goalCalcText(projectType: FormState["projectType"], callsN: number, goa
 }
 
 export default function IntakeWizard({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
-  const { nameOf, effectiveAfterHours, sunday, people } = useApp();
+  const { nameOf, effectiveAfterHours, sunday, people, nowMs } = useApp();
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [f, setF] = useState<FormState>({
     client: "",
@@ -109,6 +110,9 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
   // multi-angle request. 0 means the true zero-eligible broadcast case
   // (Change 3); >0 with some angle still short means partial-fill (Change 4).
   const [totalEligible, setTotalEligible] = useState<number | null>(null);
+  // Org lunch window (minutes) from the match response — turns a blocked
+  // candidate's out_to_lunch_since into a live "back in ~Nm" countdown.
+  const [lunchAutoOffMin, setLunchAutoOffMin] = useState(60);
   // Only one override panel open at a time, app-wide -- which angle it's acting on.
   const [overridingAngle, setOverridingAngle] = useState<number | null>(null);
   const [overridingId, setOverridingId] = useState<string | null>(null);
@@ -198,9 +202,11 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
         perAngle: { key: string; picked: RankedCandidate[] }[];
         totalEligible: number;
         projectStatus: "active" | "open";
+        lunchAutoOffMin: number;
       }>("/projects/intake/match", {
         angles: angles.map((a, i) => ({ key: String(i), staffCount: a.staffCount })),
       });
+      setLunchAutoOffMin(result.lunchAutoOffMin);
       const pickedByKey = new Map(result.perAngle.map((p) => [p.key, p.picked]));
       // "Invisible competition" — rank the ghost pool too (same machinery,
       // ghost flag), so the PL picks the ghost per angle exactly like a real
@@ -746,7 +752,10 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
                                   {r.ineligibleReason === "first_deliverable_conflict"
                                     ? "Busy — first deliverable elsewhere"
                                     : r.ineligibleReason === "out_to_lunch"
-                                    ? "Out to lunch — back soon"
+                                    ? (() => {
+                                        const t = lunchTiming(r.outToLunchSince, lunchAutoOffMin, nowMs);
+                                        return t ? `Out to lunch — ${lunchLabel(t)}` : "Out to lunch — back soon";
+                                      })()
                                     : r.ineligibleReason === "sunday_off"
                                     ? "Off — not on today's Sunday rota"
                                     : "Evening coverage off — applies from 7pm"}

@@ -4,6 +4,7 @@ import type { NotificationsState } from "../lib/useNotifications";
 import { requestNotificationPermission, showBrowserNotification } from "../lib/pushNotifications";
 import { isSoundEnabled, playNotificationSound, setSoundEnabled } from "../lib/notificationSound";
 import { disablePush, enablePush, getPushSubscription, isPushSupported } from "../lib/webPush";
+import { Icon, type IconName } from "./Icon";
 
 const notifSupported = typeof Notification !== "undefined";
 
@@ -18,14 +19,14 @@ function timeAgo(iso: string): string {
 }
 
 /** Per-type icon chip — the visual index of the tray. */
-const TYPE_META: Record<string, { icon: string; cls: string }> = {
-  assigned: { icon: "🤝", cls: "teal" },
-  delivery_logged: { icon: "📈", cls: "orange" },
-  goal_change_requested: { icon: "✏️", cls: "amber" },
-  goal_change_resolved: { icon: "✅", cls: "green" },
-  stale_first_deliverable: { icon: "⏰", cls: "red" },
-  open_pool: { icon: "📣", cls: "blue" },
-  project_transferred: { icon: "⤴", cls: "teal" },
+const TYPE_META: Record<string, { icon: IconName; cls: string }> = {
+  assigned: { icon: "users", cls: "teal" },
+  delivery_logged: { icon: "trending", cls: "orange" },
+  goal_change_requested: { icon: "edit", cls: "amber" },
+  goal_change_resolved: { icon: "circle-check", cls: "green" },
+  stale_first_deliverable: { icon: "alarm", cls: "red" },
+  open_pool: { icon: "megaphone", cls: "blue" },
+  project_transferred: { icon: "transfer", cls: "teal" },
 };
 
 export default function NotificationBell({
@@ -158,7 +159,7 @@ export default function NotificationBell({
             ) : (
               <div className="notif-list">
                 {notif.notifications.map((n) => {
-                  const meta = TYPE_META[n.type] ?? { icon: "🔔", cls: "blue" };
+                  const meta = TYPE_META[n.type] ?? { icon: "bell" as IconName, cls: "blue" };
                   return (
                     <button
                       key={n.id}
@@ -167,7 +168,7 @@ export default function NotificationBell({
                       title="Open what this is about"
                     >
                       <span className={"notif-ico " + meta.cls} aria-hidden="true">
-                        {meta.icon}
+                        <Icon name={meta.icon} />
                       </span>
                       <span className="notif-main">
                         <span className="notif-title">{n.title}</span>

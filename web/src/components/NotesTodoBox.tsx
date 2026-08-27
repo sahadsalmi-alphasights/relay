@@ -3,6 +3,7 @@ import { api } from "../api/client";
 import type { Note, Project } from "../api/types";
 import { useApp } from "../state/AppContext";
 import type { NotesTarget } from "../Shell";
+import { Icon } from "./Icon";
 
 interface BoardItem {
   project: Project;
@@ -73,7 +74,7 @@ function TodoNote({ note, onChanged }: { note: Note; onChanged: () => void }) {
           Edit
         </button>
         <button className="cn-link cn-done" disabled={busy} title="Mark done — clears it everywhere" onClick={done}>
-          ✓ Done
+          <Icon name="check" size={13} /> Done
         </button>
       </span>
     </div>
@@ -173,7 +174,7 @@ function AdminNote({ note, onChanged }: { note: PersonalNote; onChanged: () => v
           Edit
         </button>
         <button className="cn-link cn-done" disabled={busy} title="Mark done — removes this reminder" onClick={done}>
-          ✓ Done
+          <Icon name="check" size={13} /> Done
         </button>
       </span>
     </div>
@@ -280,9 +281,9 @@ export default function NotesTodoBox({ reloadTick, onReload, onOpenProject }: {
       {open && (
         <div className="todo-panel" role="dialog" aria-label="Notes to-do">
           <div className="todo-panel-head">
-            <span>📝 Notes to-do</span>
+            <span><Icon name="notes" /> Notes to-do</span>
             <button className="todo-close" onClick={() => setOpen(false)} aria-label="Collapse">
-              ✕
+              <Icon name="x" />
             </button>
           </div>
           <div className="todo-panel-body">
@@ -298,7 +299,7 @@ export default function NotesTodoBox({ reloadTick, onReload, onOpenProject }: {
         aria-label={open ? "Collapse notes to-do" : "Open notes to-do"}
         title="Notes to-do"
       >
-        {open ? "▾" : "📝"}
+        {open ? <Icon name="chevron-down" /> : <Icon name="notes" />}
         {!open && total > 0 && <span className="todo-fab-badge">{total}</span>}
       </button>
     </div>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { Scope } from "./Header";
+import { Icon } from "./Icon";
 
 interface MarketShare {
   month: string; // "YYYY-MM"
@@ -76,7 +77,7 @@ export default function MarketSharePulse({
     <div className="ms-card" title={hover}>
       <div className="ms-head">
         <span className="ms-title">
-          Market share — {monthName} <span className="ms-live">● live</span>
+          Market share — {monthName} <span className="ms-live"><Icon name="dot" /> live</span>
         </span>
         <span className="ms-share">{pct != null ? `${pct}% share` : "— share"}</span>
       </div>

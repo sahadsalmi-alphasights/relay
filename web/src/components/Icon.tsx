@@ -53,6 +53,8 @@ const PATHS = {
   "chevron-right": '<path d="M9.5 6l6 6-6 6"/>',
   external: '<path d="M14 5h5v5"/><path d="M19 5l-8 8"/><path d="M18 13.5V18a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4.5"/>',
   "arrow-double": '<path d="M4 12h13"/><path d="M12.5 7l5 5-5 5"/>',
+  // Transfer / hand-off (was ⤴) — forward-up arrow
+  transfer: '<path d="M5 18v-5a4 4 0 0 1 4-4h9"/><path d="M14 5l5 4-5 4"/>',
   // Notifications (NotificationBell)
   users: '<circle cx="9" cy="9" r="3"/><path d="M3.5 19.5a5.6 5.6 0 0 1 11 0"/><path d="M16 6.2a3 3 0 0 1 0 5.6M20.5 19.5a5.6 5.6 0 0 0-3.6-5.2"/>',
   trending: '<path d="M4 15.5l5-5 3 3 6-7"/><path d="M17.5 6.5H21v3.5"/>',

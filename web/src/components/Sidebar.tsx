@@ -3,6 +3,7 @@ import { api } from "../api/client";
 import type { Person } from "../api/types";
 import { useApp } from "../state/AppContext";
 import type { Scope, Tab } from "./Header";
+import { Icon } from "./Icon";
 
 const NAV_ITEMS: { tab: Tab; icon: string; label: string }[] = [
   { tab: "PL", icon: "pl.png", label: "Project Leading" },
@@ -153,7 +154,7 @@ export default function Sidebar({
       >
         <span className="nav-icon ico" style={ico("faq.svg")} aria-hidden="true" />
         <span className="nav-label">FAQ</span>
-        <span aria-hidden="true" style={{ marginLeft: "auto", fontSize: 11, opacity: 0.6 }}>↗</span>
+        <span aria-hidden="true" style={{ marginLeft: "auto", fontSize: 11, opacity: 0.6 }}><Icon name="external" size={11} /></span>
       </a>
 
       <div className="sidebar-section-lbl">Scope</div>

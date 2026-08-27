@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, ApiError } from "../api/client";
 import type { Angle, Assignment, Project, RankedCandidate } from "../api/types";
 import Sheet from "../components/Sheet";
+import { Icon } from "../components/Icon";
 import { ghostsLast, initials } from "../lib/format";
 import { useApp } from "../state/AppContext";
 
@@ -251,11 +252,11 @@ export default function TeamEditSheet({
           <div className="section-lbl spaced">Current team</div>
           {ghostsLast(assignments).map((a) => (
             <div key={a.id} className="match-line">
-              <div className="avatar">{a.isGhost ? "👻" : initials(nameOf(a.delivererId))}</div>
+              <div className="avatar">{a.isGhost ? <Icon name="ghost" size={18} /> : initials(nameOf(a.delivererId))}</div>
               <div>
                 <div className="assignee-name">
                   {nameOf(a.delivererId)}
-                  {a.isGhost && <span className="picktag" style={{ marginLeft: 6 }}>👻 Ghost</span>}
+                  {a.isGhost && <span className="picktag" style={{ marginLeft: 6 }}><Icon name="ghost" size={12} /> Ghost</span>}
                 </div>
                 <div className="assignee-sub">
                   {multiAngle ? `${a.angleName} · ` : ""}
@@ -302,7 +303,7 @@ export default function TeamEditSheet({
                 deliverers. Due Diligence / Strategy only; a Pitch never has ghosts. */}
             {project.projectType !== "Pitch" && (
               <button className="btn btn-ghost" style={{ width: "100%" }} onClick={startAddGhost}>
-                👻 + Add ghost deliverer
+                <Icon name="ghost" size={14} /> + Add ghost deliverer
               </button>
             )}
             <button className="close" onClick={onClose}>
@@ -332,7 +333,7 @@ export default function TeamEditSheet({
           ))}
           <div className="sheet-footer">
             <button className="close" onClick={cancelAction}>
-              ← Back
+              <Icon name="arrow-left" size={13} /> Back
             </button>
           </div>
         </>
@@ -351,7 +352,7 @@ export default function TeamEditSheet({
           {action.mode === "add" && project.projectType !== "Pitch" && (
             <label className="ghost-add-toggle">
               <input type="checkbox" checked={addAsGhost} onChange={(e) => toggleAddAsGhost(e.target.checked)} />
-              👻 Add as ghost (invisible competition)
+              <Icon name="ghost" size={14} /> Add as ghost (invisible competition)
             </label>
           )}
           {action.mode === "add" && (
@@ -418,7 +419,7 @@ export default function TeamEditSheet({
                 {blockedCandidates.length > 0 && (
                   <>
                     <button className="archive-toggle" style={{ marginTop: 10 }} onClick={() => setBlockedOpen((o) => !o)}>
-                      {blockedOpen ? "▾" : "▸"} Blocked right now — always a manual pick · {blockedCandidates.length}
+                      <Icon name={blockedOpen ? "chevron-down" : "chevron-right"} size={13} /> Blocked right now — always a manual pick · {blockedCandidates.length}
                     </button>
                     {blockedOpen && blockedCandidates.map(candidateRow)}
                   </>
@@ -430,7 +431,7 @@ export default function TeamEditSheet({
           {managers.length > 0 && !ghostAction && (
             <>
               <button className="archive-toggle" style={{ marginTop: 12 }} onClick={() => setManagersOpen((o) => !o)}>
-                {managersOpen ? "▾" : "▸"} Or add a manager (never suggested — always a manual pick) · {managers.length}
+                <Icon name={managersOpen ? "chevron-down" : "chevron-right"} size={13} /> Or add a manager (never suggested — always a manual pick) · {managers.length}
               </button>
               {managersOpen &&
                 managers.map((m) => (
@@ -479,7 +480,7 @@ export default function TeamEditSheet({
               {action.mode === "add" && addAsGhost ? "Add ghost" : isOverride ? "Confirm override" : "Confirm"}
             </button>
             <button className="close" onClick={cancelAction}>
-              ← Back
+              <Icon name="arrow-left" size={13} /> Back
             </button>
           </div>
         </>

@@ -1,6 +1,7 @@
 import { Fragment, type CSSProperties } from "react";
 import type { AdminUser, PermissionMatrix, PermissionRole, Role } from "../api/types";
 import { initials } from "../lib/format";
+import { Icon } from "./Icon";
 
 const cap = (s: string) => s[0].toUpperCase() + s.slice(1);
 
@@ -148,7 +149,7 @@ export default function UserGroupsView({
                     ))}
                     <td style={{ textAlign: "center" }}>
                       <span className="perm-lock" title="Owners always have every permission">
-                        ✓
+                        <Icon name="check" size={13} />
                       </span>
                     </td>
                   </tr>
@@ -175,7 +176,7 @@ export default function UserGroupsView({
               </td>
               <td style={{ textAlign: "center" }}>
                 <span className="perm-lock" title="Owners always have every permission">
-                  ✓
+                  <Icon name="check" size={13} />
                 </span>
               </td>
             </tr>

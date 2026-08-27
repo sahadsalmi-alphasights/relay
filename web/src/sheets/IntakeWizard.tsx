@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, ApiError } from "../api/client";
 import type { ExpertPool, RankedCandidate } from "../api/types";
 import Sheet from "../components/Sheet";
+import { Icon } from "../components/Icon";
 import { CLIENT_ENTITY_IDS, entityName, initials, previewCustomGoal } from "../lib/format";
 import { track } from "../lib/track";
 import { useApp } from "../state/AppContext";
@@ -474,7 +475,7 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
                       </select>
                     )}
                     <button type="button" className="btn-sm btn-ghost" onClick={() => removeAngle(i)}>
-                      ✕
+                      <Icon name="x" size={13} />
                     </button>
                   </div>
                 ))}
@@ -538,7 +539,7 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
                 disabled={!f.client || !allCallsNValid || !isValidHttpUrl(f.link)}
                 onClick={goSuggest}
               >
-                Estimate goal →
+                Estimate goal <Icon name="arrow-right" size={13} />
               </button>
               <button className="close" onClick={onClose}>
                 Cancel
@@ -612,10 +613,10 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
             })}
             <div className="sheet-footer">
               <button className="btn btn-pl" style={{ width: "100%" }} onClick={runMatch}>
-                Find who's first up →
+                Find who's first up <Icon name="arrow-right" size={13} />
               </button>
               <button className="close" onClick={() => setStep(1)}>
-                ← Back
+                <Icon name="arrow-left" size={13} /> Back
               </button>
             </div>
           </>
@@ -696,7 +697,7 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
                             </div>
                             <div className="assignee-sub">
                               {isPicked
-                                ? <span className="picktag">Picked ✓{isOverridden ? " · override" : r.practiceAreaMatch ? " · your practice" : ""}</span>
+                                ? <span className="picktag">Picked <Icon name="check" size={12} />{isOverridden ? " · override" : r.practiceAreaMatch ? " · your practice" : ""}</span>
                                 : placedElsewhere
                                 ? `Picked on ${placedElsewhere}`
                                 : r.free
@@ -731,7 +732,7 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
                           style={{ marginTop: 10 }}
                           onClick={() => setBlockedOpenFor((prev) => ({ ...prev, [angleIndex]: !open }))}
                         >
-                          {open ? "▾" : "▸"} Blocked right now — always a manual pick · {blockedRanked.length}
+                          <Icon name={open ? "chevron-down" : "chevron-right"} size={13} /> Blocked right now — always a manual pick · {blockedRanked.length}
                         </button>
                         {open &&
                           blockedRanked.map((r) => (
@@ -779,7 +780,7 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
                     <>
                       {a.ghostPicks.length === 0 && (
                         <div className="match-line ghost-line">
-                          <div className="avatar">👻</div>
+                          <div className="avatar"><Icon name="ghost" size={18} /></div>
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div className="assignee-name">Invisible competition</div>
                             <div className="assignee-sub">No ghosts on this angle.</div>
@@ -788,7 +789,7 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
                       )}
                       {a.ghostPicks.map((ghostId, ghostIndex) => (
                         <div key={ghostIndex} className="match-line ghost-line">
-                          <div className="avatar">👻</div>
+                          <div className="avatar"><Icon name="ghost" size={18} /></div>
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div className="assignee-name">
                               Invisible competition{a.ghostPicks.length > 1 ? ` #${ghostIndex + 1}` : ""}
@@ -837,7 +838,7 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
                               updateAngle(angleIndex, { ghostPicks: [...a.ghostPicks, unused[0].personId] })
                             }
                           >
-                            👻 + Add another ghost
+                            <Icon name="ghost" size={14} /> + Add another ghost
                           </button>
                         );
                       })()}
@@ -857,7 +858,7 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
                           style={{ marginTop: 10 }}
                           onClick={() => setManagersOpenFor((prev) => ({ ...prev, [angleIndex]: !open }))}
                         >
-                          {open ? "▾" : "▸"} Or add a manager (never suggested — always a manual pick) · {angleManagers.length}
+                          <Icon name={open ? "chevron-down" : "chevron-right"} size={13} /> Or add a manager (never suggested — always a manual pick) · {angleManagers.length}
                         </button>
                         {open &&
                           angleManagers.map((m) => (
@@ -945,7 +946,7 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
                   {totalPicked ? `Assign ${totalPicked} & notify` : "Post to open pool"}
                 </button>
                 <button className="close" onClick={() => setStep(2)}>
-                  ← Back
+                  <Icon name="arrow-left" size={13} /> Back
                 </button>
               </div>
             )}

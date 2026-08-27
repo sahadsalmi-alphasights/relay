@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, ApiError } from "../api/client";
 import type { CoverageSettings as CS } from "../api/types";
 import { useApp } from "../state/AppContext";
+import { Icon } from "./Icon";
 
 const hhmm = (min: number) => `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
 const toMin = (hhmmStr: string) => {
@@ -102,7 +103,7 @@ export default function CoverageSettings({ onSaved }: { onSaved: () => void }) {
       </div>
 
       <div className="card cs-card">
-        <div className="cs-head">🍱 Lunch</div>
+        <div className="cs-head"><Icon name="bowl" /> Lunch</div>
         <Row label="Ask about lunch between" sub="The midday prompt window (weekdays).">
           <TimeField value={draft.lunchPromptStartMin} onChange={(v) => set("lunchPromptStartMin", v)} disabled={readOnly} />
           <span className="cs-to">to</span>
@@ -117,7 +118,7 @@ export default function CoverageSettings({ onSaved }: { onSaved: () => void }) {
       </div>
 
       <div className="card cs-card">
-        <div className="cs-head">🌙 Evening coverage</div>
+        <div className="cs-head"><Icon name="moon" /> Evening coverage</div>
         <Row label="Ask about evening coverage between" sub="The after-hours prompt window (weekday evenings).">
           <TimeField value={draft.eveningPromptStartMin} onChange={(v) => set("eveningPromptStartMin", v)} disabled={readOnly} />
           <span className="cs-to">to</span>
@@ -142,7 +143,7 @@ export default function CoverageSettings({ onSaved }: { onSaved: () => void }) {
           <button className="btn btn-ghost" disabled={busy || !dirty} onClick={() => { setDraft(saved); setOk(false); }}>
             Discard
           </button>
-          {ok && !dirty && <span className="cs-ok">✓ Saved — live for everyone</span>}
+          {ok && !dirty && <span className="cs-ok"><Icon name="check" size={12} /> Saved — live for everyone</span>}
         </div>
       )}
     </>

@@ -5,6 +5,7 @@ import { initials } from "../lib/format";
 import { useSort } from "../lib/useSort";
 import { useViewport } from "../lib/useViewport";
 import { useApp } from "../state/AppContext";
+import { Icon } from "../components/Icon";
 
 type SortKey = "name" | "team" | "load";
 
@@ -35,7 +36,7 @@ function SortHeader({
   return (
     <th className={numeric ? "num" : undefined}>
       <button onClick={onClick}>
-        {label} {active && (dir === "asc" ? "↑" : "↓")}
+        {label} {active && <Icon name={dir === "asc" ? "arrow-up" : "arrow-down"} size={12} />}
       </button>
     </th>
   );

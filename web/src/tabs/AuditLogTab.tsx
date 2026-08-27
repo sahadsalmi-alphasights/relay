@@ -3,6 +3,7 @@ import { api, ApiError } from "../api/client";
 import type { AuditLogEntry, AuditLogPage } from "../api/types";
 import { useViewport } from "../lib/useViewport";
 import { useApp } from "../state/AppContext";
+import { Icon } from "../components/Icon";
 
 const PAGE_SIZE = 50;
 
@@ -172,10 +173,10 @@ export default function AuditLogTab({ reloadTick }: { reloadTick: number }) {
         {from}–{to} of {page.total}
       </span>
       <button className="btn-sm btn-ghost" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}>
-        ← Prev
+        <Icon name="arrow-left" size={12} /> Prev
       </button>
       <button className="btn-sm btn-ghost" disabled={to >= page.total} onClick={() => setOffset(offset + PAGE_SIZE)}>
-        Next →
+        Next <Icon name="arrow-right" size={12} />
       </button>
     </div>
   );

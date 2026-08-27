@@ -15,6 +15,8 @@ export interface PersonRow {
   eveningCoverage: boolean;
   /** "Out to Lunch" — self-serve live toggle; while on, ineligible for new allocations (shows as red "Lunch" on the ranking). */
   outToLunch: boolean;
+  /** When the current lunch started (set the moment out_to_lunch flips true; null when not at lunch). Feeds the "back in ~Nm" countdown on the ranking panel and allocation picker. */
+  outToLunchSince: string | null;
   /** "Invisible competition" — manager-set, team-scoped, reversible. Never defaulted true. */
   isGhost: boolean;
   lastLoginAt: string | null;
@@ -35,7 +37,8 @@ export function roleOf(p: { isOwner: boolean; isManager: boolean }): Role {
 const SELECT = `
   SELECT id, email, name, team_id AS "teamId", is_manager AS "isManager",
          is_owner AS "isOwner", practice_area AS "practiceArea", status,
-         evening_coverage AS "eveningCoverage", out_to_lunch AS "outToLunch", is_ghost AS "isGhost",
+         evening_coverage AS "eveningCoverage", out_to_lunch AS "outToLunch",
+         out_to_lunch_since AS "outToLunchSince", is_ghost AS "isGhost",
          last_login_at AS "lastLoginAt", deactivated_at AS "deactivatedAt",
          hr_offline_at AS "hrOfflineAt",
          session_version AS "sessionVersion",

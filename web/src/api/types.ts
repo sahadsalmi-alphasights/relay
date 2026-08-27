@@ -207,10 +207,41 @@ export interface RankedCandidate {
   personId: string;
   eligible: boolean;
   ineligibleReason?: "no_evening_coverage" | "out_to_lunch" | "first_deliverable_conflict" | "sunday_off";
+  /** When this candidate's lunch started, when blocked for lunch — powers the picker's "back in ~Nm" countdown. Null otherwise. */
+  outToLunchSince?: string | null;
   load: number;
   rawRemaining: number;
   practiceAreaMatch: boolean;
   free: boolean;
+}
+
+/** GET /people/:id/delivery-card — the ranking panel's read-only capacity summary. */
+export interface DeliveryCard {
+  personId: string;
+  teamId: string | null;
+  practiceArea: string | null;
+  status: string;
+  outToLunch: boolean;
+  outToLunchSince: string | null;
+  /** Org lunch window (minutes) — for the "back in ~Nm" countdown. */
+  lunchAutoOffMin: number;
+  load: number;
+  rawRemaining: number;
+  assignments: DeliveryCardAssignment[];
+}
+
+export interface DeliveryCardAssignment {
+  assignmentId: string;
+  client: string;
+  topic: string | null;
+  angleName: string;
+  stage: string;
+  goal: number;
+  /** delivered + customDelivered, already summed server-side. */
+  delivered: number;
+  remaining: number;
+  /** This assignment's share of the person's Load (remaining × stage-weight × pool-weight). */
+  loadContribution: number;
 }
 
 export interface CapacityRankRow {

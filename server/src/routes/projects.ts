@@ -35,6 +35,7 @@ import {
 import { countAssignmentsForAngle, seatTargetForAngle } from "../repositories/angles";
 import { findPersonById, listPeopleByTeam } from "../repositories/people";
 import { listAvailableCandidatesWithAssignments, sundayRotaPersonIdsForDate } from "../services/candidates";
+import { getCoverageSettings } from "../repositories/coverageSettings";
 import { activeInstanceKey } from "../auth/activeInstance";
 import { badRequest, conflict, forbidden, notFound } from "../errors";
 import { isEligible } from "../rules/eligibility";
@@ -359,7 +360,10 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
         angleInputs as { key: string; staffCount: number }[],
         request.body?.ghost === true ? null : actor.teamId
       );
-      return { ranked: blocked, perAngle, totalEligible, projectStatus };
+      // lunchAutoOffMin lets the picker turn a blocked-for-lunch row's
+      // out_to_lunch_since into a "back in ~Nm" countdown, client-side.
+      const { lunchAutoOffMin } = await getCoverageSettings();
+      return { ranked: blocked, perAngle, totalEligible, projectStatus, lunchAutoOffMin };
     }
   );
 

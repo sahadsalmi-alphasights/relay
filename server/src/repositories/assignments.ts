@@ -1,6 +1,6 @@
 import { pool, withTransaction, type Queryable } from "../db";
 import { computeCustomGoal } from "../rules/suggestedGoal";
-import type { ExpertPool, Stage } from "../rules/types";
+import type { ExpertPool, ProjectType, Stage } from "../rules/types";
 
 export interface AssignmentRow {
   id: string;
@@ -69,6 +69,46 @@ export async function listAssignmentsWithProjectByDeliverer(delivererId: string)
      FROM assignment a JOIN angle ang ON ang.id = a.angle_id JOIN project p ON p.id = ang.project_id
      WHERE a.deliverer_id = $1 AND p.status <> 'archived' AND p.deleted_at IS NULL AND ang.archived_at IS NULL`,
     [delivererId]
+  );
+  return rows;
+}
+
+export interface DeliveryCardRow {
+  assignmentId: string;
+  client: string;
+  topic: string | null;
+  angleName: string;
+  stage: Stage;
+  goal: number;
+  delivered: number;
+  customDelivered: number;
+  projectExpertPool: ExpertPool;
+  projectType: ProjectType;
+  projectCallsN: number;
+}
+
+/**
+ * The assignments behind one deliverer's capacity, for the ranking's
+ * delivery-card panel. Same load-bearing filters as the candidate pool
+ * (services/candidates.ts) so the per-assignment contributions sum to the
+ * exact Load the ranking shows: archived / soft-deleted / angle-archived /
+ * delivery-closed work is excluded, and load is scoped to the caller's BU.
+ */
+export async function listDeliveryCardAssignments(
+  delivererId: string,
+  businessUnit: string
+): Promise<DeliveryCardRow[]> {
+  const { rows } = await pool.query(
+    `SELECT a.id AS "assignmentId", p.client, p.topic, ang.name AS "angleName", a.stage,
+            a.goal, a.delivered, a.custom_delivered AS "customDelivered",
+            COALESCE(ang.expert_pool, p.expert_pool) AS "projectExpertPool",
+            p.project_type AS "projectType", ang.calls_n AS "projectCallsN"
+     FROM assignment a JOIN angle ang ON ang.id = a.angle_id JOIN project p ON p.id = ang.project_id
+     WHERE a.deliverer_id = $1 AND a.business_unit = $2
+       AND p.status <> 'archived' AND p.deleted_at IS NULL AND ang.archived_at IS NULL
+       AND p.delivery_closed_at IS NULL
+     ORDER BY ang.name`,
+    [delivererId, businessUnit]
   );
   return rows;
 }

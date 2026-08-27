@@ -20,6 +20,12 @@ import {
   listPersonalNotes,
   updatePersonalNoteBody,
 } from "../repositories/personalNotes";
+import { listDeliveryCardAssignments } from "../repositories/assignments";
+import { getCoverageSettings } from "../repositories/coverageSettings";
+import { assignmentLoad, remaining } from "../rules/load";
+import { dubaiHour } from "../rules/time";
+import { resolveNow } from "../lib/requestTime";
+import { activeInstanceKey } from "../auth/activeInstance";
 import { badRequest, forbidden, notFound } from "../errors";
 import { canManageTeamRoster, canSetGhostFlag, canSetPersonStatus } from "../rules/permissions";
 import { shouldWarnOnStatusChange } from "../rules/project";
@@ -36,6 +42,58 @@ const peopleRoutes: FastifyPluginAsync = async (app) => {
 
   // People not yet on any team — candidates a manager can add to their own team (§7b).
   app.get("/unassigned", { preHandler: [app.requireAuth] }, async () => listUnassignedPeople());
+
+  /**
+   * Delivery card — a read-only summary of what a person's capacity is spent
+   * on, for the panel that opens when you click a row in the capacity ranking.
+   * Every assignment's load contribution is computed the SAME way the ranking
+   * computes total Load (assignmentLoad at the current Dubai hour, BU-scoped),
+   * so the parts sum to the whole. Includes the live lunch timing so the panel
+   * can show "back in ~Nm". No writes; visible to any authenticated user, same
+   * as the org-wide ranking it opens from.
+   */
+  app.get<{ Params: { id: string } }>("/:id/delivery-card", { preHandler: [app.requireAuth] }, async (request) => {
+    const person = await findPersonById(request.params.id);
+    if (!person) throw notFound("person not found");
+    const now = resolveNow(request);
+    const hour = dubaiHour(now);
+    const rows = await listDeliveryCardAssignments(person.id, activeInstanceKey(request));
+    const assignments = rows.map((r) => {
+      const w = {
+        goal: r.goal,
+        delivered: r.delivered,
+        customDelivered: r.customDelivered,
+        stage: r.stage,
+        projectExpertPool: r.projectExpertPool,
+        projectType: r.projectType,
+        projectCallsN: r.projectCallsN,
+      };
+      return {
+        assignmentId: r.assignmentId,
+        client: r.client,
+        topic: r.topic,
+        angleName: r.angleName,
+        stage: r.stage,
+        goal: r.goal,
+        delivered: r.delivered + r.customDelivered,
+        remaining: remaining(w),
+        loadContribution: assignmentLoad(w, hour),
+      };
+    });
+    const { lunchAutoOffMin } = await getCoverageSettings();
+    return {
+      personId: person.id,
+      teamId: person.teamId,
+      practiceArea: person.practiceArea,
+      status: person.status,
+      outToLunch: person.outToLunch,
+      outToLunchSince: person.outToLunchSince,
+      lunchAutoOffMin,
+      load: assignments.reduce((s, a) => s + a.loadContribution, 0),
+      rawRemaining: assignments.reduce((s, a) => s + a.remaining, 0),
+      assignments,
+    };
+  });
 
   // §7b — a manager adds an existing, currently-unassigned person to their own team.
   // There is no "invite by name" — people only exist once they've logged in via SSO/DEV_AUTH.

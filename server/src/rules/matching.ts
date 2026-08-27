@@ -11,6 +11,8 @@ export interface CandidatePerson {
   eveningCoverage: boolean;
   /** "Out to Lunch" — optional (defaults off) so pure-rule tests stay valid; the candidates service passes the live column. */
   outToLunch?: boolean;
+  /** When the current lunch started — surfaced on a blocked-for-lunch row so the picker can show "back in ~Nm". Optional so pure-rule tests need not set it. */
+  outToLunchSince?: string | null;
   practiceArea: string | null;
   /** The candidate's team — used by allocation's "own team first" preference. */
   teamId: string | null;
@@ -38,6 +40,8 @@ export interface RankedCandidate {
   eligible: boolean;
   /** Set for an evening-coverage failure or the first-deliverable block — status (offline) people never appear at all. */
   ineligibleReason?: MatchBlockReason;
+  /** When this candidate's lunch started, when they're blocked for lunch — lets the picker show "Out Nm · ~Mm left". Null/omitted otherwise. */
+  outToLunchSince?: string | null;
   load: number;
   rawRemaining: number;
   practiceAreaMatch: boolean;
@@ -83,6 +87,8 @@ export function rankCandidates(
     ineligibleReason: elig.eligible
       ? undefined
       : (elig.reason as Exclude<IneligibleReason, "not_available">),
+    // Only meaningful when blocked for lunch; harmless (null) otherwise.
+    outToLunchSince: c.outToLunchSince ?? null,
     load,
     rawRemaining: personRawRemaining(c.assignments),
     practiceAreaMatch: c.practiceArea === context.plPracticeArea,

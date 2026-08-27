@@ -443,13 +443,9 @@ export default function DeliveryTab({
               <div className="assignee-sub">Counts toward your goal</div>
             </div>
             <div className="step" style={{ marginLeft: "auto" }}>
-              <button disabled={a.delivererId !== actor.id} onClick={() => patchProgress(a.id, { delivered: Math.max(0, a.delivered - 1) })}>
-                −
-              </button>
+              <button disabled={a.delivererId !== actor.id} onClick={() => patchProgress(a.id, { delivered: Math.max(0, a.delivered - 1) })}><Icon name="minus" size={15} /></button>
               <span className="val">{a.delivered}</span>
-              <button disabled={a.delivererId !== actor.id} onClick={() => patchProgress(a.id, { delivered: a.delivered + 1 })}>
-                +
-              </button>
+              <button disabled={a.delivererId !== actor.id} onClick={() => patchProgress(a.id, { delivered: a.delivered + 1 })}><Icon name="plus" size={15} /></button>
             </div>
           </div>
           <div className="assignee">
@@ -464,16 +460,12 @@ export default function DeliveryTab({
               <button
                 disabled={a.delivererId !== actor.id}
                 onClick={() => patchProgress(a.id, { customDelivered: Math.max(0, a.customDelivered - 1) })}
-              >
-                −
-              </button>
+              ><Icon name="minus" size={15} /></button>
               <span className="val">{a.customDelivered}</span>
               <button
                 disabled={a.delivererId !== actor.id}
                 onClick={() => patchProgress(a.id, { customDelivered: a.customDelivered + 1 })}
-              >
-                +
-              </button>
+              ><Icon name="plus" size={15} /></button>
             </div>
           </div>
         </div>
@@ -559,13 +551,9 @@ export default function DeliveryTab({
                 </td>
                 <td>
                   <div className="step">
-                    <button disabled={!own} onClick={() => patchProgress(a.id, { delivered: Math.max(0, a.delivered - 1) })}>
-                      −
-                    </button>
+                    <button disabled={!own} onClick={() => patchProgress(a.id, { delivered: Math.max(0, a.delivered - 1) })}><Icon name="minus" size={15} /></button>
                     <span className="val">{a.delivered}</span>
-                    <button disabled={!own} onClick={() => patchProgress(a.id, { delivered: a.delivered + 1 })}>
-                      +
-                    </button>
+                    <button disabled={!own} onClick={() => patchProgress(a.id, { delivered: a.delivered + 1 })}><Icon name="plus" size={15} /></button>
                   </div>
                 </td>
                 <td>
@@ -573,13 +561,9 @@ export default function DeliveryTab({
                     <button
                       disabled={!own}
                       onClick={() => patchProgress(a.id, { customDelivered: Math.max(0, a.customDelivered - 1) })}
-                    >
-                      −
-                    </button>
+                    ><Icon name="minus" size={15} /></button>
                     <span className="val">{a.customDelivered}</span>
-                    <button disabled={!own} onClick={() => patchProgress(a.id, { customDelivered: a.customDelivered + 1 })}>
-                      +
-                    </button>
+                    <button disabled={!own} onClick={() => patchProgress(a.id, { customDelivered: a.customDelivered + 1 })}><Icon name="plus" size={15} /></button>
                   </div>
                 </td>
               </tr>

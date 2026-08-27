@@ -120,7 +120,7 @@ export default function CardNotes({ notes, onAdd, onChanged }: { notes: Note[]; 
             <NoteItem key={n.id} note={n} onChanged={onChanged} />
           ))}
           <button className="btn-sm btn-ghost cn-add" onClick={onAdd}>
-            ＋ Add note
+            <Icon name="plus" size={13} /> Add note
           </button>
         </div>
       )}

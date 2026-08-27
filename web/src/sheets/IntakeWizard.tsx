@@ -574,9 +574,9 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
                     <div className="suggest-edit">
                       <span style={{ fontSize: 12, fontWeight: 600 }}>Adjust goal</span>
                       <div className="step" style={{ marginLeft: "auto" }}>
-                        <button onClick={() => updateAngle(i, { goalTotal: Math.max(1, a.goalTotal - 1) })}>−</button>
+                        <button onClick={() => updateAngle(i, { goalTotal: Math.max(1, a.goalTotal - 1) })}><Icon name="minus" size={15} /></button>
                         <span className="val">{a.goalTotal}</span>
-                        <button onClick={() => updateAngle(i, { goalTotal: a.goalTotal + 1 })}>+</button>
+                        <button onClick={() => updateAngle(i, { goalTotal: a.goalTotal + 1 })}><Icon name="plus" size={15} /></button>
                       </div>
                     </div>
                   </div>
@@ -595,9 +595,9 @@ export default function IntakeWizard({ onClose, onCreated }: { onClose: () => vo
                         incl. {previewCustomGoal(Math.ceil(a.goalTotal / a.staffCount))} custom (auto)
                       </span>
                       <div className="step" style={{ marginLeft: "auto" }}>
-                        <button onClick={() => updateAngle(i, { staffCount: Math.max(1, a.staffCount - 1) })}>−</button>
+                        <button onClick={() => updateAngle(i, { staffCount: Math.max(1, a.staffCount - 1) })}><Icon name="minus" size={15} /></button>
                         <span className="val">{a.staffCount}</span>
-                        <button onClick={() => updateAngle(i, { staffCount: a.staffCount + 1 })}>+</button>
+                        <button onClick={() => updateAngle(i, { staffCount: a.staffCount + 1 })}><Icon name="plus" size={15} /></button>
                       </div>
                     </div>
                   </div>

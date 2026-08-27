@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, ApiError } from "../api/client";
+import { Icon } from "./Icon";
 import { useApp } from "../state/AppContext";
 
 interface Hint { hasValue: boolean; hint: string | null; source?: "in-app" | "env" | null }
@@ -29,7 +30,7 @@ export default function SlackIntegrationSettings({ onSaved }: { onSaved: () => v
   const [inputs, setInputs] = useState<Record<string, string>>({ webhookUrl: "", signingSecret: "", botToken: "" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [msg, setMsg] = useState<string | null>(null);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   // Diagnostics state — declared here with the other hooks (NOT after the
   // `if (!s) return null` early return below), so the hook count is stable
   // across renders. Placing these after the early return changed the number
@@ -45,7 +46,7 @@ export default function SlackIntegrationSettings({ onSaved }: { onSaved: () => v
     setBusy(true); setError(null); setMsg(null);
     try {
       const updated = await api.patch<SlackState>("/settings/notifications/slack-credentials", { [key]: inputs[key].trim() });
-      setS(updated); setInputs((p) => ({ ...p, [key]: "" })); setMsg("Saved (encrypted)."); onSaved();
+      setS(updated); setInputs((p) => ({ ...p, [key]: "" })); setMsg({ ok: true, text: "Saved (encrypted)." }); onSaved();
     } catch (err) { setError(err instanceof ApiError ? err.message : "Could not save"); }
     finally { setBusy(false); }
   };
@@ -53,7 +54,7 @@ export default function SlackIntegrationSettings({ onSaved }: { onSaved: () => v
     setBusy(true); setError(null); setMsg(null);
     try {
       const updated = await api.patch<SlackState>("/settings/notifications/slack-credentials", { clear: key });
-      setS(updated); setMsg("Cleared."); onSaved();
+      setS(updated); setMsg({ ok: true, text: "Cleared." }); onSaved();
     } catch (err) { setError(err instanceof ApiError ? err.message : "Could not clear"); }
     finally { setBusy(false); }
   };
@@ -61,8 +62,8 @@ export default function SlackIntegrationSettings({ onSaved }: { onSaved: () => v
     setBusy(true); setError(null); setMsg(null);
     try {
       const res = await api.post<{ ok: boolean }>("/settings/notifications/test");
-      setMsg(res.ok ? "Test message sent ✓ — check the Slack channel." : "Slack rejected the webhook — check the URL.");
-    } catch (err) { setMsg(err instanceof ApiError ? err.message : "Could not reach Slack"); }
+      setMsg({ ok: res.ok, text: res.ok ? "Test message sent — check the Slack channel." : "Slack rejected the webhook — check the URL." });
+    } catch (err) { setMsg({ ok: false, text: err instanceof ApiError ? err.message : "Could not reach Slack" }); }
     finally { setBusy(false); }
   };
 
@@ -79,11 +80,11 @@ export default function SlackIntegrationSettings({ onSaved }: { onSaved: () => v
       const r = await api.get<Record<string, unknown>>(`/settings/notifications/slack-diagnostics?check=${key}`);
       const ok = r.ok === true;
       let text: string;
-      if (key === "bot") text = ok ? `✓ Authenticated — team ${r.team ?? "?"}, bot ${r.botId ?? "?"}` : `✕ ${r.error}`;
-      else text = ok ? "✓ Configured" : `✕ ${r.error}`;
+      if (key === "bot") text = ok ? `Authenticated — team ${r.team ?? "?"}, bot ${r.botId ?? "?"}` : `${r.error}`;
+      else text = ok ? "Configured" : `${r.error}`;
       setDiag((p) => ({ ...p, [key]: { ok, text } }));
     } catch (e) {
-      setDiag((p) => ({ ...p, [key]: { ok: false, text: `✕ ${e instanceof ApiError ? e.message : "request failed"}` } }));
+      setDiag((p) => ({ ...p, [key]: { ok: false, text: `${e instanceof ApiError ? e.message : "request failed"}` } }));
     } finally {
       setDiagBusy(null);
     }
@@ -97,7 +98,7 @@ export default function SlackIntegrationSettings({ onSaved }: { onSaved: () => v
           <div className="cs-rl">Status</div>
           <div className="cs-rs">
             Channel: {s.slackConfigured ? "on" : "off"} · DMs: {s.slackDmConfigured ? "on" : "off"} · Buttons: {s.slackInteractiveConfigured ? "on" : "off"}.
-            {s.slackSecretStore === "local" && <> <span style={{ color: "var(--amber, #a5770b)" }}>⚠ dev encryption — set <code>KMS_KEY_NAME</code> for KMS.</span></>}
+            {s.slackSecretStore === "local" && <> <span style={{ color: "var(--amber, #a5770b)" }}><Icon name="alert" size={12} /> dev encryption — set <code>KMS_KEY_NAME</code> for KMS.</span></>}
           </div>
         </div>
         <div className="cs-controls">
@@ -141,7 +142,7 @@ export default function SlackIntegrationSettings({ onSaved }: { onSaved: () => v
               <div className="cs-row" key={dch.key}>
                 <div>
                   <div className="cs-rl">{dch.label}</div>
-                  <div className="cs-rs">{dch.hint}{res && <div style={{ marginTop: 4, color: res.ok ? "var(--green)" : "var(--red)" }}>{res.text}</div>}</div>
+                  <div className="cs-rs">{dch.hint}{res && <div style={{ marginTop: 4, color: res.ok ? "var(--green)" : "var(--red)" }}><Icon name={res.ok ? "check" : "x"} size={12} /> {res.text}</div>}</div>
                 </div>
                 <div className="cs-controls">
                   <button className="btn btn-ghost" disabled={diagBusy === dch.key} onClick={() => runDiag(dch.key)}>{diagBusy === dch.key ? "Testing…" : "Test"}</button>
@@ -151,7 +152,7 @@ export default function SlackIntegrationSettings({ onSaved }: { onSaved: () => v
           })}
         </>
       )}
-      {msg && <div className="cs-rs" style={{ marginTop: 6 }}>{msg}</div>}
+      {msg && <div className="cs-rs" style={{ marginTop: 6 }}><Icon name={msg.ok ? "check" : "x"} size={12} /> {msg.text}</div>}
       {error && <div className="err-line">{error}</div>}
     </div>
   );

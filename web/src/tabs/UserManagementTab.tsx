@@ -7,6 +7,7 @@ import UserGroupsView from "../components/UserGroupsView";
 import UserTeamsView from "../components/UserTeamsView";
 import { useViewport } from "../lib/useViewport";
 import { useApp } from "../state/AppContext";
+import { Icon } from "../components/Icon";
 
 const ROLES: Role[] = ["owner", "manager", "member"];
 const STATUSES: PersonStatus[] = ["Available", "On vacation", "Sick", "Offline"];
@@ -281,9 +282,9 @@ export default function UserManagementTab({ reloadTick }: { reloadTick: number }
   const pager =
     pageCount > 1 ? (
       <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "center", marginTop: 12 }}>
-        <button className="btn-sm btn-ghost" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>‹ Prev</button>
+        <button className="btn-sm btn-ghost" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}><Icon name="chevron-left" size={12} /> Prev</button>
         <span style={{ fontSize: 12, color: "var(--soft)" }}>Page {page} of {pageCount} · {rosterTotal} users</span>
-        <button className="btn-sm btn-ghost" disabled={page >= pageCount} onClick={() => setPage((p) => Math.min(pageCount, p + 1))}>Next ›</button>
+        <button className="btn-sm btn-ghost" disabled={page >= pageCount} onClick={() => setPage((p) => Math.min(pageCount, p + 1))}>Next <Icon name="chevron-right" size={12} /></button>
       </div>
     ) : null;
 
@@ -422,7 +423,7 @@ export default function UserManagementTab({ reloadTick }: { reloadTick: number }
           )}
           <input placeholder="Search name or email" value={search} onChange={(e) => { setSearch(e.target.value); resetPage(); }} style={{ flex: 1, minWidth: 180 }} />
           <button className="btn-sm btn-pl" onClick={() => setAdding((a) => !a)}>
-            {adding ? "Cancel" : "＋ Add user"}
+            {adding ? "Cancel" : <><Icon name="plus" size={13} /> Add user</>}
           </button>
         </div>
       )}

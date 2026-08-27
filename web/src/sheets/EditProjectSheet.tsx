@@ -4,6 +4,7 @@ import { EXPERT_POOLS } from "../api/types";
 import type { Angle, Project } from "../api/types";
 import Sheet from "../components/Sheet";
 import { CLIENT_ENTITY_IDS, entityName } from "../lib/format";
+import { Icon } from "../components/Icon";
 
 const TYPES = ["Pitch", "Due Diligence", "Strategy"] as const;
 const CLIENT_ENTITIES = CLIENT_ENTITY_IDS;
@@ -264,11 +265,9 @@ export default function EditProjectSheet({
                 <button
                   disabled={ang.callsN <= minCallsN}
                   onClick={() => patchAngle(ang.id, { callsN: Math.max(minCallsN, ang.callsN - 1) })}
-                >
-                  −
-                </button>
+                ><Icon name="minus" size={15} /></button>
                 <span className="val">{ang.callsN}</span>
-                <button onClick={() => patchAngle(ang.id, { callsN: ang.callsN + 1 })}>+</button>
+                <button onClick={() => patchAngle(ang.id, { callsN: ang.callsN + 1 })}><Icon name="plus" size={15} /></button>
               </div>
               <span style={{ fontSize: 12, color: "var(--soft)" }}>
                 goal {ang.goalTotal} · {staffed} staffed
@@ -337,11 +336,9 @@ export default function EditProjectSheet({
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <span style={{ fontSize: 12, fontWeight: 600, color: "var(--ink)" }}>N</span>
             <div className="step">
-              <button disabled={newAngleN <= minCallsN} onClick={() => setNewAngleN((n) => Math.max(minCallsN, n - 1))}>
-                −
-              </button>
+              <button disabled={newAngleN <= minCallsN} onClick={() => setNewAngleN((n) => Math.max(minCallsN, n - 1))}><Icon name="minus" size={15} /></button>
               <span className="val">{newAngleN}</span>
-              <button onClick={() => setNewAngleN((n) => n + 1)}>+</button>
+              <button onClick={() => setNewAngleN((n) => n + 1)}><Icon name="plus" size={15} /></button>
             </div>
             <button className="btn-sm btn-pl" style={{ marginLeft: "auto" }} disabled={!newAngleName.trim()} onClick={addAngle}>
               Add

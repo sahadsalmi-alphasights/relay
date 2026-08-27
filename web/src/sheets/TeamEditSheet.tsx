@@ -360,9 +360,9 @@ export default function TeamEditSheet({
               <div className="suggest-edit">
                 <span style={{ fontSize: 12, fontWeight: 600 }}>{addAsGhost ? "Goal for this ghost" : "Goal for this deliverer"}</span>
                 <div className="step" style={{ marginLeft: "auto" }}>
-                  <button onClick={() => setAddGoal((g) => Math.max(1, g - 1))}>−</button>
+                  <button onClick={() => setAddGoal((g) => Math.max(1, g - 1))}><Icon name="minus" size={15} /></button>
                   <span className="val">{addGoal}</span>
-                  <button onClick={() => setAddGoal((g) => g + 1)}>+</button>
+                  <button onClick={() => setAddGoal((g) => g + 1)}><Icon name="plus" size={15} /></button>
                 </div>
               </div>
             </div>

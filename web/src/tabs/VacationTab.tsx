@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { api, ApiError } from "../api/client";
 import { useApp } from "../state/AppContext";
 import { usePersistentState } from "../lib/persistentState";
-import { Icon } from "../components/Icon";
+import { Icon, type IconName } from "../components/Icon";
 
 /* ----------------------------- types ----------------------------- */
 interface VacBlock { start: string; end: string; type: string }
@@ -366,34 +366,34 @@ function Diagnostics() {
       const r = await api.get<Record<string, unknown>>(`/vacation/diagnostics?check=${key}`);
       const ok = r.ok !== false && !r.error;
       let text: string;
-      if (key === "connection") text = ok ? `✓ Reachable — ${r.employees} employees, ${r.withEmail} with a work email` : `✕ ${r.error}`;
+      if (key === "connection") text = ok ? `Reachable — ${r.employees} employees, ${r.withEmail} with a work email` : `${r.error}`;
       else if (key === "canbook")
         text = ok
-          ? `${r.canWrite ? "✓ Can book" : "✕ Cannot book (read-only)"} — ${r.detail}`
-          : `✕ ${r.error}`;
+          ? `${r.canWrite ? "Can book" : "Cannot book (read-only)"} — ${r.detail}`
+          : `${r.error}`;
       else if (key === "timeoff")
         text = ok
-          ? `✓ ${r.count} request(s) — ${r.approved} approved, ${r.pending} pending${r.other ? `, ${r.other} other` : ""} · dates ${r.earliest ?? "—"} → ${r.latest ?? "—"}`
-          : `✕ ${r.error}`;
+          ? `${r.count} request(s) — ${r.approved} approved, ${r.pending} pending${r.other ? `, ${r.other} other` : ""} · dates ${r.earliest ?? "—"} → ${r.latest ?? "—"}`
+          : `${r.error}`;
       else if (key === "holidays") {
         const hs = (r.holidays as { name: string; start: string }[] | undefined) ?? [];
         const scope = r.location ? ` for ${r.location}` : "";
         const filtered = typeof r.total === "number" && r.total !== r.count ? ` (of ${r.total} company-wide)` : "";
         text = ok
           ? hs.length
-            ? `✓ ${r.count} holiday(s)${scope}${filtered}: ${hs.map((h) => `${h.name} (${h.start})`).join(", ")}`
-            : `✓ Reachable, but no public holidays${scope} in the next 12 months`
-          : `✕ ${r.error}`;
+            ? `${r.count} holiday(s)${scope}${filtered}: ${hs.map((h) => `${h.name} (${h.start})`).join(", ")}`
+            : `Reachable, but no public holidays${scope} in the next 12 months`
+          : `${r.error}`;
       }
       else text = ok
-        ? `✓ ${r.matched}/${r.peopleInBu} people matched · ${r.bambooWithTimeOff} BambooHR people have time-off` +
+        ? `${r.matched}/${r.peopleInBu} people matched · ${r.bambooWithTimeOff} BambooHR people have time-off` +
           ((r.unmatchedBambooEmails as string[])?.length ? ` · unmatched BambooHR emails: ${(r.unmatchedBambooEmails as string[]).join(", ")}` : "")
-        : `✕ ${r.error}`;
+        : `${r.error}`;
       // For the write probe, colour by whether booking is possible, not by whether the request succeeded.
       const displayOk = key === "canbook" ? ok && r.canWrite === true : ok;
       setResults((p) => ({ ...p, [key]: { ok: displayOk, text } }));
     } catch (e) {
-      setResults((p) => ({ ...p, [key]: { ok: false, text: `✕ ${e instanceof ApiError ? e.message : "request failed"}` } }));
+      setResults((p) => ({ ...p, [key]: { ok: false, text: `${e instanceof ApiError ? e.message : "request failed"}` } }));
     } finally {
       setBusyKey(null);
     }
@@ -410,7 +410,7 @@ function Diagnostics() {
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontWeight: 600 }}>{c.label}</div>
               <div style={{ fontSize: 12, color: "var(--soft)" }}>{c.hint}</div>
-              {res && <div style={{ fontSize: 12.5, marginTop: 4, color: res.ok ? "var(--green)" : "var(--red)", wordBreak: "break-word" }}>{res.text}</div>}
+              {res && <div style={{ fontSize: 12.5, marginTop: 4, color: res.ok ? "var(--green)" : "var(--red)", wordBreak: "break-word" }}><Icon name={res.ok ? "check" : "x"} size={12} /> {res.text}</div>}
             </div>
             <button className="btn-sm btn-ghost" disabled={busyKey === c.key} onClick={() => run(c.key)}>
               {busyKey === c.key ? "Testing…" : "Test"}
@@ -472,15 +472,15 @@ function MyVacation({ data, me }: { data: VacationData; me: Member | undefined }
             {data.quarters.map((q) => {
               const deadline = d(q.deadline);
               const logged = (me?.vacations ?? []).some((v) => overlap(d(v.start), d(v.end), d(q.start), d(q.end)));
-              let chip: { cls: string; text: string };
-              if (logged) chip = { cls: "free", text: "✓ Logged" };
-              else if (today <= deadline) chip = { cls: "vac", text: `⏳ Open — ${daysBetween(today, deadline)} days left` };
-              else chip = { cls: "off", text: "⚠ Overdue — nothing logged" };
+              let chip: { cls: string; icon: IconName; text: string };
+              if (logged) chip = { cls: "free", icon: "check", text: "Logged" };
+              else if (today <= deadline) chip = { cls: "vac", icon: "hourglass", text: `Open — ${daysBetween(today, deadline)} days left` };
+              else chip = { cls: "off", icon: "alert", text: "Overdue — nothing logged" };
               return (
                 <tr key={q.label} style={{ borderTop: "1px solid var(--line)" }}>
                   <td style={{ padding: "8px 4px" }}>{q.label}</td>
                   <td style={{ padding: "8px 4px" }}>{fmtLong(deadline)}</td>
-                  <td style={{ padding: "8px 4px" }}><span className={"mini " + chip.cls}>{chip.text}</span></td>
+                  <td style={{ padding: "8px 4px" }}><span className={"mini " + chip.cls}><Icon name={chip.icon} size={12} /> {chip.text}</span></td>
                 </tr>
               );
             })}
@@ -528,9 +528,9 @@ function TeamView({ data, teamId, setTeamId, meId }: { data: VacationData; teamI
   const badge = (n: number) => (n >= 4 ? "var(--red)" : n === 3 ? "#ec835a" : n === 2 ? "#fab219" : "var(--soft)");
 
   // Slack reminder to log vacation — replaces the old mailto nudge.
-  const [reminded, setReminded] = useState<Record<string, string>>({});
+  const [reminded, setReminded] = useState<Record<string, { ok: boolean; text: string }>>({});
   const sendReminder = async (m: Member) => {
-    setReminded((p) => ({ ...p, [m.id]: "Sending…" }));
+    setReminded((p) => ({ ...p, [m.id]: { ok: true, text: "Sending…" } }));
     try {
       const r = await api.post<{ ok: boolean; error?: string }>("/vacation/remind", {
         email: m.email,
@@ -538,9 +538,9 @@ function TeamView({ data, teamId, setTeamId, meId }: { data: VacationData; teamI
         quarter: open?.label,
         deadline: open ? fmtLong(d(open.deadline)) : undefined,
       });
-      setReminded((p) => ({ ...p, [m.id]: r.ok ? "Reminded on Slack ✓" : r.error || "Couldn't send" }));
+      setReminded((p) => ({ ...p, [m.id]: { ok: r.ok, text: r.ok ? "Reminded on Slack" : r.error || "Couldn't send" } }));
     } catch (e) {
-      setReminded((p) => ({ ...p, [m.id]: e instanceof ApiError ? e.message : "Couldn't send" }));
+      setReminded((p) => ({ ...p, [m.id]: { ok: false, text: e instanceof ApiError ? e.message : "Couldn't send" } }));
     }
   };
 
@@ -553,9 +553,9 @@ function TeamView({ data, teamId, setTeamId, meId }: { data: VacationData; teamI
             {data.teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <button className="btn-sm btn-ghost" onClick={() => setAnchor(addDays(anchor, -7 * WEEKS))}>‹</button>
+            <button className="btn-sm btn-ghost" aria-label="Previous weeks" onClick={() => setAnchor(addDays(anchor, -7 * WEEKS))}><Icon name="chevron-left" size={14} /></button>
             <span style={{ fontWeight: 600, fontSize: 13, minWidth: 170, textAlign: "center" }}>{fmt(periods[0].start)} – {fmt(periods[periods.length - 1].end)}</span>
-            <button className="btn-sm btn-ghost" onClick={() => setAnchor(addDays(anchor, 7 * WEEKS))}>›</button>
+            <button className="btn-sm btn-ghost" aria-label="Next weeks" onClick={() => setAnchor(addDays(anchor, 7 * WEEKS))}><Icon name="chevron-right" size={14} /></button>
           </div>
         </div>
         <div style={{ fontSize: 12, color: "var(--soft)", marginBottom: 10 }}>Time off is tracked in half-week blocks (Mon–Wed / Thu–Sun).</div>
@@ -638,7 +638,7 @@ function TeamView({ data, teamId, setTeamId, meId }: { data: VacationData; teamI
                   <span style={{ fontWeight: 600, flex: 1 }}>{m.name}</span>
                   <span className="mini off">Nothing logged</span>
                   {reminded[m.id] ? (
-                    <span style={{ fontSize: 12, color: "var(--soft)" }}>{reminded[m.id]}</span>
+                    <span style={{ fontSize: 12, color: "var(--soft)" }}><Icon name={reminded[m.id].ok ? "check" : "x"} size={12} /> {reminded[m.id].text}</span>
                   ) : (
                     <button className="btn-sm btn-ghost" onClick={() => sendReminder(m)}>Send reminder</button>
                   )}
@@ -832,7 +832,7 @@ function AdminPanel({ data, busy, mutate }: { data: VacationData; busy: boolean;
           <input placeholder="Closure name" value={cName} onChange={(e) => setCName(e.target.value)} style={inp} />
           <input type="date" value={cStart} onChange={(e) => setCStart(e.target.value)} style={inp} />
           <input type="date" value={cEnd} onChange={(e) => setCEnd(e.target.value)} style={inp} />
-          <button className="btn-sm btn-pl" disabled={busy || !cName.trim() || !cStart || !cEnd} onClick={() => mutate(async () => { await api.post("/vacation/closures", { name: cName.trim(), startDate: cStart, endDate: cEnd }); setCName(""); setCStart(""); setCEnd(""); })}>＋ Add closure</button>
+          <button className="btn-sm btn-pl" disabled={busy || !cName.trim() || !cStart || !cEnd} onClick={() => mutate(async () => { await api.post("/vacation/closures", { name: cName.trim(), startDate: cStart, endDate: cEnd }); setCName(""); setCStart(""); setCEnd(""); })}><Icon name="plus" size={13} /> Add closure</button>
         </div>
       </div>
 
@@ -844,7 +844,7 @@ function AdminPanel({ data, busy, mutate }: { data: VacationData; busy: boolean;
             <div key={h.id} style={{ border: "1px solid var(--line)", borderRadius: 10, padding: "12px 14px", marginBottom: 10 }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
                 <div><div style={{ fontWeight: 700 }}>{h.name}</div><div style={{ color: "var(--soft)", fontSize: 12 }}>{fmtLong(d(h.holidayDate))}{h.teamId ? ` · ${data.teams.find((t) => t.id === h.teamId)?.name ?? ""}` : " · whole BU"}</div></div>
-                <span className={"mini " + (short.length ? "off" : "free")}>{short.length ? `⚠ ${short.join(", ")}` : "✓ Coverage met"}</span>
+                <span className={"mini " + (short.length ? "off" : "free")}>{short.length ? <><Icon name="alert" size={12} /> {short.join(", ")}</> : <><Icon name="check" size={12} /> Coverage met</>}</span>
               </div>
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
                 {([["Total", "reqTotal"], ["Senior", "reqSenior"], ["Mid", "reqMid"], ["Junior", "reqJunior"]] as const).map(([lbl, key]) => (
@@ -865,7 +865,7 @@ function AdminPanel({ data, busy, mutate }: { data: VacationData; busy: boolean;
         <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap", marginTop: 4 }}>
           <input placeholder="Holiday name" value={hName} onChange={(e) => setHName(e.target.value)} style={inp} />
           <input type="date" value={hDate} onChange={(e) => setHDate(e.target.value)} style={inp} />
-          <button className="btn-sm btn-pl" disabled={busy || !hName.trim() || !hDate} onClick={() => mutate(async () => { await api.post("/vacation/public-holidays", { name: hName.trim(), holidayDate: hDate, reqTotal: 1 }); setHName(""); setHDate(""); })}>＋ Add public holiday</button>
+          <button className="btn-sm btn-pl" disabled={busy || !hName.trim() || !hDate} onClick={() => mutate(async () => { await api.post("/vacation/public-holidays", { name: hName.trim(), holidayDate: hDate, reqTotal: 1 }); setHName(""); setHDate(""); })}><Icon name="plus" size={13} /> Add public holiday</button>
         </div>
         <p style={{ fontSize: 12, color: "var(--soft)", marginTop: 8 }}>Coverage requirements use each person's seniority (set it in Settings → User management). Cap Tracker flags a shortfall the moment the roster falls short.</p>
       </div>
@@ -883,7 +883,7 @@ function AdminPanel({ data, busy, mutate }: { data: VacationData; busy: boolean;
           <input placeholder="Label (e.g. Client Delivery Sprint)" value={bLabel} onChange={(e) => setBLabel(e.target.value)} style={inp} />
           <input type="date" value={bStart} onChange={(e) => setBStart(e.target.value)} style={inp} />
           <input type="date" value={bEnd} onChange={(e) => setBEnd(e.target.value)} style={inp} />
-          <button className="btn-sm btn-pl" disabled={busy || !bLabel.trim() || !bStart || !bEnd} onClick={() => mutate(async () => { await api.post("/vacation/busy-periods", { label: bLabel.trim(), startDate: bStart, endDate: bEnd }); setBLabel(""); setBStart(""); setBEnd(""); })}>＋ Add busy period</button>
+          <button className="btn-sm btn-pl" disabled={busy || !bLabel.trim() || !bStart || !bEnd} onClick={() => mutate(async () => { await api.post("/vacation/busy-periods", { label: bLabel.trim(), startDate: bStart, endDate: bEnd }); setBLabel(""); setBStart(""); setBEnd(""); })}><Icon name="plus" size={13} /> Add busy period</button>
         </div>
       </div>
     </>

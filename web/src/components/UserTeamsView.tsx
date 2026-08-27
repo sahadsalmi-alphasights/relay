@@ -1,5 +1,6 @@
 import { useState, type CSSProperties } from "react";
 import type { AdminUser, Team } from "../api/types";
+import { Icon } from "./Icon";
 
 const inputStyle: CSSProperties = {
   width: "100%",
@@ -60,7 +61,7 @@ export default function UserTeamsView({
           onKeyDown={(e) => e.key === "Enter" && create()}
         />
         <button className="btn-sm btn-pl" disabled={creating || !newName.trim()} onClick={create}>
-          ＋ Create team
+          <Icon name="plus" size={13} /> Create team
         </button>
       </div>
       <table className="data-table" style={{ maxWidth: 760 }}>

@@ -16,6 +16,7 @@ const PATHS = {
   notes: '<rect x="5" y="4" width="14" height="16" rx="2"/><path d="M8 9h8M8 13h8M8 17h5"/>',
   trash: '<path d="M4 7h16"/><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/><path d="M6.5 7l1 12.5a1 1 0 0 0 1 .9h7a1 1 0 0 0 1-.9L18.5 7"/><path d="M10 11v5.5M14 11v5.5"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
+  minus: '<path d="M5 12h14"/>',
   poke: '<path d="M9 11V6.2a1.5 1.5 0 0 1 3 0V10"/><path d="M12 10V5.4a1.5 1.5 0 0 1 3 0V11"/><path d="M15 11V7.6a1.5 1.5 0 0 1 3 0V15a5 5 0 0 1-5 5 5 5 0 0 1-4.2-2.3l-2.6-3.9a1.6 1.6 0 0 1 2.5-1.9L9 12.5"/>',
   swap: '<path d="M4 8h13l-3.2-3.2"/><path d="M20 16H7l3.2 3.2"/>',
   search: '<circle cx="11" cy="11" r="6.2"/><path d="M20 20l-4.4-4.4"/>',
@@ -51,6 +52,7 @@ const PATHS = {
   "arrow-down": '<path d="M12 5v14M6 13l6 6 6-6"/>',
   "chevron-down": '<path d="M6 9.5l6 6 6-6"/>',
   "chevron-right": '<path d="M9.5 6l6 6-6 6"/>',
+  "chevron-left": '<path d="M14.5 6l-6 6 6 6"/>',
   external: '<path d="M14 5h5v5"/><path d="M19 5l-8 8"/><path d="M18 13.5V18a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4.5"/>',
   "arrow-double": '<path d="M4 12h13"/><path d="M12.5 7l5 5-5 5"/>',
   // Transfer / hand-off (was ⤴) — forward-up arrow

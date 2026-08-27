@@ -5,6 +5,7 @@ import type { Assignment, CapacityRankRow, GoalChangeTarget, MyGoalChangeRequest
 import { GOAL_CHANGE_TARGETS } from "../api/types";
 import { barColor, entityName, initials, overDelivered, stageClass, stageLabel, typeClass } from "../lib/format";
 import CardNotes from "../components/CardNotes";
+import { Icon } from "../components/Icon";
 import EntityLogo from "../components/EntityLogo";
 import { fmtElapsed, poolState, timerClass } from "../lib/time";
 import { track } from "../lib/track";
@@ -71,7 +72,7 @@ function RequestChange({
   if (!open) {
     return (
       <button className="btn btn-ghost" onClick={() => setOpen(true)}>
-        Request goal change ↩
+        Request goal change <Icon name="arrow-back" size={14} />
       </button>
     );
   }
@@ -396,7 +397,7 @@ export default function DeliveryTab({
               {/* Big structural change — which angle this assignment is on, only when the project has more than one. */}
               {multiAngle ? ` · ${a.angleName}` : ""}
               {/* "Invisible competition" — visible to everyone, no access gating. */}
-              {a.isGhost && <span className="picktag" style={{ marginLeft: 6 }}>👻 Ghost</span>}
+              {a.isGhost && <span className="picktag" style={{ marginLeft: 6 }}><Icon name="ghost" size={13} /> Ghost</span>}
             </div>
             </div>
           </div>
@@ -404,10 +405,10 @@ export default function DeliveryTab({
         </div>
         <div className="meta">
           <div className={"chip timer " + timerClass(elapsed)}>
-            ⏱ {fmtElapsed(elapsed)} in {stageLabel(a.stage).replace(" Deliverable", "")}
+            <Icon name="timer" size={13} /> {fmtElapsed(elapsed)} in {stageLabel(a.stage).replace(" Deliverable", "")}
           </div>
-          {ps === "dormant" && <div className="chip dormant">💤 {cardPool} asleep — goal inactive now</div>}
-          {ps === "live" && <div className="chip live">⚡ {cardPool} live — double weight, convert now</div>}
+          {ps === "dormant" && <div className="chip dormant"><Icon name="zzz" size={13} /> {cardPool} asleep — goal inactive now</div>}
+          {ps === "live" && <div className="chip live"><Icon name="bolt" size={13} /> {cardPool} live — double weight, convert now</div>}
           {over > 0 && <div className="chip overdelivered">Overdelivered +{over}</div>}
         </div>
         <div className="progress">
@@ -417,7 +418,7 @@ export default function DeliveryTab({
               <small> / {a.goal} your goal</small>
             </span>
             <span className="mono" style={{ fontSize: 12, color: remaining ? "#9A5F0C" : "#1F7D4C" }}>
-              {remaining ? `${remaining} to go` : "Done ✓"}
+              {remaining ? `${remaining} to go` : <>Done <Icon name="check" size={12} /></>}
             </span>
           </div>
           <div className="bar">
@@ -436,7 +437,7 @@ export default function DeliveryTab({
         }
         <div className="assignees">
           <div className="assignee">
-            <div className="avatar dl">✓</div>
+            <div className="avatar dl"><Icon name="check" size={18} /></div>
             <div>
               <div className="assignee-name">From our system</div>
               <div className="assignee-sub">Counts toward your goal</div>
@@ -453,7 +454,7 @@ export default function DeliveryTab({
           </div>
           <div className="assignee">
             <div className="avatar dl" style={{ background: "#F3E8FB", color: "#8E3BC9" }}>
-              ★
+              <Icon name="star" size={18} />
             </div>
             <div>
               <div className="assignee-name">Custom sourced</div>
@@ -495,7 +496,7 @@ export default function DeliveryTab({
                 title="Nudge the PL and their manager — your request hasn't been actioned yet"
                 onClick={() => poke(a.id)}
               >
-                👉 Poke PL
+                <Icon name="poke" size={14} /> Poke PL
               </button>
             )}
           </div>
@@ -506,7 +507,7 @@ export default function DeliveryTab({
         <CardNotes notes={notes} onAdd={() => onNotes({ projectId: p.id })} onChanged={onReload} />
         <div className="actions">
           <button className="btn btn-ghost" onClick={() => onNotes({ projectId: p.id })}>
-            📝 Notes
+            <Icon name="notes" size={14} /> Notes
           </button>
         </div>
       </div>
@@ -660,7 +661,7 @@ export default function DeliveryTab({
         <div className="cov-card">
           <div className="cov-item">
             <div>
-              <div className="cov-title">📊 Your capacity</div>
+              <div className="cov-title"><Icon name="chart" size={16} /> Your capacity</div>
               <div className="cov-state">
                 Load <b className="mono">{myCapacity.load.toFixed(1)}</b>
                 {!myCapacity.eligible ? (
@@ -686,7 +687,7 @@ export default function DeliveryTab({
         <div className="cov-item">
           <div>
             <div className="cov-title">
-              🌙 Evening coverage <span className="cov-tagline">voluntary</span>
+<Icon name="moon" size={16} /> Evening coverage <span className="cov-tagline">voluntary</span>
             </div>
             <div className={"cov-state " + (actor.eveningCoverage ? "on" : "off")}>
               {actor.eveningCoverage
@@ -725,7 +726,7 @@ export default function DeliveryTab({
                   className="team-group-header team-group-toggle"
                   onClick={() => setGroupOpen((m) => ({ ...m, [person.id]: !open }))}
                 >
-                  <span className="cn-caret">{open ? "▾" : "▸"}</span>
+                  <span className="cn-caret"><Icon name={open ? "chevron-down" : "chevron-right"} size={14} /></span>
                   <div className="avatar dl">{initials(person.name)}</div>
                   {person.name}
                   {/* Table view (2026-07-28) — live status + Load right beside

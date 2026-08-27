@@ -4,6 +4,7 @@ import type { SundayRotaEntry } from "../api/types";
 import { initials } from "../lib/format";
 import { prettyDateKey, upcomingSundays } from "../lib/time";
 import { useApp } from "../state/AppContext";
+import { Icon } from "./Icon";
 
 const WEEKS_STEP = 13; // ~ one quarter of Sundays
 
@@ -97,7 +98,7 @@ export default function SundayRotaPlanner({ reloadTick }: { reloadTick: number }
 
       <div className="srp-toolbar">
         <div className="srp-search">
-          🔎
+          <Icon name="search" />
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Filter people…" />
         </div>
         <span className="srp-range">
@@ -146,7 +147,7 @@ export default function SundayRotaPlanner({ reloadTick }: { reloadTick: number }
                         onClick={() => toggle(s, p.id)}
                         aria-pressed={on}
                       >
-                        {on ? "✓" : ""}
+                        {on ? <Icon name="check" size={13} /> : null}
                       </button>
                     </td>
                   );

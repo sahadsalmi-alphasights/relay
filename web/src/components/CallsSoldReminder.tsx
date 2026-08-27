@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
+import { Icon } from "./Icon";
 
 interface DueRow {
   id: string;
@@ -29,13 +30,13 @@ export default function CallsSoldReminder({ reloadTick, onReopen }: { reloadTick
   const names = due.map((d) => d.client).join(", ");
   return (
     <button type="button" className="calls-sold-banner" onClick={onReopen} title="Open the calls-sold update">
-      <span className="csb-icon">📞</span>
+      <span className="csb-icon"><Icon name="phone" /></span>
       <span className="csb-text">
         <b>Update calls sold for today</b>
         <span className="csb-names">{names}</span>
       </span>
       <span className="csb-cta">
-        {due.length} to update <span aria-hidden>→</span>
+        {due.length} to update <span aria-hidden><Icon name="arrow-right" /></span>
       </span>
     </button>
   );

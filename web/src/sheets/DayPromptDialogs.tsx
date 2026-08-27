@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { api } from "../api/client";
+import { Icon } from "../components/Icon";
 import type { CoverageSettings, Person } from "../api/types";
 import { DEFAULT_COVERAGE } from "../api/types";
 import { dubaiDateKey, dubaiMinute, isDubaiWeekend } from "../lib/time";
@@ -49,7 +50,7 @@ function PromptDialog({
   snoozeMs,
   onYes,
 }: {
-  icon: string;
+  icon: ReactNode;
   title: string;
   body: string;
   yesLabel: string;
@@ -152,7 +153,7 @@ export function EveningCoveragePrompt({ settings }: { settings?: CoverageSetting
     !isDubaiWeekend(nowMs) && minutes >= cov.eveningPromptStartMin && minutes < cov.eveningPromptEndMin && !actor.eveningCoverage;
   return (
     <PromptDialog
-      icon="🌙"
+      icon={<Icon name="moon" />}
       title="Evening coverage tonight?"
       body="Are you free to cover this evening? Yes turns your evening-coverage toggle on — you can switch it off anytime."
       yesLabel="Yes, I'm free"
@@ -179,7 +180,7 @@ export function LunchPrompt({ settings }: { settings?: CoverageSettings | null }
     !isDubaiWeekend(nowMs) && minutes >= cov.lunchPromptStartMin && minutes < cov.lunchPromptEndMin && !actor.outToLunch;
   return (
     <PromptDialog
-      icon="🍱"
+      icon={<Icon name="bowl" />}
       title="Going for lunch?"
       body="Yes sets you Out to Lunch — no new projects will be allocated to you until you toggle it off. Your current work stays yours."
       yesLabel="Yes, I'm off to lunch"

@@ -4,6 +4,7 @@ import type { Person, SundayRotaEntry, SundaySwapRequest } from "../api/types";
 import { initials } from "../lib/format";
 import { prettyDateKey, upcomingSundays } from "../lib/time";
 import { useApp } from "../state/AppContext";
+import { Icon } from "../components/Icon";
 
 /**
  * Sunday Coverage — a BU-wide schedule page (2026-07-24). Any manager/owner
@@ -120,7 +121,7 @@ export default function SundayCoverageTab({ reloadTick }: { reloadTick: number }
 
       {swapsForDate.map((r) => (
         <div key={r.id} className="review-strip">
-          <span>⇄</span>
+          <span><Icon name="swap" size={14} /></span>
           <div style={{ flex: 1 }}>
             <b>{nameOf(r.requestedBy)}</b> asks to swap: {r.note}
           </div>
@@ -136,7 +137,7 @@ export default function SundayCoverageTab({ reloadTick }: { reloadTick: number }
         On rota — {prettyDateKey(sel)} <span className="count">{onDate.length}</span>
         {!canManage && meRostered && !asking && (
           <button className="link-btn" style={{ marginLeft: 10 }} onClick={() => setAsking(true)}>
-            ⇄ Request a swap
+            <Icon name="swap" size={14} /> Request a swap
           </button>
         )}
       </div>
@@ -188,7 +189,7 @@ export default function SundayCoverageTab({ reloadTick }: { reloadTick: number }
                   </div>
                   {canManage && (
                     <span className="load-score" style={{ marginLeft: "auto" }}>
-                      <b>{on ? "✓" : "+"}</b>
+                      <b>{on ? <Icon name="check" size={14} /> : <Icon name="plus" size={14} />}</b>
                     </span>
                   )}
                 </div>

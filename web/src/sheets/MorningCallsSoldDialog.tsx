@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, ApiError } from "../api/client";
+import { Icon } from "../components/Icon";
 import { useViewport } from "../lib/useViewport";
 import { useApp } from "../state/AppContext";
 import { isDubaiWeekend } from "../lib/time";
@@ -84,7 +85,7 @@ export default function MorningCallsSoldDialog({
   if (!isDesktop) {
     return (
       <div className="morning-banner">
-        📞 <b>{due.length}</b> project{due.length > 1 ? "s" : ""} need{due.length > 1 ? "" : "s"} today's calls-sold
+        <Icon name="phone" size={14} /> <b>{due.length}</b> project{due.length > 1 ? "s" : ""} need{due.length > 1 ? "" : "s"} today's calls-sold
         update — open Relay on a desktop to update.
       </div>
     );
@@ -162,7 +163,7 @@ export default function MorningCallsSoldDialog({
                         className={"btn-sm " + (mode === "archive" ? "btn-pl" : "btn-ghost")}
                         onClick={() => setMode(row.id, mode === "archive" ? "callsSold" : "archive")}
                       >
-                        {mode === "archive" ? "✓ Archiving" : "Archive"}
+                        {mode === "archive" ? <><Icon name="check" size={13} /> Archiving</> : "Archive"}
                       </button>
                     </div>
                   </td>

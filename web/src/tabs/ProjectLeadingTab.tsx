@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import { applyCardOrder, loadCardOrder, moveBefore, saveCardOrder } from "../lib/cardOrder";
 import CardNotes from "../components/CardNotes";
+import { Icon } from "../components/Icon";
 import MarketSharePulse from "../components/MarketSharePulse";
 import { api } from "../api/client";
 import type { Angle, Assignment, CapacityRankRow, GoalChangeRequest, Note, Project, Stage } from "../api/types";
@@ -160,7 +161,7 @@ function AssigneeGoalEditor({
         </button>
       </div>
       <button className="btn-sm btn-ghost" onClick={() => setOpen(false)}>
-        ✓ Done
+        <Icon name="check" size={14} /> Done
       </button>
     </div>
   );
@@ -231,7 +232,7 @@ function ResolveRequestPanel({
       </select>
       <div style={{ display: "flex", gap: 6 }}>
         <button className="btn-sm btn-pl" disabled={busy} onClick={() => resolve("accepted")} title="Apply goal + stage">
-          ✓ Accept
+          <Icon name="check" size={14} /> Accept
         </button>
         <button className="btn-sm btn-ghost" disabled={busy} onClick={() => resolve("declined")}>
           Decline
@@ -596,7 +597,7 @@ export default function ProjectLeadingTab({
             <div className="assignee-name">
               {nameOf(a.delivererId)} <span style={{ color: "var(--soft)", fontWeight: 500 }}>· {practiceOf(a.delivererId)}</span>
               {/* "Invisible competition" — visible to everyone, no access gating; this is the one visual marker that distinguishes a ghost's row. */}
-              {a.isGhost && <span className="picktag" style={{ marginLeft: 6 }}>👻 Ghost</span>}
+              {a.isGhost && <span className="picktag" style={{ marginLeft: 6 }}><Icon name="ghost" size={13} /> Ghost</span>}
             </div>
             <div className="assignee-sub">{a.customDelivered > 0 ? `Incl. ${a.customDelivered} custom` : "No custom"}</div>
           </div>
@@ -616,7 +617,7 @@ export default function ProjectLeadingTab({
               names the stage, so the timer chip doesn't repeat it --
               frees up enough width for this row to stay on one line. */}
           <span className={"stage-pill " + stageClass(a.stage)}>{stageLabel(a.stage)}</span>
-          <span className={"chip timer " + timerClass(elapsed)}>⏱ {fmtElapsed(elapsed)}</span>
+          <span className={"chip timer " + timerClass(elapsed)}><Icon name="timer" size={13} /> {fmtElapsed(elapsed)}</span>
           {!readOnly && <StageDropdown assignment={a} onSave={onReload} />}
         </div>
       </div>
@@ -692,7 +693,7 @@ export default function ProjectLeadingTab({
                     aria-label="Transfer to another PL"
                     onClick={() => onTransfer(p)}
                   >
-                    ⤴
+                    <Icon name="transfer" size={15} />
                   </button>
                 )}
                 <div className={"tag " + typeClass(p.projectType)}>{p.projectType}</div>
@@ -774,7 +775,7 @@ export default function ProjectLeadingTab({
                       {/* Per-angle expert pool (2026-07-21) — labelled only when it
                           differs from the project default, so simple projects stay clean. */}
                       {ang.expertPool && ang.expertPool !== p.expertPool && (
-                        <span title="This angle's expert pool">🌐 {ang.expertPool}</span>
+                        <span title="This angle's expert pool"><Icon name="globe" size={13} /> {ang.expertPool}</span>
                       )}
                     </div>
                     {multiAngle && attainment !== null && (
@@ -868,13 +869,13 @@ export default function ProjectLeadingTab({
                     Edit team
                   </button>
                   <button className="btn btn-ghost" onClick={() => onEditProject(p.id)} title="Edit project set-up">
-                    ✏️ Edit
+                    <Icon name="edit" size={14} /> Edit
                   </button>
                   <CallsSoldEditor angles={angles} onSave={onReload} />
                 </div>
                 <div className="actions actions-row2">
                   <button className="btn btn-ghost" onClick={() => onNotes({ projectId: p.id })}>
-                    📝 Notes
+                    <Icon name="notes" size={14} /> Notes
                   </button>
                   {p.deliveryClosedAt ? (
                     <button className="btn btn-ghost" onClick={() => reopenDelivery(p.id)} title="Delivery is closed for the team — reopen it on their boards">
@@ -887,7 +888,7 @@ export default function ProjectLeadingTab({
                   )}
                   {/* Batch S, item 3 — destructive, confirmed in deleteProject() before the request ever goes out. */}
                   <button className="btn btn-ghost" style={{ color: "#A82F2F" }} onClick={() => deleteProject(p.id, p.client)}>
-                    🗑 Delete
+                    <Icon name="trash" size={14} /> Delete
                   </button>
                 </div>
               </>
@@ -980,7 +981,7 @@ export default function ProjectLeadingTab({
                       <td>{idx === 0 ? ang.name : ""}</td>
                       <td>
                         {nameOf(a.delivererId)}
-                        {a.isGhost ? " 👻" : ""}
+                        {a.isGhost ? <Icon name="ghost" size={13} /> : null}
                       </td>
                       <td>
                         <span className={"stage-pill " + stageClass(a.stage)}>{stageLabel(a.stage)}</span>
@@ -1068,7 +1069,7 @@ export default function ProjectLeadingTab({
                   title={`Go to ${nameOf(r.requestedBy)} on ${it.project.client}`}
                   onClick={() => setAssignFocus({ id: r.assignmentId, tick: Date.now() })}
                 >
-                  ↩
+                  <Icon name="arrow-back" />
                 </button>
                 <div style={{ flex: 1 }}>
                   <b>{nameOf(r.requestedBy)}</b> on <b>{it.project.client}</b> requests goal{" "}
@@ -1085,14 +1086,14 @@ export default function ProjectLeadingTab({
                   title="Accept — applies the requested goal and status"
                   onClick={() => resolveRequest(r.id, "accepted")}
                 >
-                  ✓
+                  <Icon name="check" />
                 </button>
                 <button
                   className="btn-sm btn-ghost"
                   title="Decline — resolves without changing anything"
                   onClick={() => resolveRequest(r.id, "declined")}
                 >
-                  ✕
+                  <Icon name="x" />
                 </button>
               </div>
             ))
@@ -1121,7 +1122,7 @@ export default function ProjectLeadingTab({
                     className="team-group-header team-group-toggle"
                     onClick={() => setGroupOpen((m) => ({ ...m, [person.id]: !open }))}
                   >
-                    <span className="cn-caret">{open ? "▾" : "▸"}</span>
+                    <span className="cn-caret"><Icon name={open ? "chevron-down" : "chevron-right"} size={14} /></span>
                     <div className="avatar">{initials(person.name)}</div>
                     {person.name}
                     <span className="count">{personItems.length}</span>
@@ -1160,7 +1161,7 @@ export default function ProjectLeadingTab({
               onClick={() => setArchivedOpen((o) => !o)}
               aria-expanded={archivedOpen}
             >
-              <span className="archive-chevron">{archivedOpen ? "▾" : "▸"}</span>
+              <span className="archive-chevron"><Icon name={archivedOpen ? "chevron-down" : "chevron-right"} size={14} /></span>
               Archived <span className="count">{archived.length}</span>
             </button>
             {archivedOpen && archived.map((p) => (

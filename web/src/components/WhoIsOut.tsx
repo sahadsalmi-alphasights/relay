@@ -1,12 +1,13 @@
 import { useApp } from "../state/AppContext";
 import { initials } from "../lib/format";
+import { Icon, type IconName } from "./Icon";
 
 // The "out" buckets, in display order. Offline is folded into On vacation —
 // we don't surface a separate Offline section here; anyone not Available and
 // not Sick shows as On vacation.
-const OUT_GROUPS: { key: string; label: string; emoji: string; statuses: string[] }[] = [
-  { key: "vacation", label: "On vacation", emoji: "🌴", statuses: ["On vacation", "Offline"] },
-  { key: "sick", label: "Sick", emoji: "🤒", statuses: ["Sick"] },
+const OUT_GROUPS: { key: string; label: string; emoji: IconName; statuses: string[] }[] = [
+  { key: "vacation", label: "On vacation", emoji: "palm", statuses: ["On vacation", "Offline"] },
+  { key: "sick", label: "Sick", emoji: "thermometer", statuses: ["Sick"] },
 ];
 
 /**
@@ -36,7 +37,7 @@ export default function WhoIsOut() {
         return (
           <div className="card cs-card" key={g.key}>
             <div className="cs-head">
-              {g.emoji} {g.label} <span className="mini team" style={{ marginLeft: 6 }}>{rows.length}</span>
+              <Icon name={g.emoji} /> {g.label} <span className="mini team" style={{ marginLeft: 6 }}>{rows.length}</span>
             </div>
             {rows.map((p) => (
               <div className="cs-row" key={p.id}>
@@ -51,7 +52,7 @@ export default function WhoIsOut() {
                   </div>
                 </div>
                 <div className="cs-controls">
-                  {p.hrOfflineAt && <span className="mini free">🗓 BambooHR leave</span>}
+                  {p.hrOfflineAt && <span className="mini free"><Icon name="calendar" /> BambooHR leave</span>}
                 </div>
               </div>
             ))}

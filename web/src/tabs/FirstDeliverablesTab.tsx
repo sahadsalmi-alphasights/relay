@@ -7,6 +7,7 @@ import { useSort } from "../lib/useSort";
 import { useViewport } from "../lib/useViewport";
 import { useApp } from "../state/AppContext";
 import type { Scope } from "../components/Header";
+import { Icon } from "../components/Icon";
 
 /**
  * §8 (domain change 8) — this tab shows deliverers still on First
@@ -41,7 +42,7 @@ function SortHeader({
   return (
     <th className={numeric ? "num" : undefined}>
       <button onClick={onClick}>
-        {label} {active && (dir === "asc" ? "↑" : "↓")}
+        {label} {active && <Icon name={dir === "asc" ? "arrow-up" : "arrow-down"} size={12} />}
       </button>
     </th>
   );
@@ -124,7 +125,7 @@ export default function FirstDeliverablesTab({
         <div className="scope-note">{scopeNote}</div>
         {overdue > 0 && (
           <div className="review-strip">
-            <span>⏱</span>
+            <span><Icon name="timer" size={14} /></span>
             <div style={{ flex: 1 }}>
               <b>{overdue}</b> past 30 min with no update — ping due
             </div>
@@ -169,7 +170,7 @@ export default function FirstDeliverablesTab({
                     </td>
                     <td>{nameOf(p.plId)}</td>
                     <td>
-                      <span className={"chip timer " + timerClass(elapsed)}>⏱ {fmtElapsed(elapsed)}</span>
+                      <span className={"chip timer " + timerClass(elapsed)}><Icon name="timer" size={14} /> {fmtElapsed(elapsed)}</span>
                       {elapsed / 60000 >= 30 && (
                         <div style={{ fontSize: 10, color: "#A82F2F", fontWeight: 700, marginTop: 4 }}>Ping due</div>
                       )}
@@ -193,7 +194,7 @@ export default function FirstDeliverablesTab({
       <div className="scope-note">{scopeNote}</div>
       {overdue > 0 && (
         <div className="review-strip">
-          <span>⏱</span>
+          <span><Icon name="timer" size={14} /></span>
           <div style={{ flex: 1 }}>
             <b>{overdue}</b> past 30 min with no update — ping due
           </div>
@@ -224,7 +225,7 @@ export default function FirstDeliverablesTab({
                 </div>
               </div>
               <div className={"chip timer " + timerClass(elapsed)} style={{ fontSize: 14, fontWeight: 700 }}>
-                ⏱ {fmtElapsed(elapsed)}
+                <Icon name="timer" size={14} /> {fmtElapsed(elapsed)}
               </div>
             </div>
             <div className="meta">

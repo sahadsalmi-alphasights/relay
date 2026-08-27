@@ -3,6 +3,7 @@ import Header, { type Scope, type Tab } from "./components/Header";
 import MobileNav from "./components/MobileNav";
 import type { Notification as AppNotification } from "./api/types";
 import Sidebar from "./components/Sidebar";
+import { Icon } from "./components/Icon";
 import TopBar from "./components/TopBar";
 import AuditLogTab from "./tabs/AuditLogTab";
 import CapacityRankingTab from "./tabs/CapacityRankingTab";
@@ -254,7 +255,7 @@ export default function Shell() {
 
   const sundayBanner = sunday && (
     <div className="sunday-strip">
-      🗓 <b>Sunday</b> — today is {prettyDateKey(dubaiDateKey(nowMs))}.{" "}
+      <Icon name="calendar" /> <b>Sunday</b> — today is {prettyDateKey(dubaiDateKey(nowMs))}.{" "}
       <button className="link-btn" onClick={() => setTab("SundayRota")}>
         View rota
       </button>

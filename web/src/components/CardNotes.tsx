@@ -2,6 +2,7 @@ import { useState } from "react";
 import { api } from "../api/client";
 import type { Note } from "../api/types";
 import { useApp } from "../state/AppContext";
+import { Icon } from "./Icon";
 
 function timeAgo(iso: string): string {
   const min = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
@@ -62,7 +63,7 @@ function NoteItem({ note, onChanged }: { note: Note; onChanged?: () => void }) {
               Edit
             </button>
             <button className="cn-link cn-done" disabled={busy} onClick={done} title="Mark done — clears it everywhere">
-              ✓ Done
+              <Icon name="check" size={13} /> Done
             </button>
           </span>
         )}
@@ -108,10 +109,10 @@ export default function CardNotes({ notes, onAdd, onChanged }: { notes: Note[]; 
         title={open ? "Collapse notes" : `Show all ${notes.length} note${notes.length === 1 ? "" : "s"}`}
       >
         <span className="cn-line">
-          📝 <b>{nameOf(latest.authorId)}</b>: {latest.body.length > 80 ? `${latest.body.slice(0, 80)}…` : latest.body}
+          <Icon name="notes" /> <b>{nameOf(latest.authorId)}</b>: {latest.body.length > 80 ? `${latest.body.slice(0, 80)}…` : latest.body}
         </span>
         {notes.length > 1 && <span className="cn-count">{notes.length}</span>}
-        <span className="cn-caret">{open ? "▾" : "▸"}</span>
+        <span className="cn-caret">{open ? <Icon name="chevron-down" /> : <Icon name="chevron-right" />}</span>
       </button>
       {open && (
         <div className="cn-list">

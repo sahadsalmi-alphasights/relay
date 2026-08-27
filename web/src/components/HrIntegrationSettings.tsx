@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, ApiError } from "../api/client";
 import type { HrIntegrationSettings as HR } from "../api/types";
 import { useApp } from "../state/AppContext";
+import { Icon } from "./Icon";
 
 function Toggle({ on, disabled, onClick }: { on: boolean; disabled: boolean; onClick: () => void }) {
   return (
@@ -174,7 +175,7 @@ export default function HrIntegrationSettings({ onSaved }: { onSaved: () => void
         <div className="cs-actions">
           <button className="btn btn-pl" disabled={busy || !dirty} onClick={save}>{busy ? "Saving…" : "Save changes"}</button>
           <button className="btn btn-ghost" disabled={busy || !dirty} onClick={() => { setDraft(saved); setOk(false); }}>Discard</button>
-          {ok && !dirty && <span className="cs-ok">✓ Saved</span>}
+          {ok && !dirty && <span className="cs-ok"><Icon name="check" size={12} /> Saved</span>}
         </div>
       )}
     </>

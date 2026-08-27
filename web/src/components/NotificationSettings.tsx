@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, ApiError } from "../api/client";
 import type { NotificationSettings as NS } from "../api/types";
 import { useApp } from "../state/AppContext";
+import { Icon } from "./Icon";
 
 // Per-event rows — key must match the NotificationSettings booleans.
 const EVENTS: { key: keyof NS; label: string; sub: string; channel: string }[] = [
@@ -190,7 +191,7 @@ export default function NotificationSettings({ onSaved }: { onSaved: () => void 
         <div className="cs-actions">
           <button className="btn btn-pl" disabled={busy || !dirty} onClick={save}>{busy ? "Saving…" : "Save changes"}</button>
           <button className="btn btn-ghost" disabled={busy || !dirty} onClick={() => { setDraft(saved); setOk(false); }}>Discard</button>
-          {ok && !dirty && <span className="cs-ok">✓ Saved</span>}
+          {ok && !dirty && <span className="cs-ok"><Icon name="check" size={12} /> Saved</span>}
         </div>
       )}
     </>

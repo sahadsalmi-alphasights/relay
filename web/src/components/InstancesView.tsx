@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { api, ApiError } from "../api/client";
 import type { AdminUser, Instance, Role, Team } from "../api/types";
+import { Icon } from "./Icon";
 
 const ROLES: Role[] = ["owner", "manager", "member"];
 const STATUSES = ["Available", "On vacation", "Sick", "Offline"];
@@ -282,7 +283,7 @@ export default function InstancesView({
             )}
             {applied && applied.ok && (
               <div style={{ marginTop: 12, fontSize: 13, color: "var(--green)" }}>
-                ✓ Imported — {applied.instancesCreated} instance(s) created ({applied.instancesTotal} total). No users changed.
+                <Icon name="check" size={13} /> Imported — {applied.instancesCreated} instance(s) created ({applied.instancesTotal} total). No users changed.
               </div>
             )}
           </div>

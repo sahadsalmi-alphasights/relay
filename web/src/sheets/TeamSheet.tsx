@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, ApiError } from "../api/client";
 import type { CapacityRankRow, Person, PersonStatus } from "../api/types";
 import Sheet from "../components/Sheet";
+import { Icon } from "../components/Icon";
 import { initials } from "../lib/format";
 import { useApp } from "../state/AppContext";
 
@@ -125,7 +126,7 @@ export default function TeamSheet({
         {error && <div className="err-line">{error}</div>}
         {warning && (
           <div className="warn-line">
-            ⚠ {warning.name} now has {warning.outstanding} profiles outstanding — reassign via the project card.
+            <Icon name="alert" size={14} /> {warning.name} now has {warning.outstanding} profiles outstanding — reassign via the project card.
           </div>
         )}
 
@@ -158,12 +159,12 @@ export default function TeamSheet({
                     ))}
                   </div>
                   <div className="cov-readonly">
-                    <span className={"mini " + (p.eveningCoverage ? "free" : "busy")}>🌙 Evening {p.eveningCoverage ? "on" : "off"}</span>
+                    <span className={"mini " + (p.eveningCoverage ? "free" : "busy")}><Icon name="moon" size={12} /> Evening {p.eveningCoverage ? "on" : "off"}</span>
                     <span className="cov-hint">evening is their own choice</span>
                   </div>
                   {/* "Invisible competition" — manager-only, team-scoped, reversible. A ghost is excluded from ranking/suggestion but stays manually staffable. */}
                   <div className="cov-readonly">
-                    <span className={"mini " + (p.isGhost ? "busy" : "free")}>👻 Ghost {p.isGhost ? "on" : "off"}</span>
+                    <span className={"mini " + (p.isGhost ? "busy" : "free")}><Icon name="ghost" size={12} /> Ghost {p.isGhost ? "on" : "off"}</span>
                     <button className="btn-sm btn-ghost" disabled={busy} onClick={() => setGhost(p.id, !p.isGhost)}>
                       {p.isGhost ? "Unset ghost" : "Set as ghost"}
                     </button>
@@ -181,7 +182,7 @@ export default function TeamSheet({
 
         {actor.isManager && (
           <button className="close" style={{ background: "var(--pl-soft)", color: "var(--pl)", marginBottom: 10 }} onClick={onOpenRota}>
-            🗓 Manage Sunday rota →
+            <Icon name="calendar" size={13} /> Manage Sunday rota <Icon name="arrow-right" size={13} />
           </button>
         )}
         {actor.isManager && (

@@ -2,6 +2,7 @@ import type { CSSProperties } from "react";
 import { api } from "../api/client";
 import type { Person } from "../api/types";
 import Sheet from "../components/Sheet";
+import { Icon } from "../components/Icon";
 import type { Tab } from "../components/Header";
 import { initials } from "../lib/format";
 import { useApp } from "../state/AppContext";
@@ -63,7 +64,7 @@ export default function MoreSheet({
       </button>
 
       <button className="more-item" onClick={() => { onClose(); onOpenRota(); }}>
-        <span aria-hidden="true" style={{ fontSize: 15, width: 18, textAlign: "center" }}>🗓</span>
+        <span aria-hidden="true" style={{ fontSize: 15, width: 18, textAlign: "center" }}><Icon name="calendar" size={15} /></span>
         Sunday Coverage
         <span className="more-chevron">›</span>
       </button>
@@ -76,9 +77,9 @@ export default function MoreSheet({
         rel="noopener noreferrer"
         onClick={onClose}
       >
-        <span aria-hidden="true" style={{ fontSize: 15, width: 18, textAlign: "center" }}>❓</span>
+        <span aria-hidden="true" style={{ fontSize: 15, width: 18, textAlign: "center" }}><Icon name="help" size={15} /></span>
         FAQ
-        <span className="more-chevron" aria-hidden="true">↗</span>
+        <span className="more-chevron" aria-hidden="true"><Icon name="external" size={13} /></span>
       </a>
 
       {(actor.isManager || actor.isOwner) && (
@@ -107,7 +108,7 @@ export default function MoreSheet({
 
       {/* "Out to Lunch" — while on, no new allocations; red "Lunch" on the ranking. */}
       <button className="more-item" onClick={toggleLunch}>
-        <span aria-hidden="true" style={{ fontSize: 14, width: 16, textAlign: "center" }}>🍱</span>
+        <span aria-hidden="true" style={{ fontSize: 14, width: 16, textAlign: "center" }}><Icon name="bowl" size={14} /></span>
         Out to Lunch
         <span className={"toggle-switch " + (actor.outToLunch ? "on" : "")} style={{ marginLeft: "auto", background: actor.outToLunch ? "var(--red)" : "var(--line)" }}>
           <span className="thumb" />

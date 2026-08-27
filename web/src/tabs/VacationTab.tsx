@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { api, ApiError } from "../api/client";
 import { useApp } from "../state/AppContext";
 import { usePersistentState } from "../lib/persistentState";
+import { Icon } from "../components/Icon";
 
 /* ----------------------------- types ----------------------------- */
 interface VacBlock { start: string; end: string; type: string }
@@ -211,7 +212,7 @@ function Dashboard({ data, me, meId, goto }: { data: VacationData; me: Member | 
       <div style={card}>
         {heavyWeeks.length > 0 && (
           <div style={{ borderRadius: 9, padding: "8px 12px", background: "rgba(209,67,74,0.12)", border: "1px solid var(--red)", color: "var(--red)", fontSize: 12.5, fontWeight: 600, marginBottom: 12 }}>
-            ⚠ Capacity risk: {heavyWeeks.map((w) => fmt(w.ws)).join(", ")} — ≥{Math.round(HEAVY_FRAC * 100)}% of the team off. Discourage new leave / arrange cover.
+            <Icon name="alert" size={14} /> Capacity risk: {heavyWeeks.map((w) => fmt(w.ws)).join(", ")} — ≥{Math.round(HEAVY_FRAC * 100)}% of the team off. Discourage new leave / arrange cover.
           </div>
         )}
         {!data.bambooConfigured ? (
@@ -272,8 +273,8 @@ function Dashboard({ data, me, meId, goto }: { data: VacationData; me: Member | 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }} className="vac-dash-grid">
         {/* 1 · My submitted time off */}
         <div style={wCard}>
-          <h2 style={wH}>My time off <button style={{ ...chipBtn, marginLeft: "auto" }} onClick={() => goto("mine")}>Details →</button></h2>
-          {myUpcoming.length === 0 ? <div style={{ fontSize: 12.5, color: "var(--soft)" }}>Nothing booked ahead. <button style={chipBtn} onClick={() => goto("plan")}>Book →</button></div>
+          <h2 style={wH}>My time off <button style={{ ...chipBtn, marginLeft: "auto" }} onClick={() => goto("mine")}>Details <Icon name="arrow-right" size={12} /></button></h2>
+          {myUpcoming.length === 0 ? <div style={{ fontSize: 12.5, color: "var(--soft)" }}>Nothing booked ahead. <button style={chipBtn} onClick={() => goto("plan")}>Book <Icon name="arrow-right" size={12} /></button></div>
             : myUpcoming.slice(0, 5).map((v, i) => (
               <div key={i} style={{ display: "flex", gap: 8, alignItems: "center", padding: "5px 0", borderBottom: "1px solid var(--line)", fontSize: 12.5 }}>
                 <span style={swatch(VAC)} /><span style={{ fontWeight: 600 }}>{fmt(d(v.start))}–{fmt(d(v.end))}</span><span style={{ color: "var(--soft)", marginLeft: "auto", fontSize: 11.5 }}>{v.type}</span>
@@ -307,7 +308,7 @@ function Dashboard({ data, me, meId, goto }: { data: VacationData; me: Member | 
 
         {/* 5 · Lower-overlap half-weeks */}
         <div style={wCard}>
-          <h2 style={wH}>Best weeks to book <button style={{ ...chipBtn, marginLeft: "auto" }} onClick={() => goto("plan")}>Plan →</button></h2>
+          <h2 style={wH}>Best weeks to book <button style={{ ...chipBtn, marginLeft: "auto" }} onClick={() => goto("plan")}>Plan <Icon name="arrow-right" size={12} /></button></h2>
           {quiet.map((b, i) => (
             <div key={i} style={{ display: "flex", gap: 8, alignItems: "center", padding: "4px 0", fontSize: 12.5 }}>
               <span style={{ width: 96, fontWeight: 600 }}>{fmt(b.p.start)} <span style={{ color: "var(--soft)", fontWeight: 500, fontSize: 11 }}>{b.p.tag}</span></span>
@@ -320,7 +321,7 @@ function Dashboard({ data, me, meId, goto }: { data: VacationData; me: Member | 
         {/* 6 · Heavy overlap — who's off */}
         <div style={wCard}>
           <h2 style={wH}>Heavy-overlap weeks</h2>
-          {heavyWeeks.length === 0 ? <div style={{ fontSize: 12.5, color: "var(--green)" }}>No weeks below capacity in the next {WEEKS}. 🎉</div>
+          {heavyWeeks.length === 0 ? <div style={{ fontSize: 12.5, color: "var(--green)" }}>No weeks below capacity in the next {WEEKS}. <Icon name="trophy" size={14} /></div>
             : heavyWeeks.map((w) => (
               <div key={w.i} style={{ padding: "5px 0", borderBottom: "1px solid var(--line)", fontSize: 12.5 }}>
                 <div style={{ fontWeight: 700, color: "var(--red)" }}>{fmt(w.ws)}–{fmt(w.we)} · {w.outNames.length}/{size} off</div>
@@ -331,7 +332,7 @@ function Dashboard({ data, me, meId, goto }: { data: VacationData; me: Member | 
 
         {/* 7 · Public-holiday coverage */}
         <div style={wCard}>
-          <h2 style={wH}>Holiday coverage <button style={{ ...chipBtn, marginLeft: "auto" }} onClick={() => goto("admin")}>Manage →</button></h2>
+          <h2 style={wH}>Holiday coverage <button style={{ ...chipBtn, marginLeft: "auto" }} onClick={() => goto("admin")}>Manage <Icon name="arrow-right" size={12} /></button></h2>
           {coverage.length === 0 ? <div style={{ fontSize: 12.5, color: "var(--soft)" }}>No public holidays configured.</div>
             : coverage.map(({ h, short }) => (
               <div key={h.id} style={{ display: "flex", gap: 8, alignItems: "center", padding: "5px 0", borderBottom: "1px solid var(--line)", fontSize: 12.5 }}>
@@ -579,7 +580,7 @@ function TeamView({ data, teamId, setTeamId, meId }: { data: VacationData; teamI
                       <th key={i} style={{ fontSize: 10.5, color: "var(--soft)", fontWeight: 600, padding: "4px 2px", minWidth: 54, border: "1px solid var(--line)" }}>
                         <div>{fmt(p.start)}</div><div style={{ fontWeight: 700 }}>{p.tag}</div>
                         {h && <div style={{ fontSize: 9, marginTop: 2 }}><span style={{ ...swatch(h.type === "closure" ? CLOSE : PUB), borderRadius: "50%", width: 6, height: 6 }} /> {h.name.split(" (")[0]}</div>}
-                        {b && <div style={{ fontSize: 9, fontWeight: 700, color: "#ec835a", marginTop: 1 }}>🔥 busy</div>}
+                        {b && <div style={{ fontSize: 9, fontWeight: 700, color: "#ec835a", marginTop: 1 }}><Icon name="flame" size={10} /> busy</div>}
                       </th>
                     );
                   })}
@@ -618,7 +619,7 @@ function TeamView({ data, teamId, setTeamId, meId }: { data: VacationData; teamI
             <div style={{ color: "var(--soft)" }}>
               {whoOut(data, detail.start, detail.end).length} of {data.members.length} out{isClosure(data, detail.start, detail.end) ? " (includes a company closure)" : ""}: {whoOut(data, detail.start, detail.end).join(", ") || "no one"}
             </div>
-            {isBusy(data, detail.start, detail.end) && <span style={{ color: "#ec835a", fontWeight: 600, marginTop: 6, display: "block" }}>⚠ Overlaps a high-stakes period — worth double-checking coverage.</span>}
+            {isBusy(data, detail.start, detail.end) && <span style={{ color: "#ec835a", fontWeight: 600, marginTop: 6, display: "block" }}><Icon name="alert" size={13} /> Overlaps a high-stakes period — worth double-checking coverage.</span>}
           </div>
         )}
       </div>
@@ -643,7 +644,7 @@ function TeamView({ data, teamId, setTeamId, meId }: { data: VacationData; teamI
                   )}
                 </div>
               ))}
-              {data.members.filter(notSubmitted).length === 0 && <div style={{ fontSize: 13, color: "var(--soft)" }}>Everyone has logged something for {open.label}. 🎉</div>}
+              {data.members.filter(notSubmitted).length === 0 && <div style={{ fontSize: 13, color: "var(--soft)" }}>Everyone has logged something for {open.label}. <Icon name="trophy" size={14} /></div>}
               <p style={{ fontSize: 12, color: "var(--soft)", marginTop: 8 }}>Owner/PL view — surfaces gaps before the deadline instead of after.</p>
             </>
           )}
@@ -721,8 +722,8 @@ function BookTimeOff({ data, meEmail }: { data: VacationData; meEmail: string })
 
           {valid && (overlapNames.length >= 2 || busyHit) && (
             <div style={{ marginTop: 12, border: "1px solid #ec835a", background: "rgba(236,131,90,0.08)", borderRadius: 9, padding: "10px 12px", fontSize: 12.5 }}>
-              {overlapNames.length >= 2 && <div>⚠ <strong>{overlapNames.length} teammate(s) already off</strong> then ({overlapNames.slice(0, 5).join(", ")}{overlapNames.length > 5 ? "…" : ""}) — this may push the week below coverage.</div>}
-              {busyHit && <div style={{ marginTop: overlapNames.length >= 2 ? 4 : 0 }}>⚠ Overlaps “{busyHit.label}”, a high-stakes period.</div>}
+              {overlapNames.length >= 2 && <div><Icon name="alert" size={13} /> <strong>{overlapNames.length} teammate(s) already off</strong> then ({overlapNames.slice(0, 5).join(", ")}{overlapNames.length > 5 ? "…" : ""}) — this may push the week below coverage.</div>}
+              {busyHit && <div style={{ marginTop: overlapNames.length >= 2 ? 4 : 0 }}><Icon name="alert" size={13} /> Overlaps “{busyHit.label}”, a high-stakes period.</div>}
               <div style={{ color: "var(--soft)", marginTop: 4 }}>You can still submit — your PL/manager sees it before approving.</div>
             </div>
           )}
@@ -780,7 +781,7 @@ function PlanTrip({ data, meEmail }: { data: VacationData; meEmail: string }) {
           <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 8 }}>{label} — {n} teammate{n === 1 ? "" : "s"} already off {fmtLong(fromD)}–{fmtLong(toD)}</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{out.length ? out.map((nm) => <span key={nm} style={{ background: "rgba(42,120,214,0.1)", color: VAC, fontWeight: 600, fontSize: 12.5, padding: "3px 9px", borderRadius: 999 }}>{nm}</span>) : <span style={{ color: "var(--soft)", fontSize: 13 }}>No one else out.</span>}</div>
           {closureHit && <div style={{ fontSize: 12.5, color: "var(--soft)", marginTop: 8 }}>Includes a company closure ({closureHit.name}).</div>}
-          {busyHit && <div style={{ fontSize: 12.5, color: "#ec835a", fontWeight: 600, marginTop: 6 }}>⚠ Overlaps "{busyHit.label}" — a high-stakes period. Flag with your PL before submitting.</div>}
+          {busyHit && <div style={{ fontSize: 12.5, color: "#ec835a", fontWeight: 600, marginTop: 6 }}><Icon name="alert" size={13} /> Overlaps "{busyHit.label}" — a high-stakes period. Flag with your PL before submitting.</div>}
         </div>
       </div>
       <div style={card}>
@@ -854,7 +855,7 @@ function AdminPanel({ data, busy, mutate }: { data: VacationData; busy: boolean;
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                 {data.members.map((m) => {
                   const on = h.coverage.includes(m.id);
-                  return <button key={m.id} className={"btn-sm " + (on ? "btn-pl" : "btn-ghost")} disabled={busy} onClick={() => mutate(() => api.patch(`/vacation/public-holidays/${h.id}/coverage`, { personId: m.id, assigned: !on }))}>{on ? "✓ " : ""}{m.name}{m.seniority ? ` · ${m.seniority}` : ""}</button>;
+                  return <button key={m.id} className={"btn-sm " + (on ? "btn-pl" : "btn-ghost")} disabled={busy} onClick={() => mutate(() => api.patch(`/vacation/public-holidays/${h.id}/coverage`, { personId: m.id, assigned: !on }))}>{on ? <><Icon name="check" size={12} /> </> : ""}{m.name}{m.seniority ? ` · ${m.seniority}` : ""}</button>;
                 })}
               </div>
               <button className="btn-sm btn-ghost" style={{ color: "var(--red)", marginTop: 8 }} disabled={busy} onClick={() => mutate(() => api.del(`/vacation/public-holidays/${h.id}`))}>Delete holiday</button>
@@ -873,7 +874,7 @@ function AdminPanel({ data, busy, mutate }: { data: VacationData; busy: boolean;
         <h2 style={{ fontSize: 14, margin: "0 0 12px" }}>High-stakes / busy periods</h2>
         {data.busyPeriods.map((b) => (
           <div key={b.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", borderBottom: "1px solid var(--line)" }}>
-            <span style={{ fontSize: 13 }}>🔥</span><span style={{ fontWeight: 600 }}>{b.label}</span>
+            <span style={{ fontSize: 13 }}><Icon name="flame" size={14} /></span><span style={{ fontWeight: 600 }}>{b.label}</span>
             <span style={{ color: "var(--soft)", fontSize: 12 }}>{fmtLong(d(b.startDate))} – {fmtLong(d(b.endDate))}</span>
             <button className="btn-sm btn-ghost" style={{ marginLeft: "auto", color: "var(--red)" }} disabled={busy} onClick={() => mutate(() => api.del(`/vacation/busy-periods/${b.id}`))}>Delete</button>
           </div>

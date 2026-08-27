@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { api, ApiError } from "../api/client";
 import type { Person, Project } from "../api/types";
 import Sheet from "../components/Sheet";
+import { Icon } from "../components/Icon";
 import { initials } from "../lib/format";
 import { useApp } from "../state/AppContext";
 
@@ -90,7 +91,7 @@ export default function TransferPlSheet({
                 {p.practiceArea ? ` · ${p.practiceArea}` : ""}
               </div>
             </div>
-            {selectedId === p.id && <span className="picktag" style={{ marginLeft: "auto" }}>✓ Selected</span>}
+            {selectedId === p.id && <span className="picktag" style={{ marginLeft: "auto" }}><Icon name="check" size={12} /> Selected</span>}
           </button>
         ))}
       </div>

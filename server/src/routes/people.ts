@@ -22,7 +22,7 @@ import {
 } from "../repositories/personalNotes";
 import { listDeliveryCardAssignments } from "../repositories/assignments";
 import { getCoverageSettings } from "../repositories/coverageSettings";
-import { assignmentLoad, remaining } from "../rules/load";
+import { assignmentLoad, personRawRemaining, remaining } from "../rules/load";
 import { dubaiHour } from "../rules/time";
 import { resolveNow } from "../lib/requestTime";
 import { activeInstanceKey } from "../auth/activeInstance";
@@ -90,7 +90,19 @@ const peopleRoutes: FastifyPluginAsync = async (app) => {
       outToLunchSince: person.outToLunchSince,
       lunchAutoOffMin,
       load: assignments.reduce((s, a) => s + a.loadContribution, 0),
-      rawRemaining: assignments.reduce((s, a) => s + a.remaining, 0),
+      // Mirror the load model's exclusions (Selling / no-calls Pitch) via the
+      // shared helper, so "Profiles left" agrees with Load and the ranking's
+      // free/busy call instead of counting profiles the load model zeroes out.
+      rawRemaining: personRawRemaining(
+        rows.map((r) => ({
+          goal: r.goal,
+          delivered: r.delivered,
+          customDelivered: r.customDelivered,
+          stage: r.stage,
+          projectType: r.projectType,
+          projectCallsN: r.projectCallsN,
+        }))
+      ),
       assignments,
     };
   });

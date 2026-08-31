@@ -58,6 +58,14 @@ describe("personRawRemaining — §5d", () => {
     ]);
     expect(raw).toBe(8);
   });
+
+  it("bug fix — excludes Selling ('Admin') remaining, consistent with the load model", () => {
+    const raw = personRawRemaining([
+      { goal: 5, delivered: 0, customDelivered: 0, stage: "Selling" }, // remaining 5, excluded (0 load)
+      { goal: 6, delivered: 2, customDelivered: 0, stage: "First Deliverable" }, // remaining 4, counted
+    ]);
+    expect(raw).toBe(4);
+  });
 });
 
 describe("assignmentLoad / personLoad — §5c", () => {

@@ -67,6 +67,9 @@ export function personLoad(assignments: WeightedAssignment[], dubaiHourValue: nu
 }
 
 export interface RemainingCountable extends AssignmentProgress {
+  /** Optional so pre-existing call sites/tests that only pass progress keep
+   * working; when given, Selling is excluded to mirror assignmentLoad. */
+  stage?: Stage;
   projectType?: ProjectType;
   projectCallsN?: number;
 }
@@ -76,13 +79,17 @@ export interface RemainingCountable extends AssignmentProgress {
  * remaining(a) across a person's assignments, ignoring stage/pool weight
  * entirely. Used only for the median comparison, never for load itself.
  *
- * A no-calls Pitch (callsN === 0) is excluded from this sum, same as it's
- * excluded from load: its profiles are pinned out of the load model
- * entirely, so counting them here would make someone carrying only a Pitch
- * read as busy when the app's own load model says they aren't (bug fix).
+ * The exclusions mirror assignmentLoad exactly, so "profiles left" only ever
+ * counts profiles the load model actually charges for:
+ *  - Selling ("Admin") consumes zero delivery capacity, so its remaining
+ *    profiles are not real pending delivery work — excluded.
+ *  - A no-calls Pitch (callsN === 0) is pinned out of the load model, so
+ *    counting its profiles would make someone carrying only a Pitch read as
+ *    busy when the load model says they aren't.
  */
 export function personRawRemaining(assignments: RemainingCountable[]): number {
   return assignments.reduce((sum, a) => {
+    if (a.stage === "Selling") return sum;
     if (a.projectType === "Pitch" && a.projectCallsN === 0) return sum;
     return sum + remaining(a);
   }, 0);

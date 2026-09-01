@@ -326,6 +326,7 @@ a.client:hover { text-decoration:underline; }
 .ms-head { display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-bottom:9px; }
 .ms-title { font-size:14px; font-weight:700; color:var(--ink); }
 .ms-live { font-size:11px; font-weight:600; color:var(--green); margin-left:4px; }
+.ms-final { font-size:11px; font-weight:700; color:var(--soft); margin-left:4px; text-transform:uppercase; letter-spacing:.04em; }
 .ms-share { font-size:15px; font-weight:800; color:var(--ink); font-variant-numeric:tabular-nums; }
 .ms-bar { height:22px; border-radius:8px; background:var(--bg); border:1px solid var(--line); overflow:hidden; }
 .ms-bar > span { display:block; height:100%; border-radius:7px 0 0 7px; transition:width .4s ease; }

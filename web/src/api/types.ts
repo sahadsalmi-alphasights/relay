@@ -346,14 +346,24 @@ export interface MonthlyReview {
   trend: { month: string; callsSold: number; n: number; share: number | null }[];
   byType: { type: string; callsSold: number; n: number; share: number | null }[];
   byTeam: { team: string; callsSold: number; n: number; share: number | null }[];
+  byPool: { pool: string; callsSold: number; n: number; share: number | null }[];
+  topClients: { client: string; callsSold: number; n: number; share: number | null }[];
   goals: { deliveredTotal: number; goalTotal: number; projectsTotal: number; projectsHit: number };
+  goalDistribution: { bucket: string; count: number }[];
+  stageMix: { stage: string; count: number }[];
+  chase: { projectId: string; client: string; sold: number; delivered: number }[];
+  stuck: { projectId: string; client: string; latestStageEnteredAt: string; daysIdle: number }[];
   pipeline: {
     created: number;
     byType: { type: string; count: number }[];
     byStatus: { open: number; active: number; archived: number; deliveryClosed: number };
   };
+  intakeByPool: { pool: string; count: number }[];
   auditEvents: number;
+  auditByAction: { action: string; count: number }[];
   goalChange: { open: number; resolved: number };
+  goalChangeOutcomes: { accepted: number; declined: number };
+  staleCallsSold: number;
   capacityNow: {
     people: number;
     medianLoad: number;

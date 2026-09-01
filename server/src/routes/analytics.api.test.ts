@@ -152,6 +152,16 @@ describe("GET /analytics/monthly-review", () => {
     expect(b.pipeline.created).toBe(1);
     expect(b.trend).toHaveLength(6);
     expect(b.capacityNow).toHaveProperty("medianLoad");
+    // Enrich blocks are present and shaped.
+    expect(b.byPool.find((p: { pool: string }) => p.pool === "Global").n).toBe(10);
+    expect(b.topClients[0].client).toBe("Acme");
+    expect(b.goalDistribution.find((x: { bucket: string }) => x.bucket === "100%+").count).toBe(1);
+    expect(b.stageMix.find((s: { stage: string }) => s.stage === "First Deliverable").count).toBe(1);
+    expect(Array.isArray(b.chase)).toBe(true);
+    expect(Array.isArray(b.stuck)).toBe(true);
+    expect(b.intakeByPool.find((p: { pool: string }) => p.pool === "Global").count).toBe(1);
+    expect(b.goalChangeOutcomes).toHaveProperty("accepted");
+    expect(typeof b.staleCallsSold).toBe("number");
   });
 
   it("rejects a malformed month", async () => {

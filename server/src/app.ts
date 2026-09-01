@@ -33,6 +33,7 @@ import wsRoutes from "./routes/ws";
 import { startHeartbeat } from "./ws/hub";
 import { startStaleScheduler } from "./services/staleScheduler";
 import { startAdminAutoArchiveScheduler } from "./services/adminAutoArchive";
+import { snapshotClosedMonths, startMarketShareSnapshotScheduler } from "./services/marketShareSnapshot";
 import { startBroadcastRepingScheduler } from "./services/broadcast";
 import { startDailyResetScheduler } from "./services/dailyReset";
 import { startHrSyncScheduler } from "./services/hrSyncScheduler";
@@ -137,6 +138,16 @@ export function buildApp(): FastifyInstance {
   const dailyResetTimer = startDailyResetScheduler();
   const hrSyncTimer = startHrSyncScheduler();
   const adminAutoArchiveTimer = startAdminAutoArchiveScheduler();
+  const marketShareSnapshotTimer = startMarketShareSnapshotScheduler();
+  // Backfill closed months once on boot so history is stored promptly on
+  // deploy (the interval alone would leave it hours). Skipped under test to
+  // keep buildApp() side-effect-free for the fixture-reset suites.
+  if (process.env.NODE_ENV !== "test") {
+    snapshotClosedMonths(new Date()).catch((err) => {
+      // eslint-disable-next-line no-console
+      console.error("market-share snapshot boot backfill failed", err);
+    });
+  }
   app.addHook("onClose", (_instance, done) => {
     clearInterval(heartbeatTimer);
     clearInterval(staleTimer);
@@ -144,6 +155,7 @@ export function buildApp(): FastifyInstance {
     clearInterval(dailyResetTimer);
     clearInterval(hrSyncTimer);
     clearInterval(adminAutoArchiveTimer);
+    clearInterval(marketShareSnapshotTimer);
     done();
   });
 

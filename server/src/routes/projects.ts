@@ -34,6 +34,7 @@ import {
   type ProjectRow,
 } from "../repositories/projects";
 import { countAssignmentsForAngle, seatTargetForAngle } from "../repositories/angles";
+import { hasSnapshot, snapshotBreakdown, snapshotMarketShare, type SnapshotFilter } from "../repositories/marketShareSnapshot";
 import { findPersonById, listPeopleByTeam } from "../repositories/people";
 import { listAvailableCandidatesWithAssignments, sundayRotaPersonIdsForDate } from "../services/candidates";
 import { getCoverageSettings } from "../repositories/coverageSettings";
@@ -1036,23 +1037,50 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
   // CREATED this Dubai-calendar month, INCLUDING soft-deleted ones (the query
   // deliberately omits the deleted filter — see marketShareForMonth). Live:
   // the client refetches on the same WS invalidate as the board.
-  app.get("/market-share", { preHandler: [app.requireAuth] }, async (request) => {
-    const q = request.query as { scope?: string; teamId?: string };
+  // Shared by the bar and the CSV export: resolves the month window and the
+  // scope filters, and decides whether to read a frozen snapshot (any closed
+  // month that's been snapshotted) or compute live (the current month, or a
+  // closed month not yet frozen). Team scope filters live by current
+  // membership but snapshots by the frozen team_id — a snapshot is history.
+  const resolveMarketShareQuery = async (
+    request: import("fastify").FastifyRequest,
+    q: { scope?: string; teamId?: string; month?: string }
+  ) => {
     const actor = request.actor!;
-    const { startIso, endIso, monthKey } = dubaiMonthRange(resolveNow(request));
+    const current = dubaiMonthRange(resolveNow(request));
+    let range: { startIso: string; endIso: string; monthKey: string };
+    try {
+      range = q.month ? dubaiMonthRangeForKey(q.month) : current;
+    } catch {
+      throw badRequest("month must be YYYY-MM");
+    }
 
-    const filter: MarketShareFilter = {};
+    const liveFilter: MarketShareFilter = {};
+    const snapFilter: SnapshotFilter = {};
     if (q.scope === "mine") {
-      filter.plId = actor.id;
+      liveFilter.plId = actor.id;
+      snapFilter.plId = actor.id;
     } else if (q.scope === "team") {
       const teamId = q.teamId && q.teamId !== "all" ? q.teamId : actor.teamId;
-      filter.plIdIn = teamId ? (await listPeopleByTeam(teamId)).map((p) => p.id) : [actor.id];
+      liveFilter.plIdIn = teamId ? (await listPeopleByTeam(teamId)).map((p) => p.id) : [actor.id];
+      snapFilter.teamId = teamId ?? undefined;
     }
-    // scope 'bu' (or anything else) leaves the filter empty = every card.
+    // scope 'bu' (or anything else) leaves both filters empty = every card.
 
-    const { callsSold, n } = await marketShareForMonth(filter, startIso, endIso);
+    const isClosed = range.monthKey !== current.monthKey;
+    const useSnapshot = isClosed && (await hasSnapshot(range.monthKey));
+    return { ...range, useSnapshot, liveFilter, snapFilter };
+  };
+
+  app.get("/market-share", { preHandler: [app.requireAuth] }, async (request) => {
+    const q = request.query as { scope?: string; teamId?: string; month?: string };
+    const s = await resolveMarketShareQuery(request, q);
+    const { callsSold, n } =
+      s.useSnapshot
+        ? await snapshotMarketShare(s.snapFilter, s.monthKey)
+        : await marketShareForMonth(s.liveFilter, s.startIso, s.endIso);
     const share = n > 0 ? callsSold / n : null;
-    return { month: monthKey, callsSold, n, share };
+    return { month: s.monthKey, callsSold, n, share, final: s.useSnapshot };
   });
 
   // Per-card CSV export behind the market-share bar. Owner-only (it can span
@@ -1061,33 +1089,24 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
   // the app otherwise only ever shows the current one.
   app.get("/market-share/export.csv", { preHandler: [app.requireAuth, app.requireOwner] }, async (request, reply) => {
     const q = request.query as { scope?: string; teamId?: string; month?: string };
-    const actor = request.actor!;
-    let range: { startIso: string; endIso: string; monthKey: string };
-    try {
-      range = q.month ? dubaiMonthRangeForKey(q.month) : dubaiMonthRange(resolveNow(request));
-    } catch {
-      throw badRequest("month must be YYYY-MM");
-    }
+    const s = await resolveMarketShareQuery(request, q);
 
-    const filter: MarketShareFilter = {};
-    if (q.scope === "mine") {
-      filter.plId = actor.id;
-    } else if (q.scope === "team") {
-      const teamId = q.teamId && q.teamId !== "all" ? q.teamId : actor.teamId;
-      filter.plIdIn = teamId ? (await listPeopleByTeam(teamId)).map((p) => p.id) : [actor.id];
-    }
-
-    const rows = await marketShareBreakdown(filter, range.startIso, range.endIso);
+    // Closed months read from the frozen snapshot (the true end-of-month
+    // figures); the current month, or a not-yet-frozen closed month, computes
+    // live off the mutable angle rows.
+    const rows = s.useSnapshot
+      ? await snapshotBreakdown(s.snapFilter, s.monthKey)
+      : await marketShareBreakdown(s.liveFilter, s.startIso, s.endIso);
     const esc = (v: string | number): string => {
-      const s = String(v);
-      return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      const str = String(v);
+      return /[",\r\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
     };
     const header = ["Month", "Team", "PL", "Client", "Angle", "Calls sold", "N (calls wanted)", "Share", "Project created", "Deleted"];
     const lines = [header.join(",")];
     for (const r of rows) {
       const share = r.callsN > 0 ? (r.callsSold / r.callsN).toFixed(4) : "";
       lines.push([
-        range.monthKey,
+        s.monthKey,
         esc(r.teamName ?? ""),
         esc(r.plName),
         esc(r.client),
@@ -1104,7 +1123,7 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
     const scopeTag = q.scope === "mine" ? "mine" : q.scope === "team" ? "team" : "bu";
     reply
       .header("Content-Type", "text/csv; charset=utf-8")
-      .header("Content-Disposition", `attachment; filename="market-share-${range.monthKey}-${scopeTag}.csv"`)
+      .header("Content-Disposition", `attachment; filename="market-share-${s.monthKey}-${scopeTag}.csv"`)
       .send(csv);
   });
 

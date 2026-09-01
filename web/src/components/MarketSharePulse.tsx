@@ -9,6 +9,7 @@ interface MarketShare {
   callsSold: number;
   n: number;
   share: number | null; // null when n === 0
+  final?: boolean; // true = read from a frozen month-end snapshot (a closed month)
 }
 
 const MONTHS = [
@@ -72,14 +73,15 @@ export default function MarketSharePulse({
 
   useEffect(() => {
     let alive = true;
+    const monthQ = exportMonth ? `&month=${exportMonth}` : "";
     api
-      .get<MarketShare>(`/projects/market-share?${params}`)
+      .get<MarketShare>(`/projects/market-share?${params}${monthQ}`)
       .then((d) => alive && setData(d))
       .catch(() => alive && setData(null));
     return () => {
       alive = false;
     };
-  }, [params, reloadTick]);
+  }, [params, reloadTick, exportMonth]);
 
   async function downloadCsv(monthKey: string) {
     setDownloading(true);
@@ -114,13 +116,18 @@ export default function MarketSharePulse({
   const hover =
     share != null
       ? `${callsSold} sold of ${n} possible · ${pct}% share (${scopeLabel}, ${monthName} ${year})`
-      : `No N yet this month — nothing to measure share against (${scopeLabel})`;
+      : `No N recorded for ${monthName} ${year} (${scopeLabel}), nothing to measure share against`;
 
   return (
     <div className="ms-card" title={hover}>
       <div className="ms-head">
         <span className="ms-title">
-          Market share — {monthName} <span className="ms-live"><Icon name="dot" /> live</span>
+          Market share — {monthName}{" "}
+          {data.final ? (
+            <span className="ms-final">final</span>
+          ) : (
+            <span className="ms-live"><Icon name="dot" /> live</span>
+          )}
         </span>
         {actor.isOwner && (
           <span className="ms-export" onClick={(e) => e.stopPropagation()}>

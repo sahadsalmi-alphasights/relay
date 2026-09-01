@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { api } from "../api/client";
+import { api, apiBaseUrl } from "../api/client";
+import { useApp } from "../state/AppContext";
 import type { Scope } from "./Header";
 import { Icon } from "./Icon";
 
@@ -14,6 +15,20 @@ const MONTHS = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
 ];
+
+// The last `count` months as { key: "YYYY-MM", label: "August 2026" }, newest
+// first, anchored on the month the bar is currently showing so the picker and
+// the bar always agree on "this month".
+function recentMonths(anchorKey: string, count: number): { key: string; label: string }[] {
+  const [y, m] = anchorKey.split("-").map(Number);
+  const out: { key: string; label: string }[] = [];
+  for (let i = 0; i < count; i++) {
+    const d = new Date(Date.UTC(y, m - 1 - i, 1));
+    const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+    out.push({ key, label: `${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}` });
+  }
+  return out;
+}
 
 // Tier by market share, inclusive-lower edges: <33% red, 33–<50% yellow,
 // 50–<75% green, >=75% gold (gold reads as top-tier; platinum looks disabled).
@@ -42,15 +57,20 @@ export default function MarketSharePulse({
   teamView: string;
   reloadTick: number;
 }) {
+  const { actor } = useApp();
   const [data, setData] = useState<MarketShare | null>(null);
+  const [exportMonth, setExportMonth] = useState<string | null>(null);
+  const [downloading, setDownloading] = useState(false);
+
+  const params =
+    scope === "mine"
+      ? "scope=mine"
+      : teamView === "all"
+      ? "scope=bu"
+      : `scope=team${teamView ? `&teamId=${teamView}` : ""}`;
+  const scopeTag = scope === "mine" ? "mine" : teamView === "all" ? "bu" : "team";
 
   useEffect(() => {
-    const params =
-      scope === "mine"
-        ? "scope=mine"
-        : teamView === "all"
-        ? "scope=bu"
-        : `scope=team${teamView ? `&teamId=${teamView}` : ""}`;
     let alive = true;
     api
       .get<MarketShare>(`/projects/market-share?${params}`)
@@ -59,7 +79,30 @@ export default function MarketSharePulse({
     return () => {
       alive = false;
     };
-  }, [scope, teamView, reloadTick]);
+  }, [params, reloadTick]);
+
+  async function downloadCsv(monthKey: string) {
+    setDownloading(true);
+    try {
+      const res = await fetch(`${apiBaseUrl}/projects/market-share/export.csv?${params}&month=${monthKey}`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error(`export failed (${res.status})`);
+      const blob = await res.blob();
+      const objUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = objUrl;
+      a.download = `market-share-${monthKey}-${scopeTag}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(objUrl);
+    } catch {
+      // Surface nothing intrusive; the button simply re-enables so it can be retried.
+    } finally {
+      setDownloading(false);
+    }
+  }
 
   if (!data) return null;
   const { callsSold, n, share } = data;
@@ -79,6 +122,27 @@ export default function MarketSharePulse({
         <span className="ms-title">
           Market share — {monthName} <span className="ms-live"><Icon name="dot" /> live</span>
         </span>
+        {actor.isOwner && (
+          <span className="ms-export" onClick={(e) => e.stopPropagation()}>
+            <select
+              className="ms-export-month"
+              value={exportMonth ?? data.month}
+              onChange={(e) => setExportMonth(e.target.value)}
+              aria-label="Export month"
+            >
+              {recentMonths(data.month, 12).map((m) => (
+                <option key={m.key} value={m.key}>{m.label}</option>
+              ))}
+            </select>
+            <button
+              className="ms-export-btn"
+              disabled={downloading}
+              onClick={() => downloadCsv(exportMonth ?? data.month)}
+            >
+              <Icon name="arrow-down" size={13} /> {downloading ? "Preparing…" : "CSV"}
+            </button>
+          </span>
+        )}
         <span className="ms-share">{pct != null ? `${pct}% share` : "— share"}</span>
       </div>
       <div className={"ms-bar" + (share == null ? " ms-bar-empty" : "")}>

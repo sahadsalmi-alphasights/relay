@@ -178,6 +178,69 @@ export async function marketShareForMonth(
   return { callsSold: Number(rows[0].callsSold), n: Number(rows[0].n) };
 }
 
+export interface MarketShareBreakdownRow {
+  projectId: string;
+  client: string;
+  angleName: string;
+  plName: string;
+  teamName: string | null;
+  callsSold: number;
+  callsN: number;
+  createdAt: string;
+  deleted: boolean;
+}
+
+/**
+ * Per-angle detail behind marketShareForMonth, for the CSV export. Same window
+ * and same filter/soft-delete semantics as the aggregate (deleted cards still
+ * count — a `deleted` flag is surfaced so the export stays honest), so summing
+ * the rows reproduces the bar exactly.
+ */
+export async function marketShareBreakdown(
+  filter: MarketShareFilter,
+  monthStartIso: string,
+  monthEndIso: string
+): Promise<MarketShareBreakdownRow[]> {
+  const clauses = ["p.created_at >= $1", "p.created_at < $2"];
+  const params: unknown[] = [monthStartIso, monthEndIso];
+  if (filter.plId) {
+    params.push(filter.plId);
+    clauses.push(`p.pl_id = $${params.length}`);
+  } else if (filter.plIdIn) {
+    params.push(filter.plIdIn);
+    clauses.push(`p.pl_id = ANY($${params.length})`);
+  }
+  const { rows } = await pool.query<{
+    projectId: string;
+    client: string;
+    angleName: string;
+    plName: string;
+    teamName: string | null;
+    callsSold: number;
+    callsN: number;
+    createdAt: string;
+    deleted: boolean;
+  }>(
+    `SELECT p.id AS "projectId", p.client, ang.name AS "angleName",
+            pl.name AS "plName", t.name AS "teamName",
+            ang.calls_sold::int AS "callsSold", ang.calls_n::int AS "callsN",
+            p.created_at AS "createdAt", (p.deleted_at IS NOT NULL) AS "deleted"
+     FROM project p
+     JOIN angle ang ON ang.project_id = p.id
+     JOIN person pl ON pl.id = p.pl_id
+     LEFT JOIN team t ON t.id = pl.team_id
+     WHERE ${clauses.join(" AND ")}
+     ORDER BY t.name NULLS LAST, pl.name, p.client, ang.name`,
+    params
+  );
+  return rows.map((r) => ({
+    ...r,
+    callsSold: Number(r.callsSold),
+    callsN: Number(r.callsN),
+    createdAt: new Date(r.createdAt).toISOString(),
+  }));
+}
+
 export interface CreateProjectInput {
   plId: string;
   client: string;

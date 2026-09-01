@@ -6,6 +6,7 @@ import Sidebar from "./components/Sidebar";
 import { Icon } from "./components/Icon";
 import TopBar from "./components/TopBar";
 import AuditLogTab from "./tabs/AuditLogTab";
+import MonthlyReviewTab from "./tabs/MonthlyReviewTab";
 import CapacityRankingTab from "./tabs/CapacityRankingTab";
 import DeliveryTab from "./tabs/DeliveryTab";
 import FirstDeliverablesTab from "./tabs/FirstDeliverablesTab";
@@ -45,7 +46,7 @@ export default function Shell() {
   // Persist the active tab so a page refresh keeps you where you were instead of
   // snapping back to PL (the home board). Restored from localStorage on load.
   const TAB_KEY = "relay.activeTab";
-  const VALID_TABS: Tab[] = ["PL", "Delivery", "Ranking", "GhostRanking", "FirstDel", "AuditLog", "Users", "SundayRota", "Vacation"];
+  const VALID_TABS: Tab[] = ["PL", "Delivery", "Ranking", "GhostRanking", "FirstDel", "AuditLog", "Analytics", "Users", "SundayRota", "Vacation"];
   const [tab, setTab] = useState<Tab>(() => {
     try {
       const saved = localStorage.getItem(TAB_KEY) as Tab | null;
@@ -293,6 +294,7 @@ export default function Shell() {
       {tab === "GhostRanking" && <CapacityRankingTab reloadTick={reloadTick} ghostOnly />}
       {tab === "FirstDel" && <FirstDeliverablesTab scope={scope} reloadTick={reloadTick} onCount={setFdCount} />}
       {tab === "AuditLog" && <AuditLogTab reloadTick={reloadTick} />}
+      {tab === "Analytics" && <MonthlyReviewTab reloadTick={reloadTick} />}
       {tab === "Users" && <SettingsTab reloadTick={reloadTick} onReload={bumpReload} />}
       {tab === "SundayRota" && <SundayCoverageTab reloadTick={reloadTick} />}
       {tab === "Vacation" && <VacationTab reloadTick={reloadTick} />}

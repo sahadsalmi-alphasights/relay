@@ -107,3 +107,57 @@ describe("GET /analytics", () => {
     expect(team?.count).toBe(3);
   });
 });
+
+describe("GET /analytics/monthly-review", () => {
+  it("rejects a non-owner", async () => {
+    const cookie = await loginAs(app, fx.plAlpha); // manager, not owner
+    const res = await get(app, cookie, "/analytics/monthly-review");
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("returns the month's commercial, delivery, pipeline and live capacity blocks", async () => {
+    // Isolate from the fixture's seeded project so the month totals are exact.
+    await pool.query(`DELETE FROM assignment`);
+    await pool.query(`DELETE FROM angle`);
+    await pool.query(`DELETE FROM project`);
+    // A project created this month with an angle (3 sold of 10) and a
+    // non-ghost assignment that hit its goal (goal 4, delivered 4).
+    const { rows: pr } = await pool.query<{ id: string }>(
+      `INSERT INTO project (pl_id, client, project_link, project_type, expert_pool, status, created_at)
+       VALUES ($1, 'Acme', 'https://x.test/a', 'Strategy', 'Global', 'active', now()) RETURNING id`,
+      [fx.plAlpha]
+    );
+    const { rows: ar } = await pool.query<{ id: string }>(
+      `INSERT INTO angle (project_id, name, calls_n, goal_total, calls_sold) VALUES ($1, 'Main', 10, 4, 3) RETURNING id`,
+      [pr[0].id]
+    );
+    await pool.query(
+      `INSERT INTO assignment (angle_id, deliverer_id, goal, delivered, custom_goal, custom_delivered, stage)
+       VALUES ($1, $2, 4, 4, 0, 0, 'First Deliverable')`,
+      [ar[0].id, fx.delivererAlpha]
+    );
+
+    await makeOwner(fx.plAlpha);
+    const cookie = await loginAs(app, fx.plAlpha);
+    const res = await get(app, cookie, "/analytics/monthly-review");
+    expect(res.statusCode).toBe(200);
+    const b = res.json();
+
+    expect(b.marketShare.callsSold).toBe(3);
+    expect(b.marketShare.n).toBe(10);
+    expect(b.byType.find((t: { type: string }) => t.type === "Strategy").callsSold).toBe(3);
+    expect(b.goals.projectsTotal).toBe(1);
+    expect(b.goals.projectsHit).toBe(1);
+    expect(b.goals.deliveredTotal).toBe(4);
+    expect(b.pipeline.created).toBe(1);
+    expect(b.trend).toHaveLength(6);
+    expect(b.capacityNow).toHaveProperty("medianLoad");
+  });
+
+  it("rejects a malformed month", async () => {
+    await makeOwner(fx.plAlpha);
+    const cookie = await loginAs(app, fx.plAlpha);
+    const res = await get(app, cookie, "/analytics/monthly-review?month=2026-13");
+    expect(res.statusCode).toBe(400);
+  });
+});

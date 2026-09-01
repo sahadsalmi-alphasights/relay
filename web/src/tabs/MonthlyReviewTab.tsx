@@ -1,0 +1,244 @@
+import { useEffect, useMemo, useState } from "react";
+import { api } from "../api/client";
+import type { MonthlyReview } from "../api/types";
+import { useApp } from "../state/AppContext";
+
+const MONTHS = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+type Sub = "ov" | "co" | "de" | "pe" | "pi";
+const SUBS: { k: Sub; label: string }[] = [
+  { k: "ov", label: "Overview" },
+  { k: "co", label: "Commercial" },
+  { k: "de", label: "Delivery" },
+  { k: "pe", label: "People & Capacity" },
+  { k: "pi", label: "Pipeline & Governance" },
+];
+
+function monthLabel(key: string): string {
+  const [y, m] = key.split("-").map(Number);
+  return `${MONTHS[m - 1]} ${y}`;
+}
+function recentMonths(count: number): { key: string; label: string }[] {
+  const now = new Date();
+  const out: { key: string; label: string }[] = [];
+  for (let i = 0; i < count; i++) {
+    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+    const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+    out.push({ key, label: `${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}` });
+  }
+  return out;
+}
+const pctOf = (s: number | null): string => (s == null ? "—" : `${Math.round(s * 100)}%`);
+
+/** One labelled progress bar. tone drives the fill colour. */
+function Bar({ label, value, pct, tone = "accent" }: { label: string; value: string; pct: number; tone?: "accent" | "good" | "warn" | "bad" | "mut" }) {
+  const bg =
+    tone === "good" ? "var(--green)" : tone === "warn" ? "var(--amber)" : tone === "bad" ? "var(--red)" : "var(--pl)";
+  return (
+    <div className="mr-bar">
+      <span className="mr-bl">{label}</span>
+      <span className="mr-bt"><span className="mr-bf" style={{ width: `${Math.max(2, Math.min(100, pct))}%`, background: bg, opacity: tone === "mut" ? 0.32 : 1 }} /></span>
+      <span className="mr-bv">{value}</span>
+    </div>
+  );
+}
+function Kpi({ k, v, d, tone }: { k: string; v: string; d?: string; tone?: "up" | "down" | "flat" }) {
+  return (
+    <div className="mr-kpi">
+      <div className="mr-k">{k}</div>
+      <div className="mr-v">{v}</div>
+      {d && <div className={"mr-d mr-" + (tone ?? "flat")}>{d}</div>}
+    </div>
+  );
+}
+
+export default function MonthlyReviewTab({ reloadTick }: { reloadTick: number }) {
+  const { teamNameOf } = useApp();
+  const [month, setMonth] = useState<string | null>(null);
+  const [sub, setSub] = useState<Sub>("ov");
+  const [data, setData] = useState<MonthlyReview | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const months = useMemo(() => recentMonths(12), []);
+
+  useEffect(() => {
+    setError(null);
+    api
+      .get<MonthlyReview>(`/analytics/monthly-review${month ? `?month=${month}` : ""}`)
+      .then(setData)
+      .catch(() => setError("Could not load the monthly review."));
+  }, [month, reloadTick]);
+
+  if (error) return (<><div className="section-lbl">Analytics</div><div className="empty">{error}</div></>);
+  if (!data) return <div className="empty">Loading…</div>;
+
+  const d = data;
+  const trendMax = Math.max(0.01, ...d.trend.map((t) => t.share ?? 0));
+  const goalPct = d.goals.goalTotal > 0 ? d.goals.deliveredTotal / d.goals.goalTotal : 0;
+  const hitPct = d.goals.projectsTotal > 0 ? d.goals.projectsHit / d.goals.projectsTotal : 0;
+  const maxTypeN = Math.max(1, ...d.byType.map((t) => t.n));
+  const maxCreated = Math.max(1, ...d.pipeline.byType.map((t) => t.count));
+  const maxLoad = Math.max(1, ...d.capacityNow.byTeam.map((t) => t.avgLoad));
+
+  return (
+    <>
+      <div className="mr-head">
+        <div className="section-lbl" style={{ margin: 0 }}>
+          Analytics <span className="mini team">Monthly review</span>
+          {d.isFrozen ? <span className="mini off" style={{ marginLeft: 6 }}>Final</span> : <span className="ms-live" style={{ marginLeft: 6 }}>live</span>}
+        </div>
+        <select className="mr-month" value={month ?? d.month} onChange={(e) => setMonth(e.target.value)} aria-label="Month">
+          {months.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
+        </select>
+      </div>
+
+      <div className="mr-tabs">
+        {SUBS.map((s) => (
+          <button key={s.k} className={"mr-tab" + (sub === s.k ? " on" : "")} onClick={() => setSub(s.k)}>{s.label}</button>
+        ))}
+      </div>
+
+      {/* OVERVIEW */}
+      {sub === "ov" && (
+        <>
+          <div className="mr-kpis">
+            <Kpi k="Market share" v={pctOf(d.marketShare.share)} />
+            <Kpi k="Calls sold" v={String(d.marketShare.callsSold)} />
+            <Kpi k="Demand (N)" v={String(d.marketShare.n)} />
+            <Kpi k="Projects hit goal" v={pctOf(hitPct)} d={`${d.goals.projectsHit} of ${d.goals.projectsTotal}`} />
+            <Kpi k="Median load (now)" v={d.capacityNow.medianLoad.toFixed(1)} />
+          </div>
+          <div className="mr-cards">
+            <div className="mr-card">
+              <h3>Market share trend</h3>
+              <div className="mr-cs">Calls sold ÷ demand · last 6 months</div>
+              <div className="mr-trend">
+                {d.trend.map((t) => (
+                  <div className="mr-tcol" key={t.month}>
+                    <div className="mr-tbar" style={{ height: `${Math.max(4, ((t.share ?? 0) / trendMax) * 100)}%`, opacity: t.month === d.month ? 1 : 0.4 }}>
+                      <b>{pctOf(t.share)}</b>
+                    </div>
+                    <div className="mr-tcl">{monthLabel(t.month).slice(0, 3)}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="mr-card">
+              <h3>Team health</h3>
+              <div className="mr-cs">Market share by team, this month</div>
+              {d.byTeam.length === 0 ? <div className="empty" style={{ padding: 8 }}>No cards this month.</div> :
+                d.byTeam.map((t) => (
+                  <Bar key={t.team} label={t.team.replace("Team_", "")} value={pctOf(t.share)} pct={(t.share ?? 0) * 100}
+                    tone={(t.share ?? 0) >= 0.6 ? "good" : (t.share ?? 0) >= 0.33 ? "accent" : "warn"} />
+                ))}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* COMMERCIAL */}
+      {sub === "co" && (
+        <>
+          <div className="mr-cards">
+            <div className="mr-card">
+              <h3>Demand vs captured</h3>
+              <div className="mr-cs">This month, org-wide</div>
+              <Bar label="Demand (N)" value={String(d.marketShare.n)} pct={100} tone="mut" />
+              <Bar label="Calls sold" value={String(d.marketShare.callsSold)} pct={d.marketShare.share ? d.marketShare.share * 100 : 0} />
+              <div className="mr-cs" style={{ marginTop: 10 }}>Overall market share <b>{pctOf(d.marketShare.share)}</b></div>
+            </div>
+            <div className="mr-card">
+              <h3>Conversion by project type</h3>
+              <div className="mr-cs">Calls sold ÷ demand</div>
+              {d.byType.map((t) => (
+                <Bar key={t.type} label={t.type} value={pctOf(t.share)} pct={(t.share ?? 0) * 100}
+                  tone={(t.share ?? 0) >= 0.6 ? "good" : "accent"} />
+              ))}
+            </div>
+          </div>
+          <div className="mr-card">
+            <h3>Demand by project type</h3>
+            <div className="mr-cs">Where the calls are wanted</div>
+            {d.byType.map((t) => (
+              <Bar key={t.type} label={t.type} value={String(t.n)} pct={(t.n / maxTypeN) * 100} tone="mut" />
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* DELIVERY */}
+      {sub === "de" && (
+        <>
+          <div className="mr-kpis">
+            <Kpi k="Profiles delivered" v={d.goals.deliveredTotal.toLocaleString()} />
+            <Kpi k="Goal total" v={d.goals.goalTotal.toLocaleString()} />
+            <Kpi k="Delivered ÷ goal" v={pctOf(goalPct)} />
+            <Kpi k="Projects hit goal" v={pctOf(hitPct)} d={`${d.goals.projectsHit} of ${d.goals.projectsTotal}`} />
+          </div>
+          <div className="mr-card">
+            <h3>Goal attainment</h3>
+            <div className="mr-cs">Profiles delivered vs goal, projects created this month</div>
+            <Bar label="Delivered" value={d.goals.deliveredTotal.toLocaleString()} pct={goalPct * 100}
+              tone={goalPct >= 0.85 ? "good" : goalPct >= 0.6 ? "warn" : "bad"} />
+            <Bar label="Goal" value={d.goals.goalTotal.toLocaleString()} pct={100} tone="mut" />
+          </div>
+          <p className="foot-note">Delivery is measured on projects created in the selected month, ghosts excluded. First-deliverable timing will be added once stage history is captured per transition.</p>
+        </>
+      )}
+
+      {/* PEOPLE & CAPACITY */}
+      {sub === "pe" && (
+        <>
+          <div className="mr-kpis">
+            <Kpi k="Deliverers" v={String(d.capacityNow.people)} />
+            <Kpi k="Median load" v={d.capacityNow.medianLoad.toFixed(1)} />
+            <Kpi k="Over median" v={String(d.capacityNow.overMedian)} />
+            <Kpi k="Idle (no load)" v={String(d.capacityNow.idle)} />
+          </div>
+          <div className="mr-card">
+            <h3>Load distribution by team</h3>
+            <div className="mr-cs">Average weighted load right now (live)</div>
+            {d.capacityNow.byTeam.length === 0 ? <div className="empty" style={{ padding: 8 }}>No deliverers online.</div> :
+              d.capacityNow.byTeam.map((t) => (
+                <Bar key={t.teamId ?? "none"} label={(teamNameOf(t.teamId) || "Unassigned").replace("Team_", "")}
+                  value={t.avgLoad.toFixed(1)} pct={(t.avgLoad / maxLoad) * 100}
+                  tone={t.avgLoad >= maxLoad * 0.8 ? "bad" : t.avgLoad >= maxLoad * 0.5 ? "warn" : "accent"} />
+              ))}
+          </div>
+          <p className="foot-note">Capacity is a live snapshot of the deliverer pool in your active instance, not a monthly average.</p>
+        </>
+      )}
+
+      {/* PIPELINE & GOVERNANCE */}
+      {sub === "pi" && (
+        <>
+          <div className="mr-kpis">
+            <Kpi k="New projects" v={String(d.pipeline.created)} />
+            <Kpi k="Active" v={String(d.pipeline.byStatus.active)} />
+            <Kpi k="Archived" v={String(d.pipeline.byStatus.archived)} />
+            <Kpi k="Delivery closed" v={String(d.pipeline.byStatus.deliveryClosed)} />
+          </div>
+          <div className="mr-cards">
+            <div className="mr-card">
+              <h3>New projects by type</h3>
+              <div className="mr-cs">Created this month</div>
+              {d.pipeline.byType.length === 0 ? <div className="empty" style={{ padding: 8 }}>No new projects.</div> :
+                d.pipeline.byType.map((t) => (
+                  <Bar key={t.type} label={t.type} value={String(t.count)} pct={(t.count / maxCreated) * 100} />
+                ))}
+            </div>
+            <div className="mr-card">
+              <h3>Governance &amp; hygiene</h3>
+              <div className="mr-cs">Current</div>
+              <div className="mr-line"><span>Goal-change requests open</span><b>{d.goalChange.open}</b></div>
+              <div className="mr-line"><span>Goal-change resolved</span><b>{d.goalChange.resolved}</b></div>
+              <div className="mr-line"><span>Audit events this month</span><b>{d.auditEvents.toLocaleString()}</b></div>
+            </div>
+          </div>
+        </>
+      )}
+    </>
+  );
+}

@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState } from "react";
-import { api, ApiError } from "../api/client";
+import { api, apiBaseUrl, ApiError } from "../api/client";
 import type { AuditLogEntry, AuditLogPage } from "../api/types";
 import { useViewport } from "../lib/useViewport";
 import { useApp } from "../state/AppContext";
@@ -69,7 +69,7 @@ interface Filters {
 
 const EMPTY_FILTERS: Filters = { entityType: "", actorId: "", action: "", from: "", to: "" };
 
-function buildQuery(filters: Filters, offset: number): string {
+function filterParams(filters: Filters): URLSearchParams {
   const params = new URLSearchParams();
   if (filters.entityType) params.set("entityType", filters.entityType);
   if (filters.actorId) params.set("actorId", filters.actorId);
@@ -79,6 +79,11 @@ function buildQuery(filters: Filters, offset: number): string {
   // two by the local UTC offset and clipping boundary entries.
   if (filters.from) params.set("from", new Date(filters.from + "T00:00:00.000Z").toISOString());
   if (filters.to) params.set("to", new Date(filters.to + "T23:59:59.999Z").toISOString());
+  return params;
+}
+
+function buildQuery(filters: Filters, offset: number): string {
+  const params = filterParams(filters);
   params.set("limit", String(PAGE_SIZE));
   params.set("offset", String(offset));
   return params.toString();
@@ -127,6 +132,41 @@ export default function AuditLogTab({ reloadTick }: { reloadTick: number }) {
     setExpanded(null);
     setFilters((f) => ({ ...f, ...patch }));
   };
+
+  const [downloading, setDownloading] = useState(false);
+  async function downloadCsv() {
+    setDownloading(true);
+    try {
+      const res = await fetch(`${apiBaseUrl}/audit-log/export.csv?${filterParams(filters).toString()}`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error(`export failed (${res.status})`);
+      const blob = await res.blob();
+      const objUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = objUrl;
+      a.download = "audit-log.csv";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(objUrl);
+    } catch {
+      // Leave the button re-enabled so it can be retried.
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  const header = (title: string, count?: number) => (
+    <div className="section-lbl" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <span>
+        {title} {count != null && <span className="count">{count}</span>}
+      </span>
+      <button className="btn-sm btn-ghost" style={{ marginLeft: "auto" }} disabled={downloading} onClick={downloadCsv}>
+        <Icon name="arrow-down" size={13} /> {downloading ? "Preparing…" : "Export CSV"}
+      </button>
+    </div>
+  );
 
   const filterBar = (
     <div className="audit-filters">
@@ -184,9 +224,7 @@ export default function AuditLogTab({ reloadTick }: { reloadTick: number }) {
   if (isDesktop) {
     return (
       <>
-        <div className="section-lbl">
-          Audit log <span className="count">{page.total}</span>
-        </div>
+        {header("Audit log", page.total)}
         {filterBar}
         {page.items.length === 0 ? (
           <div className="empty">No matching audit entries.</div>
@@ -232,9 +270,7 @@ export default function AuditLogTab({ reloadTick }: { reloadTick: number }) {
 
   return (
     <>
-      <div className="section-lbl">
-        Audit log <span className="count">{page.total}</span>
-      </div>
+      {header("Audit log", page.total)}
       {filterBar}
       {page.items.length === 0 && <div className="empty">No matching audit entries.</div>}
       {page.items.map((entry) => (

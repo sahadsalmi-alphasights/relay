@@ -5,6 +5,9 @@ import { canViewAuditLog } from "../rules/permissions";
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
+// Export pulls the whole filtered set in one go rather than paginating. Capped
+// so a filter-less export of a huge trail can't stream unbounded memory.
+const EXPORT_MAX = 50_000;
 
 interface AuditLogQuery {
   entityType?: string;
@@ -53,6 +56,53 @@ const auditLogRoutes: FastifyPluginAsync = async (app) => {
       offset,
     });
     return { items, total };
+  });
+
+  // CSV export of the current filtered view. Same access gate and same
+  // filters as the list; pulls up to EXPORT_MAX rows (no pagination).
+  app.get<{ Querystring: AuditLogQuery }>("/export.csv", { preHandler: [app.requireAuth] }, async (request, reply) => {
+    const actor = request.actor!;
+    if (!canViewAuditLog(actor)) throw forbidden("your group does not have audit-log access");
+
+    const q = request.query ?? {};
+    const { items } = await listAuditLog({
+      entityType: q.entityType,
+      entityId: q.entityId,
+      actorId: q.actorId,
+      action: q.action,
+      from: q.from,
+      to: q.to,
+      limit: EXPORT_MAX,
+      offset: 0,
+    });
+
+    const esc = (v: string | number): string => {
+      const str = String(v);
+      return /[",\r\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+    };
+    const jsonCell = (v: unknown): string => (v === null || v === undefined ? "" : typeof v === "object" ? JSON.stringify(v) : String(v));
+    const header = ["When (UTC)", "Who", "Email", "Action", "Entity type", "Entity id", "Old value", "New value"];
+    const lines = [header.join(",")];
+    for (const it of items) {
+      lines.push(
+        [
+          new Date(it.createdAt).toISOString(),
+          esc(it.actor?.name ?? ""),
+          esc(it.actor?.email ?? ""),
+          esc(it.action),
+          esc(it.entityType),
+          esc(it.entityId),
+          esc(jsonCell(it.oldValue)),
+          esc(jsonCell(it.newValue)),
+        ].join(",")
+      );
+    }
+    // UTF-8 BOM so Excel opens it cleanly.
+    const csv = "﻿" + lines.join("\r\n") + "\r\n";
+    reply
+      .header("Content-Type", "text/csv; charset=utf-8")
+      .header("Content-Disposition", 'attachment; filename="audit-log.csv"')
+      .send(csv);
   });
 };
 

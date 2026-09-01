@@ -22,6 +22,7 @@ import {
   createProject,
   findProjectById,
   listProjects,
+  marketShareBreakdown,
   marketShareForMonth,
   reopenDeliveryForProject,
   resurfaceProject,
@@ -44,7 +45,7 @@ import { resolveNow } from "../lib/requestTime";
 import { canArchiveProject, canEditProjectFields } from "../rules/permissions";
 import { isProjectLifecycleQuiet, needsCallsSoldUpdateToday, needsChaseClient } from "../rules/project";
 import { suggestGoal, suggestStaffing } from "../rules/suggestedGoal";
-import { dubaiDateKey, dubaiHour, dubaiMonthRange, isSunday } from "../rules/time";
+import { dubaiDateKey, dubaiHour, dubaiMonthRange, dubaiMonthRangeForKey, isSunday } from "../rules/time";
 import type { ProjectType } from "../rules/types";
 import { isValidHttpUrl } from "../rules/url";
 import { notifyBroadcastRecipients } from "../services/broadcast";
@@ -1052,6 +1053,59 @@ const projectsRoutes: FastifyPluginAsync = async (app) => {
     const { callsSold, n } = await marketShareForMonth(filter, startIso, endIso);
     const share = n > 0 ? callsSold / n : null;
     return { month: monthKey, callsSold, n, share };
+  });
+
+  // Per-card CSV export behind the market-share bar. Owner-only (it can span
+  // the whole BU, and market share is not member-facing data). Same scope
+  // filters as the bar, plus an optional ?month=YYYY-MM to pull a past month —
+  // the app otherwise only ever shows the current one.
+  app.get("/market-share/export.csv", { preHandler: [app.requireAuth, app.requireOwner] }, async (request, reply) => {
+    const q = request.query as { scope?: string; teamId?: string; month?: string };
+    const actor = request.actor!;
+    let range: { startIso: string; endIso: string; monthKey: string };
+    try {
+      range = q.month ? dubaiMonthRangeForKey(q.month) : dubaiMonthRange(resolveNow(request));
+    } catch {
+      throw badRequest("month must be YYYY-MM");
+    }
+
+    const filter: MarketShareFilter = {};
+    if (q.scope === "mine") {
+      filter.plId = actor.id;
+    } else if (q.scope === "team") {
+      const teamId = q.teamId && q.teamId !== "all" ? q.teamId : actor.teamId;
+      filter.plIdIn = teamId ? (await listPeopleByTeam(teamId)).map((p) => p.id) : [actor.id];
+    }
+
+    const rows = await marketShareBreakdown(filter, range.startIso, range.endIso);
+    const esc = (v: string | number): string => {
+      const s = String(v);
+      return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const header = ["Month", "Team", "PL", "Client", "Angle", "Calls sold", "N (calls wanted)", "Share", "Project created", "Deleted"];
+    const lines = [header.join(",")];
+    for (const r of rows) {
+      const share = r.callsN > 0 ? (r.callsSold / r.callsN).toFixed(4) : "";
+      lines.push([
+        range.monthKey,
+        esc(r.teamName ?? ""),
+        esc(r.plName),
+        esc(r.client),
+        esc(r.angleName),
+        r.callsSold,
+        r.callsN,
+        share,
+        r.createdAt,
+        r.deleted ? "yes" : "no",
+      ].join(","));
+    }
+    // Excel opens UTF-8 correctly only with a BOM; harmless everywhere else.
+    const csv = "﻿" + lines.join("\r\n") + "\r\n";
+    const scopeTag = q.scope === "mine" ? "mine" : q.scope === "team" ? "team" : "bu";
+    reply
+      .header("Content-Type", "text/csv; charset=utf-8")
+      .header("Content-Disposition", `attachment; filename="market-share-${range.monthKey}-${scopeTag}.csv"`)
+      .send(csv);
   });
 
   app.get("/broadcasts", { preHandler: [app.requireAuth] }, async () => {

@@ -79,6 +79,28 @@ export function dubaiMonthRange(instant: Date): { startIso: string; endIso: stri
   };
 }
 
+/**
+ * The Dubai-calendar range [start, end) for an explicit "YYYY-MM" key, using
+ * the same offset convention as dubaiMonthRange. Lets historical months (e.g.
+ * a past August) be queried, not just the current one. Throws on a malformed
+ * key so a bad query param fails loudly rather than silently spanning nothing.
+ */
+export function dubaiMonthRangeForKey(monthKey: string): { startIso: string; endIso: string; monthKey: string } {
+  const match = /^(\d{4})-(\d{2})$/.exec(monthKey);
+  if (!match) throw new Error(`invalid month key: ${monthKey}`);
+  const year = Number(match[1]);
+  const monthIdx = Number(match[2]) - 1; // 0-based
+  if (monthIdx < 0 || monthIdx > 11) throw new Error(`invalid month key: ${monthKey}`);
+  const offsetMs = DUBAI_UTC_OFFSET_HOURS * 60 * 60 * 1000;
+  const startUtcMs = Date.UTC(year, monthIdx, 1) - offsetMs;
+  const endUtcMs = Date.UTC(year, monthIdx + 1, 1) - offsetMs;
+  return {
+    startIso: new Date(startUtcMs).toISOString(),
+    endIso: new Date(endUtcMs).toISOString(),
+    monthKey: `${year}-${String(monthIdx + 1).padStart(2, "0")}`,
+  };
+}
+
 /** §4 Rule 3: after hours = before 08:00 or after/at 19:00 Dubai time. */
 export function isAfterHours(instant: Date): boolean {
   const hour = dubaiHour(instant);

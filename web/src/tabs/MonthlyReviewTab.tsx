@@ -165,6 +165,25 @@ export default function MonthlyReviewTab({ reloadTick }: { reloadTick: number })
               <Bar key={t.type} label={t.type} value={String(t.n)} pct={(t.n / maxTypeN) * 100} tone="mut" />
             ))}
           </div>
+          <div className="mr-cards">
+            <div className="mr-card">
+              <h3>Market share by expert pool</h3>
+              <div className="mr-cs">Where we win across time zones</div>
+              {d.byPool.length === 0 ? <div className="empty" style={{ padding: 8 }}>No cards this month.</div> :
+                d.byPool.map((p) => (
+                  <Bar key={p.pool} label={p.pool} value={pctOf(p.share)} pct={(p.share ?? 0) * 100}
+                    tone={(p.share ?? 0) >= 0.6 ? "good" : (p.share ?? 0) >= 0.33 ? "accent" : "warn"} />
+                ))}
+            </div>
+            <div className="mr-card">
+              <h3>Top clients by demand</h3>
+              <div className="mr-cs">Calls wanted · share captured</div>
+              {d.topClients.length === 0 ? <div className="empty" style={{ padding: 8 }}>No clients this month.</div> :
+                d.topClients.map((c) => (
+                  <Bar key={c.client} label={c.client} value={`${c.n} · ${pctOf(c.share)}`} pct={(c.n / Math.max(1, d.topClients[0].n)) * 100} tone="mut" />
+                ))}
+            </div>
+          </div>
         </>
       )}
 
@@ -184,7 +203,43 @@ export default function MonthlyReviewTab({ reloadTick }: { reloadTick: number })
               tone={goalPct >= 0.85 ? "good" : goalPct >= 0.6 ? "warn" : "bad"} />
             <Bar label="Goal" value={d.goals.goalTotal.toLocaleString()} pct={100} tone="mut" />
           </div>
-          <p className="foot-note">Delivery is measured on projects created in the selected month, ghosts excluded. First-deliverable timing will be added once stage history is captured per transition.</p>
+          <div className="mr-cards">
+            <div className="mr-card">
+              <h3>Goal-attainment spread</h3>
+              <div className="mr-cs">Projects by how close to goal they landed</div>
+              {(() => { const mx = Math.max(1, ...d.goalDistribution.map((b) => b.count)); return d.goalDistribution.map((b) => (
+                <Bar key={b.bucket} label={b.bucket} value={String(b.count)} pct={(b.count / mx) * 100}
+                  tone={b.bucket === "100%+" ? "good" : b.bucket === "0–49%" ? "bad" : "accent"} />
+              )); })()}
+            </div>
+            <div className="mr-card">
+              <h3>Stage mix (now)</h3>
+              <div className="mr-cs">Active assignments by stage</div>
+              {d.stageMix.length === 0 ? <div className="empty" style={{ padding: 8 }}>No active assignments.</div> :
+                (() => { const mx = Math.max(1, ...d.stageMix.map((s) => s.count)); return d.stageMix.map((s) => (
+                  <Bar key={s.stage} label={s.stage} value={String(s.count)} pct={(s.count / mx) * 100} />
+                )); })()}
+            </div>
+          </div>
+          <div className="mr-cards">
+            <div className="mr-card">
+              <h3>Owes the client calls (now)</h3>
+              <div className="mr-cs">Delivered below calls sold</div>
+              {d.chase.length === 0 ? <div className="empty" style={{ padding: 8 }}>Nothing outstanding.</div> :
+                d.chase.map((c) => (
+                  <div className="mr-line" key={c.projectId}><span>{c.client}</span><b>{c.delivered} / {c.sold}</b></div>
+                ))}
+            </div>
+            <div className="mr-card">
+              <h3>Stuck in Admin (now)</h3>
+              <div className="mr-cs">Idle past {`the auto-archive window`}</div>
+              {d.stuck.length === 0 ? <div className="empty" style={{ padding: 8 }}>Nothing stuck.</div> :
+                d.stuck.map((s) => (
+                  <div className="mr-line" key={s.projectId}><span>{s.client}</span><b>{s.daysIdle}d</b></div>
+                ))}
+            </div>
+          </div>
+          <p className="foot-note">Delivery is measured on projects created in the selected month, ghosts excluded. Chase and stuck lists are live (current state). First-deliverable timing arrives with stage-history capture.</p>
         </>
       )}
 
@@ -230,10 +285,29 @@ export default function MonthlyReviewTab({ reloadTick }: { reloadTick: number })
                 ))}
             </div>
             <div className="mr-card">
+              <h3>New projects by expert pool</h3>
+              <div className="mr-cs">Created this month</div>
+              {d.intakeByPool.length === 0 ? <div className="empty" style={{ padding: 8 }}>No new projects.</div> :
+                (() => { const mx = Math.max(1, ...d.intakeByPool.map((p) => p.count)); return d.intakeByPool.map((p) => (
+                  <Bar key={p.pool} label={p.pool} value={String(p.count)} pct={(p.count / mx) * 100} />
+                )); })()}
+            </div>
+          </div>
+          <div className="mr-cards">
+            <div className="mr-card">
+              <h3>Top actions this month</h3>
+              <div className="mr-cs">From the audit trail</div>
+              {d.auditByAction.length === 0 ? <div className="empty" style={{ padding: 8 }}>No audit activity.</div> :
+                (() => { const mx = Math.max(1, ...d.auditByAction.map((a) => a.count)); return d.auditByAction.map((a) => (
+                  <Bar key={a.action} label={a.action} value={String(a.count)} pct={(a.count / mx) * 100} tone="mut" />
+                )); })()}
+            </div>
+            <div className="mr-card">
               <h3>Governance &amp; hygiene</h3>
               <div className="mr-cs">Current</div>
-              <div className="mr-line"><span>Goal-change requests open</span><b>{d.goalChange.open}</b></div>
-              <div className="mr-line"><span>Goal-change resolved</span><b>{d.goalChange.resolved}</b></div>
+              <div className="mr-line"><span>Goal-change open</span><b>{d.goalChange.open}</b></div>
+              <div className="mr-line"><span>Goal-change accepted / declined</span><b>{d.goalChangeOutcomes.accepted} / {d.goalChangeOutcomes.declined}</b></div>
+              <div className="mr-line"><span>Stale calls-sold (angles)</span><b>{d.staleCallsSold}</b></div>
               <div className="mr-line"><span>Audit events this month</span><b>{d.auditEvents.toLocaleString()}</b></div>
             </div>
           </div>

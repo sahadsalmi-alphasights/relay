@@ -4,13 +4,24 @@ import { auditByAction, frictionSignals, topUsers, usageByEvent, usageByTeam } f
 import { marketShareForMonth } from "../repositories/projects";
 import { hasSnapshot, snapshotMarketShare } from "../repositories/marketShareSnapshot";
 import {
+  auditByActionForMonth,
   auditEventsForMonth,
+  chaseClientsNow,
   goalAttainmentForMonth,
+  goalChangeOutcomes,
   goalChangeSnapshot,
+  goalDistributionForMonth,
+  intakeByPool,
+  marketShareByPool,
   marketShareByTeam,
   marketShareByType,
   pipelineForMonth,
+  stageMixNow,
+  staleCallsSoldNow,
+  stuckInAdminNow,
+  topClientsForMonth,
 } from "../repositories/monthlyReview";
+import { ADMIN_AUTO_ARCHIVE_DAYS } from "../rules/config";
 import { activeInstanceKey } from "../auth/activeInstance";
 import { listAvailableCandidatesWithAssignments } from "../services/candidates";
 import { personLoad } from "../rules/load";
@@ -99,7 +110,14 @@ const analyticsRoutes: FastifyPluginAsync = async (app) => {
     const { startIso, endIso, monthKey } = range;
     const isFrozen = monthKey !== current.monthKey && (await hasSnapshot(monthKey));
 
-    const [marketShare, byType, byTeam, goals, pipeline, auditEvents, goalChange] = await Promise.all([
+    const dayMs = 24 * 60 * 60 * 1000;
+    const stuckBeforeIso = new Date(now.getTime() - ADMIN_AUTO_ARCHIVE_DAYS * dayMs).toISOString();
+    const staleBeforeIso = new Date(now.getTime() - 2 * dayMs).toISOString();
+
+    const [
+      marketShare, byType, byTeam, goals, pipeline, auditEvents, goalChange,
+      byPool, topClients, goalDistribution, stageMix, chase, stuck, intakePool, goalChangeOut, auditByAction, staleCallsSold,
+    ] = await Promise.all([
       shareForMonth(monthKey, current.monthKey),
       marketShareByType(startIso, endIso),
       marketShareByTeam(startIso, endIso),
@@ -107,6 +125,16 @@ const analyticsRoutes: FastifyPluginAsync = async (app) => {
       pipelineForMonth(startIso, endIso),
       auditEventsForMonth(startIso, endIso),
       goalChangeSnapshot(),
+      marketShareByPool(startIso, endIso),
+      topClientsForMonth(startIso, endIso),
+      goalDistributionForMonth(startIso, endIso),
+      stageMixNow(),
+      chaseClientsNow(),
+      stuckInAdminNow(stuckBeforeIso),
+      intakeByPool(startIso, endIso),
+      goalChangeOutcomes(),
+      auditByActionForMonth(startIso, endIso),
+      staleCallsSoldNow(staleBeforeIso),
     ]);
 
     // Six-month market-share trend ending at the selected month (snapshot-aware).
@@ -150,10 +178,20 @@ const analyticsRoutes: FastifyPluginAsync = async (app) => {
       trend,
       byType: byType.map((t) => ({ ...t, share: t.n > 0 ? t.callsSold / t.n : null })),
       byTeam: byTeam.map((t) => ({ ...t, share: t.n > 0 ? t.callsSold / t.n : null })),
+      byPool: byPool.map((t) => ({ ...t, share: t.n > 0 ? t.callsSold / t.n : null })),
+      topClients: topClients.map((t) => ({ ...t, share: t.n > 0 ? t.callsSold / t.n : null })),
       goals,
+      goalDistribution,
+      stageMix,
+      chase,
+      stuck: stuck.map((s) => ({ ...s, daysIdle: Math.floor((now.getTime() - new Date(s.latestStageEnteredAt).getTime()) / dayMs) })),
       pipeline,
+      intakeByPool: intakePool,
       auditEvents,
+      auditByAction,
       goalChange,
+      goalChangeOutcomes: goalChangeOut,
+      staleCallsSold,
       capacityNow,
     };
   });

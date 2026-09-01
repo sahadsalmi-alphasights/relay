@@ -90,7 +90,11 @@ export function prettyDateKey(key: string): string {
 export function fmtElapsed(ms: number): string {
   const m = Math.max(0, Math.floor(ms / 60000));
   if (m < 60) return `${m}m`;
-  return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, "0")}m`;
+  const h = Math.floor(m / 60);
+  // Past 24h the minutes stop earning their place — switch to days + hours so
+  // a long-running stage reads as "6d 1h" rather than "145h 15m".
+  if (h < 24) return `${h}h ${String(m % 60).padStart(2, "0")}m`;
+  return `${Math.floor(h / 24)}d ${h % 24}h`;
 }
 
 export type StageBand = "t-green" | "t-amber" | "t-red";

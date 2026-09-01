@@ -336,3 +336,29 @@ export interface NotificationSettings {
   /** Whether a bot token is set — enables per-person DMs. Read-only status; the token is never sent. */
   slackDmConfigured: boolean;
 }
+
+/** Owner-only monthly leadership review (GET /analytics/monthly-review). */
+export interface MonthlyReview {
+  month: string; // "YYYY-MM"
+  isFrozen: boolean; // read from a month-end snapshot (a closed month)
+  generatedAt: string;
+  marketShare: { callsSold: number; n: number; share: number | null };
+  trend: { month: string; callsSold: number; n: number; share: number | null }[];
+  byType: { type: string; callsSold: number; n: number; share: number | null }[];
+  byTeam: { team: string; callsSold: number; n: number; share: number | null }[];
+  goals: { deliveredTotal: number; goalTotal: number; projectsTotal: number; projectsHit: number };
+  pipeline: {
+    created: number;
+    byType: { type: string; count: number }[];
+    byStatus: { open: number; active: number; archived: number; deliveryClosed: number };
+  };
+  auditEvents: number;
+  goalChange: { open: number; resolved: number };
+  capacityNow: {
+    people: number;
+    medianLoad: number;
+    overMedian: number;
+    idle: number;
+    byTeam: { teamId: string | null; avgLoad: number; count: number }[];
+  };
+}

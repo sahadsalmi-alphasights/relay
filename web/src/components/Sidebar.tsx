@@ -203,6 +203,12 @@ export default function Sidebar({
             </button>
           )}
           {actor.isOwner && (
+            <button className={tab === "Analytics" ? "active" : ""} onClick={() => setTab("Analytics")}>
+              <span className="nav-icon ico" style={ico("ranking.png")} aria-hidden="true" />
+              <span className="nav-label">Analytics</span>
+            </button>
+          )}
+          {actor.isOwner && (
             <button className={tab === "Users" ? "active" : ""} onClick={() => setTab("Users")}>
               <span className="nav-icon ico" style={ico("users.png")} aria-hidden="true" />
               <span className="nav-label">Settings</span>

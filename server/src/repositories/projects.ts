@@ -368,6 +368,38 @@ export async function closeDeliveryForProject(id: string): Promise<ProjectRow> {
   return (await findProjectById(id))!;
 }
 
+export interface IdleSellingProject {
+  projectId: string;
+  plId: string;
+  latestStageEnteredAt: string;
+}
+
+/**
+ * Projects the admin auto-archive scheduler should close delivery on: every
+ * active (non-archived-angle) assignment is in Selling, AND even the most
+ * recently-entered one crossed into Selling before `beforeIso`. MAX() (not
+ * MIN) is deliberate — the whole card must have gone quiet, so one deliverer
+ * moved to Admin yesterday keeps it off the list.
+ *
+ * Excludes projects already archived, soft-deleted, or with delivery already
+ * closed. Requires at least one assignment (the JOIN guarantees it), so a bare
+ * unstaffed card — which isn't on any deliverer board anyway — never qualifies.
+ */
+export async function listProjectsIdleInSelling(beforeIso: string): Promise<IdleSellingProject[]> {
+  const { rows } = await pool.query<IdleSellingProject>(
+    `SELECT p.id AS "projectId", p.pl_id AS "plId",
+            MAX(a.stage_entered_at) AS "latestStageEnteredAt"
+     FROM project p
+     JOIN angle ang ON ang.project_id = p.id AND ang.archived_at IS NULL
+     JOIN assignment a ON a.angle_id = ang.id
+     WHERE p.status <> 'archived' AND p.deleted_at IS NULL AND p.delivery_closed_at IS NULL
+     GROUP BY p.id, p.pl_id
+     HAVING bool_and(a.stage = 'Selling') AND MAX(a.stage_entered_at) < $1`,
+    [beforeIso]
+  );
+  return rows.map((r) => ({ ...r, latestStageEnteredAt: new Date(r.latestStageEnteredAt).toISOString() }));
+}
+
 /** Reopen delivery — the project reappears on its deliverers' boards. */
 export async function reopenDeliveryForProject(id: string): Promise<ProjectRow> {
   await pool.query(`UPDATE project SET delivery_closed_at = NULL WHERE id = $1`, [id]);

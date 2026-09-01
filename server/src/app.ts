@@ -32,6 +32,7 @@ import teamsRoutes from "./routes/teams";
 import wsRoutes from "./routes/ws";
 import { startHeartbeat } from "./ws/hub";
 import { startStaleScheduler } from "./services/staleScheduler";
+import { startAdminAutoArchiveScheduler } from "./services/adminAutoArchive";
 import { startBroadcastRepingScheduler } from "./services/broadcast";
 import { startDailyResetScheduler } from "./services/dailyReset";
 import { startHrSyncScheduler } from "./services/hrSyncScheduler";
@@ -135,12 +136,14 @@ export function buildApp(): FastifyInstance {
   const broadcastRepingTimer = startBroadcastRepingScheduler();
   const dailyResetTimer = startDailyResetScheduler();
   const hrSyncTimer = startHrSyncScheduler();
+  const adminAutoArchiveTimer = startAdminAutoArchiveScheduler();
   app.addHook("onClose", (_instance, done) => {
     clearInterval(heartbeatTimer);
     clearInterval(staleTimer);
     clearInterval(broadcastRepingTimer);
     clearInterval(dailyResetTimer);
     clearInterval(hrSyncTimer);
+    clearInterval(adminAutoArchiveTimer);
     done();
   });
 

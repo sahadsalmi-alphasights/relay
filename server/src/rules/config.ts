@@ -48,3 +48,10 @@ export const POOL_WEIGHT_SWITCH_HOUR = 15;
 // §6 elapsed-timer color bands, in minutes.
 export const STAGE_BAND_AMBER_MINUTES = 30;
 export const STAGE_BAND_RED_MINUTES = 60;
+
+// A project whose every active assignment has sat in Selling ("Admin") — the
+// terminal, zero-load stage — for at least this many days is doing nothing on
+// the deliverers' boards. The auto-archive scheduler closes delivery for it
+// (off every deliverer's board, still on the PL's), so PLs no longer have to
+// sweep parked cards by hand.
+export const ADMIN_AUTO_ARCHIVE_DAYS = 5;

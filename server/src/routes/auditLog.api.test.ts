@@ -181,3 +181,46 @@ describe("docs/AUDIT_LOG_SPEC.md — GET /audit-log", () => {
     expect(res.json().items[0].actor).toBeNull();
   });
 });
+
+describe("GET /audit-log/export.csv", () => {
+  it("returns a CSV attachment honoring the same filters and access gate", async () => {
+    await insertAuditLog({
+      entityType: "project",
+      entityId: fx.project,
+      actorId: fx.plAlpha,
+      action: "update_fields",
+      oldValue: { client: "Old_Name" },
+      newValue: { client: "New_Name" },
+    });
+    await insertAuditLog({ entityType: "angle", entityId: fx.angle, actorId: fx.plAlpha, action: "create", newValue: { name: "X" } });
+
+    const cookie = await loginAs(app, fx.plAlpha);
+    const res = await app.inject({
+      method: "GET",
+      url: "/audit-log/export.csv?action=update_fields",
+      cookies: { relay_session: cookie.split("=")[1] },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["content-type"]).toContain("text/csv");
+    expect(res.headers["content-disposition"]).toContain('filename="audit-log.csv"');
+    const body = res.body.replace(/^﻿/, "");
+    const lines = body.trim().split("\r\n");
+    expect(lines[0]).toBe("When (UTC),Who,Email,Action,Entity type,Entity id,Old value,New value");
+    // Only the update_fields row (filtered), with the actor and JSON change.
+    expect(lines).toHaveLength(2);
+    expect(lines[1]).toContain("update_fields");
+    expect(lines[1]).toContain("PL_Alpha");
+    expect(lines[1]).toContain('{""client"":""New_Name""}');
+  });
+
+  it("rejects a non-manager actor", async () => {
+    const cookie = await loginAs(app, fx.delivererAlpha);
+    const res = await app.inject({
+      method: "GET",
+      url: "/audit-log/export.csv",
+      cookies: { relay_session: cookie.split("=")[1] },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+});

@@ -45,12 +45,45 @@ function Bar({ label, value, pct, tone = "accent" }: { label: string; value: str
     </div>
   );
 }
-function Kpi({ k, v, d, tone }: { k: string; v: string; d?: string; tone?: "up" | "down" | "flat" }) {
+/** Tiny sparkline over the non-null points of a series (oldest → newest). */
+function Spark({ series }: { series: (number | null)[] }) {
+  const pts = series.map((v, i) => ({ v, i })).filter((p): p is { v: number; i: number } => p.v != null);
+  if (pts.length < 2) return null;
+  const xs = pts.map((p) => p.i);
+  const ys = pts.map((p) => p.v);
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const minY = Math.min(...ys), maxY = Math.max(...ys);
+  const W = 68, H = 20;
+  const x = (i: number) => (maxX === minX ? W : ((i - minX) / (maxX - minX)) * W);
+  const y = (v: number) => (maxY === minY ? H / 2 : H - ((v - minY) / (maxY - minY)) * H);
+  const d = pts.map((p, k) => `${k === 0 ? "M" : "L"}${x(p.i).toFixed(1)},${y(p.v).toFixed(1)}`).join(" ");
+  const last = pts[pts.length - 1];
+  return (
+    <svg className="mr-spark" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" aria-hidden="true">
+      <path d={d} fill="none" stroke="var(--pl)" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+      <circle cx={x(last.i)} cy={y(last.v)} r="1.8" fill="var(--pl)" />
+    </svg>
+  );
+}
+
+/** MoM delta from a series' last two points. unit 'pct' shows points; betterUp colours it. */
+function deltaOf(series: (number | null)[], unit: "pct" | "num", betterUp: boolean): { text: string; tone: "up" | "down" | "flat" } | null {
+  if (series.length < 2) return null;
+  const a = series[series.length - 2], b = series[series.length - 1];
+  if (a == null || b == null) return null;
+  const diff = b - a;
+  const text = unit === "pct" ? `${diff >= 0 ? "+" : ""}${Math.round(diff * 100)} pts` : `${diff >= 0 ? "+" : ""}${Math.round(diff)}`;
+  const tone: "up" | "down" | "flat" = !betterUp ? "flat" : diff > 0 ? "up" : diff < 0 ? "down" : "flat";
+  return { text: `${text} vs prev`, tone };
+}
+
+function Kpi({ k, v, d, tone, series }: { k: string; v: string; d?: string; tone?: "up" | "down" | "flat"; series?: (number | null)[] }) {
   return (
     <div className="mr-kpi">
       <div className="mr-k">{k}</div>
       <div className="mr-v">{v}</div>
       {d && <div className={"mr-d mr-" + (tone ?? "flat")}>{d}</div>}
+      {series && <Spark series={series} />}
     </div>
   );
 }
@@ -103,13 +136,25 @@ export default function MonthlyReviewTab({ reloadTick }: { reloadTick: number })
       {/* OVERVIEW */}
       {sub === "ov" && (
         <>
-          <div className="mr-kpis">
-            <Kpi k="Market share" v={pctOf(d.marketShare.share)} />
-            <Kpi k="Calls sold" v={String(d.marketShare.callsSold)} />
-            <Kpi k="Demand (N)" v={String(d.marketShare.n)} />
-            <Kpi k="Projects hit goal" v={pctOf(hitPct)} d={`${d.goals.projectsHit} of ${d.goals.projectsTotal}`} />
-            <Kpi k="Median load (now)" v={d.capacityNow.medianLoad.toFixed(1)} />
-          </div>
+          {(() => {
+            const H = d.history;
+            const shareS = H.map((h) => h.share);
+            const soldS = H.map((h) => h.callsSold);
+            const demandS = H.map((h) => h.demand);
+            const hitS = H.map((h) => h.hitGoalPct);
+            const loadS = H.map((h) => h.medianLoad);
+            const dl = (s: (number | null)[], u: "pct" | "num", up: boolean) => deltaOf(s, u, up);
+            const shareD = dl(shareS, "pct", true), soldD = dl(soldS, "num", true), demandD = dl(demandS, "num", false), hitD = dl(hitS, "pct", true);
+            return (
+              <div className="mr-kpis">
+                <Kpi k="Market share" v={pctOf(d.marketShare.share)} d={shareD?.text} tone={shareD?.tone} series={shareS} />
+                <Kpi k="Calls sold" v={String(d.marketShare.callsSold)} d={soldD?.text} tone={soldD?.tone} series={soldS} />
+                <Kpi k="Demand (N)" v={String(d.marketShare.n)} d={demandD?.text} tone={demandD?.tone} series={demandS} />
+                <Kpi k="Projects hit goal" v={pctOf(hitPct)} d={hitD?.text ?? `${d.goals.projectsHit} of ${d.goals.projectsTotal}`} tone={hitD?.tone} series={hitS} />
+                <Kpi k="Median load (now)" v={d.capacityNow.medianLoad.toFixed(1)} series={loadS} />
+              </div>
+            );
+          })()}
           <div className="mr-cards">
             <div className="mr-card">
               <h3>Market share trend</h3>

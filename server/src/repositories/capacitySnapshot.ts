@@ -39,3 +39,13 @@ export async function capacityTrend(instanceKey: string, sinceDateKey: string): 
   );
   return rows.map((r) => ({ date: r.date, medianLoad: Number(r.medianLoad), avgLoad: Number(r.avgLoad), people: Number(r.people) }));
 }
+
+/** Average of the daily median load over a month, for one instance (null if no snapshots that month). */
+export async function capacityMonthlyMedian(instanceKey: string, startIso: string, endIso: string): Promise<number | null> {
+  const { rows } = await pool.query<{ avg: string | null }>(
+    `SELECT AVG(median_load)::float AS avg FROM capacity_snapshot
+     WHERE instance_key = $1 AND taken_on >= $2::date AND taken_on < $3::date`,
+    [instanceKey, startIso, endIso]
+  );
+  return rows[0].avg == null ? null : Number(Number(rows[0].avg).toFixed(1));
+}

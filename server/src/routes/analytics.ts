@@ -4,7 +4,7 @@ import { auditByAction, frictionSignals, topUsers, usageByEvent, usageByTeam } f
 import { marketShareForMonth } from "../repositories/projects";
 import { hasSnapshot, snapshotMarketShare } from "../repositories/marketShareSnapshot";
 import { getMonthlyReviewSnapshot } from "../repositories/monthlyReviewSnapshot";
-import { capacityTrend } from "../repositories/capacitySnapshot";
+import { capacityMonthlyMedian, capacityTrend } from "../repositories/capacitySnapshot";
 import {
   auditByActionForMonth,
   auditEventsForMonth,
@@ -141,6 +141,38 @@ export async function computeHistoricalReview(startIso: string, endIso: string, 
 }
 
 /**
+ * Six months of the headline scalars ending at `endMonthKey`, for MoM deltas
+ * and sparklines. Reads the frozen review snapshot for a closed month (so past
+ * points are stable); falls back to a live recompute where a month isn't
+ * snapshotted yet. Capacity median comes from the daily capacity snapshots for
+ * the given instance, so it's null until that history builds up.
+ */
+async function computeHistory(currentMonthKey: string, endMonthKey: string, instanceKey: string) {
+  const keys = [5, 4, 3, 2, 1, 0].map((n) => monthKeyMinus(endMonthKey, n));
+  return Promise.all(
+    keys.map(async (k) => {
+      const { startIso, endIso } = dubaiMonthRangeForKey(k);
+      const [{ callsSold, n }, snap, medianLoad] = await Promise.all([
+        shareForMonth(k, currentMonthKey),
+        getMonthlyReviewSnapshot(k),
+        capacityMonthlyMedian(instanceKey, startIso, endIso),
+      ]);
+      const snapGoals = snap?.goals as { deliveredTotal: number; projectsTotal: number; projectsHit: number } | undefined;
+      const goals = snapGoals ?? (await goalAttainmentForMonth(startIso, endIso));
+      return {
+        month: k,
+        share: n > 0 ? callsSold / n : null,
+        callsSold,
+        demand: n,
+        hitGoalPct: goals.projectsTotal > 0 ? goals.projectsHit / goals.projectsTotal : null,
+        delivered: goals.deliveredTotal,
+        medianLoad,
+      };
+    })
+  );
+}
+
+/**
  * Owner-only usage analytics. Aggregates telemetry (usage_event) and the audit
  * trail into "what's used" + "what shows friction", by team and by user.
  * requireOwner — this spans every team and every person, so it's the same
@@ -241,7 +273,9 @@ const analyticsRoutes: FastifyPluginAsync = async (app) => {
     const teamAgg = aggBy((l) => l.teamId);
     const practiceAgg = aggBy((l) => l.practice);
     // Utilisation over the last 14 days, from the daily capacity snapshots.
-    const utilisationTrend = await capacityTrend(activeInstanceKey(request), dubaiDateKey(new Date(now.getTime() - 14 * dayMs)));
+    const instanceKey = activeInstanceKey(request);
+    const utilisationTrend = await capacityTrend(instanceKey, dubaiDateKey(new Date(now.getTime() - 14 * dayMs)));
+    const history = await computeHistory(current.monthKey, monthKey, instanceKey);
     const capacityNow = {
       people: loads.length,
       medianLoad: Number(medLoad.toFixed(1)),
@@ -260,6 +294,7 @@ const analyticsRoutes: FastifyPluginAsync = async (app) => {
       month: monthKey,
       isFrozen,
       generatedAt: new Date().toISOString(),
+      history,
       ...historical,
       // Defaults so responses stay complete even for months frozen before the
       // stage-history capture existed (their payload has no timing/rework).

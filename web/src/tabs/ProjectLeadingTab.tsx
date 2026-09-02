@@ -347,7 +347,7 @@ function CallsSoldEditor({ angles, onSave }: { angles: Angle[]; onSave: () => vo
           </div>
         </div>
       ))}
-      <button className="btn btn-ghost" style={{ width: "100%" }} onClick={() => setOpen(false)}>
+      <button className="btn btn-pl" style={{ width: "100%" }} onClick={() => setOpen(false)}>
         Done
       </button>
     </div>

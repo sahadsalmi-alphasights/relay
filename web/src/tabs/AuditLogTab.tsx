@@ -246,8 +246,8 @@ export default function AuditLogTab({ reloadTick }: { reloadTick: number }) {
                     <td title={fmtAbsolute(entry.createdAt)}>{relativeTime(entry.createdAt, nowMs)}</td>
                     <td>{entry.actor?.name ?? "—"}</td>
                     <td className="mono">{entry.action}</td>
-                    <td className="mono">
-                      {entry.entityType} · {entry.entityId.slice(0, 8)}
+                    <td className="mono" title={entry.entityId}>
+                      {entry.entityType} · {entry.entityLabel ?? entry.entityId.slice(0, 8)}
                     </td>
                     <td className="audit-change">{summarizeDiff(entry.oldValue, entry.newValue)}</td>
                   </tr>
@@ -277,7 +277,7 @@ export default function AuditLogTab({ reloadTick }: { reloadTick: number }) {
         <div key={entry.id} className="rank-row" onClick={() => setExpanded(expanded === entry.id ? null : entry.id)}>
           <div className="rank-body">
             <div className="rank-name">
-              {entry.action} <span className="mono" style={{ fontWeight: 500, color: "var(--soft)" }}>· {entry.entityType}</span>
+              {entry.action} <span className="mono" style={{ fontWeight: 500, color: "var(--soft)" }}>· {entry.entityLabel ?? entry.entityType}</span>
             </div>
             <div className="rank-sub">
               <span>{entry.actor?.name ?? "system"}</span>

@@ -180,6 +180,10 @@ describe("GET /analytics/monthly-review", () => {
     expect(b.history[5].month).toBe(b.month);
     expect(b.history[5].callsSold).toBe(3);
     expect(b.history[5]).toHaveProperty("hitGoalPct");
+    expect(b.history[5].created).toBe(1);
+    expect(b.history[5]).toHaveProperty("goalPct");
+    expect(b.history[5]).toHaveProperty("rework");
+    expect(b.history[5]).toHaveProperty("overMedian");
   });
 
   it("rejects a malformed month", async () => {

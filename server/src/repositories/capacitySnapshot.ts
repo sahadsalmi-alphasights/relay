@@ -41,11 +41,17 @@ export async function capacityTrend(instanceKey: string, sinceDateKey: string): 
 }
 
 /** Average of the daily median load over a month, for one instance (null if no snapshots that month). */
-export async function capacityMonthlyMedian(instanceKey: string, startIso: string, endIso: string): Promise<number | null> {
-  const { rows } = await pool.query<{ avg: string | null }>(
-    `SELECT AVG(median_load)::float AS avg FROM capacity_snapshot
+export interface CapacityMonthly { medianLoad: number | null; people: number | null; overMedian: number | null; idle: number | null }
+
+/** Monthly averages of the daily capacity shape for one instance (nulls if no snapshots that month). */
+export async function capacityMonthly(instanceKey: string, startIso: string, endIso: string): Promise<CapacityMonthly> {
+  const { rows } = await pool.query<{ med: string | null; ppl: string | null; over: string | null; idle: string | null }>(
+    `SELECT AVG(median_load)::float AS med, AVG(people)::float AS ppl, AVG(over_median)::float AS over, AVG(idle)::float AS idle
+     FROM capacity_snapshot
      WHERE instance_key = $1 AND taken_on >= $2::date AND taken_on < $3::date`,
     [instanceKey, startIso, endIso]
   );
-  return rows[0].avg == null ? null : Number(Number(rows[0].avg).toFixed(1));
+  const r = rows[0];
+  const round1 = (v: string | null) => (v == null ? null : Number(Number(v).toFixed(1)));
+  return { medianLoad: round1(r.med), people: round1(r.ppl), overMedian: round1(r.over), idle: round1(r.idle) };
 }

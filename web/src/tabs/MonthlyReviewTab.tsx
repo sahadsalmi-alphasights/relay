@@ -108,6 +108,7 @@ export default function MonthlyReviewTab({ reloadTick }: { reloadTick: number })
   if (!data) return <div className="empty">Loading…</div>;
 
   const d = data;
+  const hs = (pick: (h: MonthlyReview["history"][number]) => number | null) => d.history.map(pick);
   const trendMax = Math.max(0.01, ...d.trend.map((t) => t.share ?? 0));
   const goalPct = d.goals.goalTotal > 0 ? d.goals.deliveredTotal / d.goals.goalTotal : 0;
   const hitPct = d.goals.projectsTotal > 0 ? d.goals.projectsHit / d.goals.projectsTotal : 0;
@@ -255,12 +256,16 @@ export default function MonthlyReviewTab({ reloadTick }: { reloadTick: number })
       {sub === "de" && (
         <>
           <div className="mr-kpis">
-            <Kpi k="Profiles delivered" v={d.goals.deliveredTotal.toLocaleString()} />
+            {(() => { const dd = deltaOf(hs((h) => h.delivered), "num", true); return (
+              <Kpi k="Profiles delivered" v={d.goals.deliveredTotal.toLocaleString()} d={dd?.text} tone={dd?.tone} series={hs((h) => h.delivered)} />
+            ); })()}
             <Kpi k="Goal total" v={d.goals.goalTotal.toLocaleString()} />
-            <Kpi k="Delivered ÷ goal" v={pctOf(goalPct)} />
-            <Kpi k="Projects hit goal" v={pctOf(hitPct)} d={`${d.goals.projectsHit} of ${d.goals.projectsTotal}`} />
-            <Kpi k="Avg time to 1st" v={d.firstDeliverableTiming.avgHours == null ? "—" : `${d.firstDeliverableTiming.avgHours}h`} d={d.firstDeliverableTiming.completed ? `${d.firstDeliverableTiming.completed} completed` : "no data yet"} />
-            <Kpi k="Rework moves" v={String(d.rework)} d="backward stage changes" />
+            {(() => { const dd = deltaOf(hs((h) => h.goalPct), "pct", true); return (
+              <Kpi k="Delivered ÷ goal" v={pctOf(goalPct)} d={dd?.text} tone={dd?.tone} series={hs((h) => h.goalPct)} />
+            ); })()}
+            <Kpi k="Projects hit goal" v={pctOf(hitPct)} d={`${d.goals.projectsHit} of ${d.goals.projectsTotal}`} series={hs((h) => h.hitGoalPct)} />
+            <Kpi k="Avg time to 1st" v={d.firstDeliverableTiming.avgHours == null ? "—" : `${d.firstDeliverableTiming.avgHours}h`} d={d.firstDeliverableTiming.completed ? `${d.firstDeliverableTiming.completed} completed` : "no data yet"} series={hs((h) => h.fdAvgHours)} />
+            <Kpi k="Rework moves" v={String(d.rework)} d="backward stage changes" series={hs((h) => h.rework)} />
             <Kpi k="Overdue 1st (now)" v={String(d.overdueFirstDeliverables)} />
           </div>
           <div className="mr-card">
@@ -334,10 +339,10 @@ export default function MonthlyReviewTab({ reloadTick }: { reloadTick: number })
       {sub === "pe" && (
         <>
           <div className="mr-kpis">
-            <Kpi k="Deliverers" v={String(d.capacityNow.people)} />
-            <Kpi k="Median load" v={d.capacityNow.medianLoad.toFixed(1)} />
-            <Kpi k="Over median" v={String(d.capacityNow.overMedian)} />
-            <Kpi k="Idle (no load)" v={String(d.capacityNow.idle)} />
+            <Kpi k="Deliverers" v={String(d.capacityNow.people)} series={hs((h) => h.people)} />
+            <Kpi k="Median load" v={d.capacityNow.medianLoad.toFixed(1)} series={hs((h) => h.medianLoad)} />
+            <Kpi k="Over median" v={String(d.capacityNow.overMedian)} series={hs((h) => h.overMedian)} />
+            <Kpi k="Idle (no load)" v={String(d.capacityNow.idle)} series={hs((h) => h.idle)} />
           </div>
           <div className="mr-cards">
             <div className="mr-card">
@@ -402,11 +407,13 @@ export default function MonthlyReviewTab({ reloadTick }: { reloadTick: number })
       {sub === "pi" && (
         <>
           <div className="mr-kpis">
-            <Kpi k="New projects" v={String(d.pipeline.created)} />
-            <Kpi k="Active" v={String(d.pipeline.byStatus.active)} />
-            <Kpi k="Archived" v={String(d.pipeline.byStatus.archived)} />
-            <Kpi k="Delivery closed" v={String(d.pipeline.byStatus.deliveryClosed)} />
-            <Kpi k="Auto-closed (idle)" v={String(d.autoArchived)} />
+            {(() => { const dd = deltaOf(hs((h) => h.created), "num", true); return (
+              <Kpi k="New projects" v={String(d.pipeline.created)} d={dd?.text} tone={dd?.tone} series={hs((h) => h.created)} />
+            ); })()}
+            <Kpi k="Active" v={String(d.pipeline.byStatus.active)} series={hs((h) => h.active)} />
+            <Kpi k="Archived" v={String(d.pipeline.byStatus.archived)} series={hs((h) => h.archived)} />
+            <Kpi k="Delivery closed" v={String(d.pipeline.byStatus.deliveryClosed)} series={hs((h) => h.deliveryClosed)} />
+            <Kpi k="Auto-closed (idle)" v={String(d.autoArchived)} series={hs((h) => h.autoArchived)} />
           </div>
           <div className="mr-card">
             <h3>New projects by PL</h3>

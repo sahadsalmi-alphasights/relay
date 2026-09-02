@@ -51,6 +51,7 @@ describe("docs/AUDIT_LOG_SPEC.md — GET /audit-log", () => {
     });
 
     const cookie = await loginAs(app, fx.plAlpha); // is_manager on Team_Alpha
+    await pool.query("DELETE FROM audit_log WHERE action IN ('login','logout','logout_all')");
     const res = await app.inject({
       method: "GET",
       url: "/audit-log",
@@ -75,6 +76,7 @@ describe("docs/AUDIT_LOG_SPEC.md — GET /audit-log", () => {
     await insertAuditLog({ entityType: "project", entityId: fx.project, actorId: fx.plAlpha, action: "archive" });
 
     const cookie = await loginAs(app, fx.plAlpha);
+    await pool.query("DELETE FROM audit_log WHERE action IN ('login','logout','logout_all')");
     const res = await app.inject({ method: "GET", url: "/audit-log", cookies: { relay_session: cookie.split("=")[1] } });
     const items = res.json().items;
     expect(items.find((i: { entityType: string }) => i.entityType === "person").entityLabel).toBe("Deliverer_Alpha");
@@ -84,6 +86,7 @@ describe("docs/AUDIT_LOG_SPEC.md — GET /audit-log", () => {
   it("a manager on a different team can still view it (no team-scoped restriction -- audit trails span the whole org)", async () => {
     await insertAuditLog({ entityType: "project", entityId: fx.project, actorId: fx.plAlpha, action: "archive" });
     const cookie = await loginAs(app, fx.managerBeta); // manager, Team_Beta
+    await pool.query("DELETE FROM audit_log WHERE action IN ('login','logout','logout_all')");
     const res = await app.inject({
       method: "GET",
       url: "/audit-log",
@@ -139,6 +142,7 @@ describe("docs/AUDIT_LOG_SPEC.md — GET /audit-log", () => {
     await insertAuditLog({ entityType: "project", entityId: fx.project, actorId: fx.plAlpha, action: "archive" });
 
     const cookie = await loginAs(app, fx.plAlpha);
+    await pool.query("DELETE FROM audit_log WHERE action IN ('login','logout','logout_all')");
     const res = await app.inject({
       method: "GET",
       url: "/audit-log?from=2025-01-01T00:00:00Z",
@@ -152,6 +156,7 @@ describe("docs/AUDIT_LOG_SPEC.md — GET /audit-log", () => {
       await insertAuditLog({ entityType: "project", entityId: fx.project, actorId: fx.plAlpha, action: `action_${i}` });
     }
     const cookie = await loginAs(app, fx.plAlpha);
+    await pool.query("DELETE FROM audit_log WHERE action IN ('login','logout','logout_all')");
     const page1 = await app.inject({
       method: "GET",
       url: "/audit-log?limit=2&offset=0",
@@ -283,5 +288,64 @@ describe("GET /audit-log/toggles.xlsx", () => {
     // Valid .xlsx is a zip — starts with the PK magic bytes.
     expect(res.rawPayload.slice(0, 2).toString("latin1")).toBe("PK");
     expect(res.rawPayload.length).toBeGreaterThan(1000);
+  });
+});
+
+describe("newly-audited actions (auth, rota, swap, goal-change raise)", () => {
+  const cval = (c: string) => c.split("=")[1];
+  const auditByAction = async (cookie: string, action: string) =>
+    (await app.inject({ method: "GET", url: `/audit-log?action=${action}`, cookies: { relay_session: cval(cookie) } })).json().items;
+
+  it("records a login", async () => {
+    const cookie = await loginAs(app, fx.plAlpha); // dev-login writes the entry
+    const items = await auditByAction(cookie, "login");
+    expect(items.length).toBeGreaterThan(0);
+    expect(items[0].entityLabel).toBe("PL_Alpha");
+  });
+
+  it("records logout_all", async () => {
+    const cookie = await loginAs(app, fx.plAlpha);
+    await app.inject({ method: "POST", url: "/auth/logout-all", cookies: { relay_session: cval(cookie) } });
+    const cookie2 = await loginAs(app, fx.plAlpha);
+    expect((await auditByAction(cookie2, "logout_all")).length).toBeGreaterThan(0);
+  });
+
+  it("records a Sunday rota add and remove", async () => {
+    const cookie = await loginAs(app, fx.plAlpha); // manager
+    const cookies = { relay_session: cval(cookie) };
+    const add = await app.inject({ method: "POST", url: "/sunday-rota", cookies, payload: { rotaDate: "2026-09-06", personId: fx.delivererAlpha } });
+    expect(add.statusCode).toBe(200);
+    const entryId = add.json().id;
+    const addItems = await auditByAction(cookie, "rota_add");
+    expect(addItems[0].entityLabel).toBe("Deliverer_Alpha");
+
+    await app.inject({ method: "DELETE", url: `/sunday-rota/${entryId}`, cookies });
+    expect((await auditByAction(cookie, "rota_remove")).length).toBeGreaterThan(0);
+  });
+
+  it("records a goal-change request raise", async () => {
+    const cookie = await loginAs(app, fx.delivererAlpha); // the assignment's own deliverer
+    const cookies = { relay_session: cval(cookie) };
+    const res = await app.inject({
+      method: "POST",
+      url: `/assignments/${fx.assignment}/goal-change-requests`,
+      cookies,
+      payload: { requestedGoal: 5, requestedStatus: "Second Deliverable", body: "please" },
+    });
+    expect(res.statusCode).toBe(200);
+    const mgr = await loginAs(app, fx.plAlpha);
+    const items = await auditByAction(mgr, "goal_change_requested");
+    expect(items.length).toBeGreaterThan(0);
+    expect(items[0].entityType).toBe("assignment");
+  });
+
+  it("records a Sunday swap request", async () => {
+    const mgr = await loginAs(app, fx.plAlpha);
+    await app.inject({ method: "POST", url: "/sunday-rota", cookies: { relay_session: cval(mgr) }, payload: { rotaDate: "2026-09-13", personId: fx.delivererAlpha } });
+    const dev = await loginAs(app, fx.delivererAlpha);
+    const swap = await app.inject({ method: "POST", url: "/sunday-swap-requests", cookies: { relay_session: cval(dev) }, payload: { rotaDate: "2026-09-13" } });
+    expect(swap.statusCode).toBe(200);
+    const items = await auditByAction(mgr, "swap_requested");
+    expect(items[0].entityLabel).toBe("Deliverer_Alpha");
   });
 });

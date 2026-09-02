@@ -356,6 +356,13 @@ const assignmentsRoutes: FastifyPluginAsync = async (app) => {
       }
       const body = request.body?.body ?? "";
       const created = await createGoalChangeRequest(assignment.id, actor.id, body, requestedGoal, requestedStatus);
+      await insertAuditLog({
+        entityType: "assignment",
+        entityId: assignment.id,
+        actorId: actor.id,
+        action: "goal_change_requested",
+        newValue: { requestedGoal, requestedStatus },
+      });
       const project = await findProjectById(assignment.projectId);
       if (project) {
         await publishProjectChanged(project.id, [project.plId, assignment.delivererId]);

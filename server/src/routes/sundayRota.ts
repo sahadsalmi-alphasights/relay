@@ -7,6 +7,7 @@ import {
   listRotaForTeam,
   removeRotaEntry,
 } from "../repositories/sundayRota";
+import { insertAuditLog } from "../repositories/auditLog";
 import { badRequest, forbidden, notFound } from "../errors";
 import { canManageAnySundayRota } from "../rules/permissions";
 import { publish } from "../ws/hub";
@@ -42,6 +43,7 @@ const sundayRotaRoutes: FastifyPluginAsync = async (app) => {
       // The entry is attributed to the person's own team, derived server-side
       // — a manager rostering someone on another team can't misattribute it.
       const entry = await addRotaEntry(rotaDate, personId, person.teamId);
+      await insertAuditLog({ entityType: "person", entityId: personId, actorId: actor.id, action: "rota_add", newValue: { rotaDate } });
       publish({ type: "sunday-rota" });
       publish({ type: "capacity-ranking" });
       return entry;
@@ -56,6 +58,7 @@ const sundayRotaRoutes: FastifyPluginAsync = async (app) => {
       throw forbidden("only a manager may edit the Sunday rota");
     }
     await removeRotaEntry(entry.id);
+    await insertAuditLog({ entityType: "person", entityId: entry.personId, actorId: actor.id, action: "rota_remove", newValue: { rotaDate: entry.rotaDate } });
     publish({ type: "sunday-rota" });
     publish({ type: "capacity-ranking" });
     return { ok: true };

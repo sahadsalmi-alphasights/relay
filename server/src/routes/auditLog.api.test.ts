@@ -69,6 +69,18 @@ describe("docs/AUDIT_LOG_SPEC.md — GET /audit-log", () => {
     expect(body.items[1].newValue).toEqual({ client: "New_Name" });
   });
 
+  it("resolves entity UUIDs to human labels by type", async () => {
+    await insertAuditLog({ entityType: "person", entityId: fx.delivererAlpha, actorId: fx.plAlpha, action: "set_status" });
+    await new Promise((r) => setTimeout(r, 5));
+    await insertAuditLog({ entityType: "project", entityId: fx.project, actorId: fx.plAlpha, action: "archive" });
+
+    const cookie = await loginAs(app, fx.plAlpha);
+    const res = await app.inject({ method: "GET", url: "/audit-log", cookies: { relay_session: cookie.split("=")[1] } });
+    const items = res.json().items;
+    expect(items.find((i: { entityType: string }) => i.entityType === "person").entityLabel).toBe("Deliverer_Alpha");
+    expect(items.find((i: { entityType: string }) => i.entityType === "project").entityLabel).toBe("Client_Test");
+  });
+
   it("a manager on a different team can still view it (no team-scoped restriction -- audit trails span the whole org)", async () => {
     await insertAuditLog({ entityType: "project", entityId: fx.project, actorId: fx.plAlpha, action: "archive" });
     const cookie = await loginAs(app, fx.managerBeta); // manager, Team_Beta
@@ -206,7 +218,7 @@ describe("GET /audit-log/export.csv", () => {
     expect(res.headers["content-disposition"]).toContain('filename="audit-log.csv"');
     const body = res.body.replace(/^﻿/, "");
     const lines = body.trim().split("\r\n");
-    expect(lines[0]).toBe("When (UTC),Who,Email,Action,Entity type,Entity id,Old value,New value");
+    expect(lines[0]).toBe("When (UTC),Who,Email,Action,Entity type,Entity,Entity id,Old value,New value");
     // Only the update_fields row (filtered), with the actor and JSON change.
     expect(lines).toHaveLength(2);
     expect(lines[1]).toContain("update_fields");

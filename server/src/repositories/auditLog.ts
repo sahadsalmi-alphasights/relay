@@ -45,11 +45,56 @@ export interface AuditLogRow {
   id: string;
   entityType: string;
   entityId: string;
+  /** Human label for the entity (person name / project client / …); null if it can't be resolved (e.g. a hard-deleted row). */
+  entityLabel: string | null;
   action: string;
   actor: AuditLogActor | null;
   oldValue: unknown;
   newValue: unknown;
   createdAt: string;
+}
+
+/**
+ * Resolve entity UUIDs to human labels by type, batched (one query per type) to
+ * avoid an N+1. person → name; project → client; angle → "client · angle";
+ * assignment → "deliverer · client". Unknown/other types resolve to null and
+ * the UI falls back to the short id.
+ */
+async function resolveEntityLabels(rows: { entityType: string; entityId: string }[]): Promise<Map<string, string>> {
+  const byType = new Map<string, Set<string>>();
+  for (const r of rows) {
+    if (!byType.has(r.entityType)) byType.set(r.entityType, new Set());
+    byType.get(r.entityType)!.add(r.entityId);
+  }
+  const labels = new Map<string, string>();
+  const ids = (t: string) => [...(byType.get(t) ?? [])];
+
+  if (byType.has("person")) {
+    const { rows: p } = await pool.query<{ id: string; name: string }>(`SELECT id, name FROM person WHERE id = ANY($1)`, [ids("person")]);
+    for (const r of p) labels.set(r.id, r.name);
+  }
+  if (byType.has("project")) {
+    const { rows: p } = await pool.query<{ id: string; client: string }>(`SELECT id, client FROM project WHERE id = ANY($1)`, [ids("project")]);
+    for (const r of p) labels.set(r.id, r.client);
+  }
+  if (byType.has("angle")) {
+    const { rows: a } = await pool.query<{ id: string; label: string }>(
+      `SELECT ang.id, p.client || ' · ' || ang.name AS label FROM angle ang JOIN project p ON p.id = ang.project_id WHERE ang.id = ANY($1)`,
+      [ids("angle")]
+    );
+    for (const r of a) labels.set(r.id, r.label);
+  }
+  if (byType.has("assignment")) {
+    const { rows: a } = await pool.query<{ id: string; label: string }>(
+      `SELECT a.id, d.name || ' · ' || p.client AS label
+       FROM assignment a JOIN person d ON d.id = a.deliverer_id
+       JOIN angle ang ON ang.id = a.angle_id JOIN project p ON p.id = ang.project_id
+       WHERE a.id = ANY($1)`,
+      [ids("assignment")]
+    );
+    for (const r of a) labels.set(r.id, r.label);
+  }
+  return labels;
 }
 
 /**
@@ -107,10 +152,12 @@ export async function listAuditLog(filters: AuditLogFilters): Promise<{ items: A
     limitParams
   );
 
+  const labels = await resolveEntityLabels(rows.map((r) => ({ entityType: r.entityType, entityId: r.entityId })));
   const items: AuditLogRow[] = rows.map((r) => ({
     id: r.id,
     entityType: r.entityType,
     entityId: r.entityId,
+    entityLabel: labels.get(r.entityId) ?? null,
     action: r.action,
     actor: r.actorId ? { id: r.actorId, name: r.actorName, email: r.actorEmail } : null,
     oldValue: r.oldValue,

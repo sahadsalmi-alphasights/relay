@@ -81,7 +81,7 @@ const auditLogRoutes: FastifyPluginAsync = async (app) => {
       return /[",\r\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
     };
     const jsonCell = (v: unknown): string => (v === null || v === undefined ? "" : typeof v === "object" ? JSON.stringify(v) : String(v));
-    const header = ["When (UTC)", "Who", "Email", "Action", "Entity type", "Entity id", "Old value", "New value"];
+    const header = ["When (UTC)", "Who", "Email", "Action", "Entity type", "Entity", "Entity id", "Old value", "New value"];
     const lines = [header.join(",")];
     for (const it of items) {
       lines.push(
@@ -91,6 +91,7 @@ const auditLogRoutes: FastifyPluginAsync = async (app) => {
           esc(it.actor?.email ?? ""),
           esc(it.action),
           esc(it.entityType),
+          esc(it.entityLabel ?? ""),
           esc(it.entityId),
           esc(jsonCell(it.oldValue)),
           esc(jsonCell(it.newValue)),

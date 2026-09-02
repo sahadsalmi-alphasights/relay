@@ -262,6 +262,7 @@ export interface AuditLogEntry {
   id: string;
   entityType: string;
   entityId: string;
+  entityLabel: string | null;
   action: string;
   actor: { id: string; name: string; email: string } | null;
   oldValue: unknown;

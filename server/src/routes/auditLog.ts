@@ -1,4 +1,5 @@
 import type { FastifyPluginAsync } from "fastify";
+import ExcelJS from "exceljs";
 import { badRequest, forbidden } from "../errors";
 import { listAuditLog, listPeopleForToggleMatrix, toggleOnDays } from "../repositories/auditLog";
 import { canViewAuditLog } from "../rules/permissions";
@@ -6,6 +7,22 @@ import { dubaiMonthRange, dubaiMonthRangeForKey } from "../rules/time";
 import { resolveNow } from "../lib/requestTime";
 
 const TOGGLE_METRICS: Record<string, string> = { lunch: "out_to_lunch", evening: "evening_coverage" };
+const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+/** Shared data for the toggle matrix: every active person, the month's day keys, and the set of days each person turned the toggle on. */
+async function gatherToggleMatrix(action: string, monthKey: string) {
+  const { startIso, endIso } = dubaiMonthRangeForKey(monthKey);
+  const [people, days] = await Promise.all([listPeopleForToggleMatrix(), toggleOnDays(action, startIso, endIso)]);
+  const onByPerson = new Map<string, Set<string>>();
+  for (const d of days) {
+    if (!onByPerson.has(d.personId)) onByPerson.set(d.personId, new Set());
+    onByPerson.get(d.personId)!.add(d.day);
+  }
+  const [y, m] = monthKey.split("-").map(Number);
+  const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const dayKeys = Array.from({ length: daysInMonth }, (_, i) => `${monthKey}-${String(i + 1).padStart(2, "0")}`);
+  return { people, dayKeys, onByPerson };
+}
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
@@ -126,29 +143,92 @@ const auditLogRoutes: FastifyPluginAsync = async (app) => {
       throw badRequest("month must be YYYY-MM");
     }
 
-    const [people, days] = await Promise.all([listPeopleForToggleMatrix(), toggleOnDays(action, range.startIso, range.endIso)]);
-    const onByPerson = new Map<string, Set<string>>();
-    for (const d of days) {
-      if (!onByPerson.has(d.personId)) onByPerson.set(d.personId, new Set());
-      onByPerson.get(d.personId)!.add(d.day);
-    }
-
-    // Column per calendar day of the month.
-    const [y, m] = range.monthKey.split("-").map(Number);
-    const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate();
-    const dayKeys = Array.from({ length: daysInMonth }, (_, i) => `${range.monthKey}-${String(i + 1).padStart(2, "0")}`);
-
+    const mx = await gatherToggleMatrix(action, range.monthKey);
     const esc = (v: string): string => (/[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
-    const lines = [["Individual", ...dayKeys].map(esc).join(",")];
-    for (const p of people) {
-      const on = onByPerson.get(p.id) ?? new Set<string>();
-      lines.push([esc(p.name), ...dayKeys.map((d) => (on.has(d) ? "Yes" : "-"))].join(","));
+    const lines = [["Individual", ...mx.dayKeys].map(esc).join(",")];
+    for (const p of mx.people) {
+      const on = mx.onByPerson.get(p.id) ?? new Set<string>();
+      lines.push([esc(p.name), ...mx.dayKeys.map((d) => (on.has(d) ? "Yes" : "-"))].join(","));
     }
     const csv = "﻿" + lines.join("\r\n") + "\r\n";
     reply
       .header("Content-Type", "text/csv; charset=utf-8")
       .header("Content-Disposition", `attachment; filename="${metric}-toggles-${range.monthKey}.csv"`)
       .send(csv);
+  });
+
+  // Same matrix as an .xlsx, styled like the shared workbook: navy title bar,
+  // blue header row, green "Yes" cells, frozen header + name column.
+  app.get<{ Querystring: { metric?: string; month?: string } }>("/toggles.xlsx", { preHandler: [app.requireAuth] }, async (request, reply) => {
+    if (!canViewAuditLog(request.actor!)) throw forbidden("your group does not have audit-log access");
+    const metric = request.query.metric ?? "lunch";
+    const action = TOGGLE_METRICS[metric];
+    if (!action) throw badRequest("metric must be lunch or evening");
+    let range: { startIso: string; endIso: string; monthKey: string };
+    try {
+      range = request.query.month ? dubaiMonthRangeForKey(request.query.month) : dubaiMonthRange(resolveNow(request));
+    } catch {
+      throw badRequest("month must be YYYY-MM");
+    }
+
+    const mx = await gatherToggleMatrix(action, range.monthKey);
+    const [yy, mm] = range.monthKey.split("-").map(Number);
+    const monthLabel = `${MONTH_NAMES[mm - 1]} ${yy}`;
+    const meta =
+      metric === "evening"
+        ? { sheet: "Evening Coverage Toggles", title: `${monthLabel} - Daily Evening Coverage Toggles`, sub: "Mapping of team members who turned on evening coverage." }
+        : { sheet: "Lunch Offline Toggles", title: `${monthLabel} - Daily Lunch Offline Toggles (12:00 to 16:00 GST)`, sub: "Mapping of team members who set themselves offline during the midday lunch window." };
+
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet(meta.sheet, { views: [{ state: "frozen", xSplit: 1, ySplit: 4 }] });
+    const lastCol = mx.dayKeys.length + 1;
+    const colLetter = (n: number) => { let s = ""; while (n > 0) { const r = (n - 1) % 26; s = String.fromCharCode(65 + r) + s; n = Math.floor((n - 1) / 26); } return s; };
+    const lastRef = colLetter(lastCol);
+
+    ws.mergeCells(`A1:${lastRef}1`);
+    const titleCell = ws.getCell("A1");
+    titleCell.value = meta.title;
+    titleCell.font = { bold: true, color: { argb: "FFFFFFFF" }, size: 13 };
+    titleCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1F497D" } };
+    ws.mergeCells(`A2:${lastRef}2`);
+    const subCell = ws.getCell("A2");
+    subCell.value = meta.sub;
+    subCell.font = { italic: true, color: { argb: "FF808080" } };
+
+    const headerRow = ws.getRow(4);
+    headerRow.values = ["Individual", ...mx.dayKeys];
+    headerRow.eachCell((cell) => {
+      cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF2F5597" } };
+      cell.alignment = { horizontal: "center" };
+    });
+    headerRow.getCell(1).alignment = { horizontal: "left" };
+
+    mx.people.forEach((p, i) => {
+      const row = ws.getRow(5 + i);
+      const on = mx.onByPerson.get(p.id) ?? new Set<string>();
+      row.getCell(1).value = p.name;
+      mx.dayKeys.forEach((d, j) => {
+        const c = row.getCell(2 + j);
+        c.alignment = { horizontal: "center" };
+        if (on.has(d)) {
+          c.value = "Yes";
+          c.font = { bold: true, color: { argb: "FF006100" } };
+          c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFC6EFCE" } };
+        } else {
+          c.value = "-";
+        }
+      });
+    });
+
+    ws.getColumn(1).width = 24;
+    for (let c = 2; c <= lastCol; c++) ws.getColumn(c).width = 12;
+
+    const buffer = await wb.xlsx.writeBuffer();
+    reply
+      .header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+      .header("Content-Disposition", `attachment; filename="${metric}-toggles-${range.monthKey}.xlsx"`)
+      .send(Buffer.from(buffer));
   });
 };
 

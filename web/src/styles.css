@@ -971,3 +971,5 @@ tr.rank-open, .rank-row.rank-open { box-shadow:inset 3px 0 0 var(--pl); backgrou
 .mr-lead-bar { width:45%; }
 .mr-lead-bar span { display:block; height:8px; border-radius:999px; background:var(--pl); }
 .mr-lead-val { width:48px; text-align:right; font-family:'Space Grotesk'; font-weight:700; font-variant-numeric:tabular-nums; }
+.audit-dl-group { display:inline-flex; align-items:center; gap:4px; padding:2px 6px; border:1px solid var(--line); border-radius:8px; }
+.audit-dl-lbl { font-size:11px; font-weight:700; color:var(--soft); text-transform:uppercase; letter-spacing:.03em; }

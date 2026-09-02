@@ -267,3 +267,21 @@ describe("GET /audit-log/toggles.csv (self-toggle matrix)", () => {
     expect(res.statusCode).toBe(400);
   });
 });
+
+describe("GET /audit-log/toggles.xlsx", () => {
+  it("returns a valid .xlsx workbook", async () => {
+    const cookie = await loginAs(app, fx.plAlpha);
+    const cookies = { relay_session: cookie.split("=")[1] };
+    await app.inject({ method: "PATCH", url: "/people/me/lunch", cookies, payload: { outToLunch: true } });
+
+    const now = new Date();
+    const month = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+    const res = await app.inject({ method: "GET", url: `/audit-log/toggles.xlsx?metric=lunch&month=${month}`, cookies });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["content-type"]).toContain("spreadsheetml");
+    expect(res.headers["content-disposition"]).toContain(`lunch-toggles-${month}.xlsx`);
+    // Valid .xlsx is a zip — starts with the PK magic bytes.
+    expect(res.rawPayload.slice(0, 2).toString("latin1")).toBe("PK");
+    expect(res.rawPayload.length).toBeGreaterThan(1000);
+  });
+});

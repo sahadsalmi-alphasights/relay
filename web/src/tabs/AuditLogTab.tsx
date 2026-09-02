@@ -176,14 +176,18 @@ export default function AuditLogTab({ reloadTick }: { reloadTick: number }) {
         style={{ marginLeft: "auto", fontSize: 12, fontWeight: 600, borderRadius: 8, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", padding: "5px 8px" }}>
         {monthOpts.map((m) => <option key={m} value={m}>{m}</option>)}
       </select>
-      <button className="btn-sm btn-ghost" disabled={downloading} onClick={() => download(`/audit-log/toggles.csv?metric=lunch&month=${toggleMonth}`, `lunch-toggles-${toggleMonth}.csv`)}>
-        <Icon name="arrow-down" size={13} /> Lunch toggles
-      </button>
-      <button className="btn-sm btn-ghost" disabled={downloading} onClick={() => download(`/audit-log/toggles.csv?metric=evening&month=${toggleMonth}`, `evening-coverage-${toggleMonth}.csv`)}>
-        <Icon name="arrow-down" size={13} /> Evening coverage
-      </button>
+      <span className="audit-dl-group">
+        <span className="audit-dl-lbl">Lunch</span>
+        <button className="btn-sm btn-ghost" disabled={downloading} onClick={() => download(`/audit-log/toggles.xlsx?metric=lunch&month=${toggleMonth}`, `lunch-toggles-${toggleMonth}.xlsx`)}>Excel</button>
+        <button className="btn-sm btn-ghost" disabled={downloading} onClick={() => download(`/audit-log/toggles.csv?metric=lunch&month=${toggleMonth}`, `lunch-toggles-${toggleMonth}.csv`)}>CSV</button>
+      </span>
+      <span className="audit-dl-group">
+        <span className="audit-dl-lbl">Evening</span>
+        <button className="btn-sm btn-ghost" disabled={downloading} onClick={() => download(`/audit-log/toggles.xlsx?metric=evening&month=${toggleMonth}`, `evening-coverage-${toggleMonth}.xlsx`)}>Excel</button>
+        <button className="btn-sm btn-ghost" disabled={downloading} onClick={() => download(`/audit-log/toggles.csv?metric=evening&month=${toggleMonth}`, `evening-coverage-${toggleMonth}.csv`)}>CSV</button>
+      </span>
       <button className="btn-sm btn-ghost" disabled={downloading} onClick={() => download(`/audit-log/export.csv?${filterParams(filters).toString()}`, "audit-log.csv")}>
-        <Icon name="arrow-down" size={13} /> {downloading ? "Preparing…" : "Export CSV"}
+        <Icon name="arrow-down" size={13} /> {downloading ? "Preparing…" : "Audit CSV"}
       </button>
     </div>
   );

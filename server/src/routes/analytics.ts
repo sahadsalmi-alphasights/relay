@@ -3,6 +3,7 @@ import { badRequest } from "../errors";
 import { auditByAction, frictionSignals, topUsers, usageByEvent, usageByTeam } from "../repositories/analytics";
 import { marketShareForMonth } from "../repositories/projects";
 import { hasSnapshot, snapshotMarketShare } from "../repositories/marketShareSnapshot";
+import { getMonthlyReviewSnapshot } from "../repositories/monthlyReviewSnapshot";
 import {
   auditByActionForMonth,
   auditEventsForMonth,
@@ -70,6 +71,68 @@ function windowStartIso(window: string, now: number): string {
   return new Date(now - days * 24 * 60 * 60 * 1000).toISOString();
 }
 
+const withShare = <T extends { callsSold: number; n: number }>(rows: T[]) =>
+  rows.map((t) => ({ ...t, share: t.n > 0 ? t.callsSold / t.n : null }));
+
+/**
+ * The month-HISTORICAL blocks of the review (everything that describes the
+ * month itself, not the present). Pure over the given window, so both the live
+ * route and the month-end snapshot scheduler compute it the same way. The
+ * review's "now" blocks (capacity, stage mix, chase/stuck, roster, hygiene)
+ * are computed separately and never frozen.
+ */
+export async function computeHistoricalReview(startIso: string, endIso: string, monthKey: string, currentMonthKey: string) {
+  const [marketShare, byType, byTeam, byPool, topClients, clientMix, avgDeal, unmetPL, goals, goalDistribution, deliveredTeam, customSystem, pipeline, intakePool, byPL, autoArchived, auditEvents, auditByAction] =
+    await Promise.all([
+      shareForMonth(monthKey, currentMonthKey),
+      marketShareByType(startIso, endIso),
+      marketShareByTeam(startIso, endIso),
+      marketShareByPool(startIso, endIso),
+      topClientsForMonth(startIso, endIso),
+      clientMixForMonth(startIso, endIso),
+      avgDealSizeByType(startIso, endIso),
+      unmetDemandByPL(startIso, endIso),
+      goalAttainmentForMonth(startIso, endIso),
+      goalDistributionForMonth(startIso, endIso),
+      deliveredByTeam(startIso, endIso),
+      customVsSystem(startIso, endIso),
+      pipelineForMonth(startIso, endIso),
+      intakeByPool(startIso, endIso),
+      pipelineByPL(startIso, endIso),
+      autoArchivedForMonth(startIso, endIso),
+      auditEventsForMonth(startIso, endIso),
+      auditByActionForMonth(startIso, endIso),
+    ]);
+  const trendKeys = [5, 4, 3, 2, 1, 0].map((n) => monthKeyMinus(monthKey, n));
+  const trend = await Promise.all(
+    trendKeys.map(async (k) => {
+      const { callsSold, n } = await shareForMonth(k, currentMonthKey);
+      return { month: k, callsSold, n, share: n > 0 ? callsSold / n : null };
+    })
+  );
+  return {
+    marketShare: { ...marketShare, share: marketShare.n > 0 ? marketShare.callsSold / marketShare.n : null },
+    trend,
+    byType: withShare(byType),
+    byTeam: withShare(byTeam),
+    byPool: withShare(byPool),
+    topClients: withShare(topClients),
+    clientMix,
+    avgDealByType: avgDeal,
+    unmetDemandByPL: unmetPL,
+    goals,
+    goalDistribution,
+    deliveredByTeam: deliveredTeam,
+    customVsSystem: customSystem,
+    pipeline,
+    intakeByPool: intakePool,
+    pipelineByPL: byPL,
+    autoArchived,
+    auditEvents,
+    auditByAction,
+  };
+}
+
 /**
  * Owner-only usage analytics. Aggregates telemetry (usage_event) and the audit
  * trail into "what's used" + "what shows friction", by team and by user.
@@ -119,7 +182,13 @@ const analyticsRoutes: FastifyPluginAsync = async (app) => {
       throw badRequest("month must be YYYY-MM");
     }
     const { startIso, endIso, monthKey } = range;
-    const isFrozen = monthKey !== current.monthKey && (await hasSnapshot(monthKey));
+    const isClosed = monthKey !== current.monthKey;
+
+    // Historical blocks: read the frozen review snapshot for a closed month
+    // that's been snapshotted, otherwise compute live off the current tables.
+    const frozen = isClosed ? await getMonthlyReviewSnapshot(monthKey) : null;
+    const isFrozen = frozen !== null;
+    const historical = frozen ?? (await computeHistoricalReview(startIso, endIso, monthKey, current.monthKey));
 
     const dayMs = 24 * 60 * 60 * 1000;
     const stuckBeforeIso = new Date(now.getTime() - ADMIN_AUTO_ARCHIVE_DAYS * dayMs).toISOString();
@@ -127,49 +196,20 @@ const analyticsRoutes: FastifyPluginAsync = async (app) => {
     const overdueBeforeIso = new Date(now.getTime() - 30 * 60 * 1000).toISOString();
     const loginSinceIso = new Date(now.getTime() - 30 * dayMs).toISOString();
 
-    const [
-      marketShare, byType, byTeam, goals, pipeline, auditEvents, goalChange,
-      byPool, topClients, goalDistribution, stageMix, chase, stuck, intakePool, goalChangeOut, auditByAction, staleCallsSold,
-      clientMix, avgDeal, unmetPL, deliveredTeam, customSystem, overdueFd, statusMix, roster, autoArchived, byPL, hygiene,
-    ] = await Promise.all([
-      shareForMonth(monthKey, current.monthKey),
-      marketShareByType(startIso, endIso),
-      marketShareByTeam(startIso, endIso),
-      goalAttainmentForMonth(startIso, endIso),
-      pipelineForMonth(startIso, endIso),
-      auditEventsForMonth(startIso, endIso),
-      goalChangeSnapshot(),
-      marketShareByPool(startIso, endIso),
-      topClientsForMonth(startIso, endIso),
-      goalDistributionForMonth(startIso, endIso),
-      stageMixNow(),
-      chaseClientsNow(),
-      stuckInAdminNow(stuckBeforeIso),
-      intakeByPool(startIso, endIso),
-      goalChangeOutcomes(),
-      auditByActionForMonth(startIso, endIso),
-      staleCallsSoldNow(staleBeforeIso),
-      clientMixForMonth(startIso, endIso),
-      avgDealSizeByType(startIso, endIso),
-      unmetDemandByPL(startIso, endIso),
-      deliveredByTeam(startIso, endIso),
-      customVsSystem(startIso, endIso),
-      overdueFirstDeliverablesNow(overdueBeforeIso),
-      statusBreakdownNow(),
-      rosterNow(loginSinceIso),
-      autoArchivedForMonth(startIso, endIso),
-      pipelineByPL(startIso, endIso),
-      hygieneNow(),
-    ]);
-
-    // Six-month market-share trend ending at the selected month (snapshot-aware).
-    const trendKeys = [5, 4, 3, 2, 1, 0].map((n) => monthKeyMinus(monthKey, n));
-    const trend = await Promise.all(
-      trendKeys.map(async (k) => {
-        const { callsSold, n } = await shareForMonth(k, current.monthKey);
-        return { month: k, callsSold, n, share: n > 0 ? callsSold / n : null };
-      })
-    );
+    // "Now" blocks — always live; they describe the present, not the month.
+    const [goalChange, stageMix, chase, stuck, goalChangeOut, staleCallsSold, overdueFd, statusMix, roster, hygiene] =
+      await Promise.all([
+        goalChangeSnapshot(),
+        stageMixNow(),
+        chaseClientsNow(),
+        stuckInAdminNow(stuckBeforeIso),
+        goalChangeOutcomes(),
+        staleCallsSoldNow(staleBeforeIso),
+        overdueFirstDeliverablesNow(overdueBeforeIso),
+        statusBreakdownNow(),
+        rosterNow(loginSinceIso),
+        hygieneNow(),
+      ]);
 
     // Live capacity of the deliverer pool in the owner's active instance.
     const hour = dubaiHour(now);
@@ -206,36 +246,17 @@ const analyticsRoutes: FastifyPluginAsync = async (app) => {
         .sort((a, b) => b.avgLoad - a.avgLoad),
     };
 
-    const share = marketShare.n > 0 ? marketShare.callsSold / marketShare.n : null;
     return {
       month: monthKey,
       isFrozen,
       generatedAt: new Date().toISOString(),
-      marketShare: { ...marketShare, share },
-      trend,
-      byType: byType.map((t) => ({ ...t, share: t.n > 0 ? t.callsSold / t.n : null })),
-      byTeam: byTeam.map((t) => ({ ...t, share: t.n > 0 ? t.callsSold / t.n : null })),
-      byPool: byPool.map((t) => ({ ...t, share: t.n > 0 ? t.callsSold / t.n : null })),
-      topClients: topClients.map((t) => ({ ...t, share: t.n > 0 ? t.callsSold / t.n : null })),
-      clientMix,
-      avgDealByType: avgDeal,
-      unmetDemandByPL: unmetPL,
-      goals,
-      goalDistribution,
-      deliveredByTeam: deliveredTeam,
-      customVsSystem: customSystem,
+      ...historical,
       overdueFirstDeliverables: overdueFd,
       stageMix,
       chase,
       stuck: stuck.map((s) => ({ ...s, daysIdle: Math.floor((now.getTime() - new Date(s.latestStageEnteredAt).getTime()) / dayMs) })),
       statusBreakdown: statusMix,
       roster,
-      pipeline,
-      intakeByPool: intakePool,
-      pipelineByPL: byPL,
-      autoArchived,
-      auditEvents,
-      auditByAction,
       goalChange,
       goalChangeOutcomes: goalChangeOut,
       staleCallsSold,

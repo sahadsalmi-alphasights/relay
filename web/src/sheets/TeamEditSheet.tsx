@@ -306,7 +306,7 @@ export default function TeamEditSheet({
                 <Icon name="ghost" size={14} /> + Add ghost deliverer
               </button>
             )}
-            <button className="close" onClick={onClose}>
+            <button className="btn btn-pl" style={{ width: "100%", marginTop: 8 }} onClick={onClose}>
               Done
             </button>
           </div>

@@ -29,6 +29,8 @@ export interface AuditLogFilters {
   entityId?: string;
   actorId?: string;
   action?: string;
+  /** Actions to omit (e.g. the high-volume auth events) — an action <> ALL clause. */
+  excludeActions?: string[];
   from?: string;
   to?: string;
   limit: number;
@@ -122,6 +124,10 @@ export async function listAuditLog(filters: AuditLogFilters): Promise<{ items: A
   if (filters.action) {
     params.push(filters.action);
     where.push(`al.action = $${params.length}`);
+  }
+  if (filters.excludeActions && filters.excludeActions.length > 0) {
+    params.push(filters.excludeActions);
+    where.push(`al.action <> ALL($${params.length})`);
   }
   if (filters.from) {
     params.push(filters.from);

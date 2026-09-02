@@ -134,6 +134,7 @@ export default function AuditLogTab({ reloadTick }: { reloadTick: number }) {
   };
 
   const [downloading, setDownloading] = useState(false);
+  const [excludeAuth, setExcludeAuth] = useState(true);
   const [toggleMonth, setToggleMonth] = useState(() => {
     const n = new Date();
     return `${n.getUTCFullYear()}-${String(n.getUTCMonth() + 1).padStart(2, "0")}`;
@@ -186,7 +187,14 @@ export default function AuditLogTab({ reloadTick }: { reloadTick: number }) {
         <button className="btn-sm btn-ghost" disabled={downloading} onClick={() => download(`/audit-log/toggles.xlsx?metric=evening&month=${toggleMonth}`, `evening-coverage-${toggleMonth}.xlsx`)}>Excel</button>
         <button className="btn-sm btn-ghost" disabled={downloading} onClick={() => download(`/audit-log/toggles.csv?metric=evening&month=${toggleMonth}`, `evening-coverage-${toggleMonth}.csv`)}>CSV</button>
       </span>
-      <button className="btn-sm btn-ghost" disabled={downloading} onClick={() => download(`/audit-log/export.csv?${filterParams(filters).toString()}`, "audit-log.csv")}>
+      <label className="audit-dl-lbl" style={{ display: "inline-flex", alignItems: "center", gap: 4, textTransform: "none", fontWeight: 600, cursor: "pointer" }}>
+        <input type="checkbox" checked={excludeAuth} onChange={(e) => setExcludeAuth(e.target.checked)} /> Exclude logins
+      </label>
+      <button className="btn-sm btn-ghost" disabled={downloading} onClick={() => {
+        const p = filterParams(filters);
+        if (excludeAuth) p.set("excludeAuth", "true");
+        download(`/audit-log/export.csv?${p.toString()}`, "audit-log.csv");
+      }}>
         <Icon name="arrow-down" size={13} /> {downloading ? "Preparing…" : "Audit CSV"}
       </button>
     </div>

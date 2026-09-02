@@ -35,6 +35,7 @@ interface AuditLogQuery {
   entityId?: string;
   actorId?: string;
   action?: string;
+  excludeAuth?: string;
   from?: string;
   to?: string;
   limit?: string;
@@ -91,6 +92,7 @@ const auditLogRoutes: FastifyPluginAsync = async (app) => {
       entityId: q.entityId,
       actorId: q.actorId,
       action: q.action,
+      excludeActions: q.excludeAuth === "true" ? ["login", "logout", "logout_all"] : undefined,
       from: q.from,
       to: q.to,
       limit: EXPORT_MAX,

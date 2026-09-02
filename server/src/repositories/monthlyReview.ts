@@ -481,3 +481,74 @@ export async function reworkForMonth(startIso: string, endIso: string): Promise<
   );
   return Number(rows[0].count);
 }
+
+/* ---- Visual forms + remaining metrics ---- */
+
+/** Market share for the month as a team × project-type grid (for a heatmap). */
+export async function marketShareByTeamAndType(startIso: string, endIso: string): Promise<{ team: string; type: string; callsSold: number; n: number }[]> {
+  const { rows } = await pool.query<{ team: string | null; type: string; callsSold: number; n: number }>(
+    `SELECT t.name AS team, p.project_type AS type,
+            COALESCE(SUM(ang.calls_sold),0)::int AS "callsSold",
+            COALESCE(SUM(ang.calls_n),0)::int AS "n"
+     FROM project p JOIN angle ang ON ang.project_id = p.id
+     JOIN person pl ON pl.id = p.pl_id LEFT JOIN team t ON t.id = pl.team_id
+     WHERE p.created_at >= $1 AND p.created_at < $2
+     GROUP BY t.name, p.project_type`,
+    [startIso, endIso]
+  );
+  return rows.map((r) => ({ team: r.team ?? "Unassigned", type: r.type, callsSold: Number(r.callsSold), n: Number(r.n) }));
+}
+
+/** Top deliverers by profiles delivered this month (ghosts excluded). */
+export async function topDeliverers(startIso: string, endIso: string, limit = 8): Promise<{ name: string; delivered: number }[]> {
+  const { rows } = await pool.query<{ name: string; delivered: number }>(
+    `SELECT d.name, COALESCE(SUM(a.delivered + a.custom_delivered),0)::int AS delivered
+     FROM project p JOIN angle ang ON ang.project_id = p.id
+     JOIN assignment a ON a.angle_id = ang.id AND a.is_ghost = false
+     JOIN person d ON d.id = a.deliverer_id
+     WHERE p.created_at >= $1 AND p.created_at < $2 AND p.deleted_at IS NULL
+     GROUP BY d.name HAVING SUM(a.delivered + a.custom_delivered) > 0
+     ORDER BY SUM(a.delivered + a.custom_delivered) DESC LIMIT $3`,
+    [startIso, endIso, limit]
+  );
+  return rows.map((r) => ({ name: r.name, delivered: Number(r.delivered) }));
+}
+
+/**
+ * Ghost competition: of angles created this month that had a ghost deliverer,
+ * how many did our team out-deliver the ghost on (a "win").
+ */
+export async function ghostWinRate(startIso: string, endIso: string): Promise<{ contested: number; won: number }> {
+  const { rows } = await pool.query<{ contested: number; won: number }>(
+    `WITH ang_stats AS (
+       SELECT ang.id,
+              bool_or(a.is_ghost) AS has_ghost,
+              COALESCE(SUM((a.delivered + a.custom_delivered)) FILTER (WHERE NOT a.is_ghost), 0) AS ours,
+              COALESCE(SUM((a.delivered + a.custom_delivered)) FILTER (WHERE a.is_ghost), 0) AS ghost
+       FROM angle ang JOIN assignment a ON a.angle_id = ang.id JOIN project p ON p.id = ang.project_id
+       WHERE p.created_at >= $1 AND p.created_at < $2 AND p.deleted_at IS NULL
+       GROUP BY ang.id
+     )
+     SELECT count(*) FILTER (WHERE has_ghost)::int AS contested,
+            count(*) FILTER (WHERE has_ghost AND ours > ghost)::int AS won
+     FROM ang_stats`,
+    [startIso, endIso]
+  );
+  return { contested: Number(rows[0].contested), won: Number(rows[0].won) };
+}
+
+/** Market share for the month by business unit (resolved to the instance name). */
+export async function marketShareByBU(startIso: string, endIso: string): Promise<{ bu: string; callsSold: number; n: number }[]> {
+  const { rows } = await pool.query<{ bu: string | null; callsSold: number; n: number }>(
+    `SELECT COALESCE(i.name, p.business_unit) AS bu,
+            COALESCE(SUM(ang.calls_sold),0)::int AS "callsSold",
+            COALESCE(SUM(ang.calls_n),0)::int AS "n"
+     FROM project p JOIN angle ang ON ang.project_id = p.id
+     LEFT JOIN instance i ON i.key = p.business_unit
+     WHERE p.created_at >= $1 AND p.created_at < $2
+     GROUP BY COALESCE(i.name, p.business_unit)
+     ORDER BY SUM(ang.calls_n) DESC NULLS LAST`,
+    [startIso, endIso]
+  );
+  return rows.map((r) => ({ bu: r.bu ?? "Unassigned", callsSold: Number(r.callsSold), n: Number(r.n) }));
+}

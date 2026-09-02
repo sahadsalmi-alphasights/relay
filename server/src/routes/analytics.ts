@@ -15,20 +15,24 @@ import {
   customVsSystem,
   deliveredByTeam,
   firstDeliverableTimingForMonth,
+  ghostWinRate,
   goalAttainmentForMonth,
   goalChangeOutcomes,
   goalChangeSnapshot,
   goalDistributionForMonth,
   hygieneNow,
   intakeByPool,
+  marketShareByBU,
   marketShareByPool,
   marketShareByTeam,
+  marketShareByTeamAndType,
   marketShareByType,
   overdueFirstDeliverablesNow,
   pipelineByPL,
   pipelineForMonth,
   reworkForMonth,
   rosterNow,
+  topDeliverers,
   stageMixNow,
   staleCallsSoldNow,
   statusBreakdownNow,
@@ -108,6 +112,12 @@ export async function computeHistoricalReview(startIso: string, endIso: string, 
       firstDeliverableTimingForMonth(startIso, endIso),
       reworkForMonth(startIso, endIso),
     ]);
+  const [heatmap, deliverers, ghost, byBU] = await Promise.all([
+    marketShareByTeamAndType(startIso, endIso),
+    topDeliverers(startIso, endIso),
+    ghostWinRate(startIso, endIso),
+    marketShareByBU(startIso, endIso),
+  ]);
   const trendKeys = [5, 4, 3, 2, 1, 0].map((n) => monthKeyMinus(monthKey, n));
   const trend = await Promise.all(
     trendKeys.map(async (k) => {
@@ -137,6 +147,10 @@ export async function computeHistoricalReview(startIso: string, endIso: string, 
     auditByAction,
     firstDeliverableTiming: fdTiming,
     rework,
+    heatmap: withShare(heatmap),
+    topDeliverers: deliverers,
+    ghost,
+    byBU: withShare(byBU),
   };
 }
 
@@ -333,6 +347,10 @@ const analyticsRoutes: FastifyPluginAsync = async (app) => {
       // stage-history capture existed (their payload has no timing/rework).
       firstDeliverableTiming: (historical as Record<string, unknown>).firstDeliverableTiming ?? { completed: 0, avgHours: null, overdue: 0 },
       rework: (historical as Record<string, unknown>).rework ?? 0,
+      heatmap: (historical as Record<string, unknown>).heatmap ?? [],
+      topDeliverers: (historical as Record<string, unknown>).topDeliverers ?? [],
+      ghost: (historical as Record<string, unknown>).ghost ?? { contested: 0, won: 0 },
+      byBU: (historical as Record<string, unknown>).byBU ?? [],
       overdueFirstDeliverables: overdueFd,
       stageMix,
       chase,

@@ -946,3 +946,28 @@ tr.rank-open, .rank-row.rank-open { box-shadow:inset 3px 0 0 var(--pl); backgrou
 .mr-line b { font-family:'Space Grotesk'; font-variant-numeric:tabular-nums; color:var(--ink); }
 @media (max-width:720px){ .mr-cards { grid-template-columns:1fr; } }
 .mr-kpi .mr-spark { display:block; width:100%; height:20px; margin-top:8px; overflow:visible; }
+.mr-funnel { display:flex; flex-direction:column; gap:7px; margin-top:4px; }
+.mr-fstep { display:flex; align-items:center; gap:10px; }
+.mr-fstep .mr-fl { width:96px; flex:none; font-size:12.5px; color:var(--soft); }
+.mr-fstep .mr-fbar { height:30px; border-radius:7px; background:var(--pl); display:flex; align-items:center; justify-content:flex-end; padding-right:9px; color:#fff; font-weight:700; font-family:'Space Grotesk'; font-size:12.5px; }
+.mr-fstep:nth-child(2) .mr-fbar { opacity:.7; }
+.mr-fstep .mr-fd { width:44px; flex:none; font-size:11px; color:var(--soft); text-align:right; }
+.mr-donut { display:flex; align-items:center; gap:16px; }
+.mr-donut-svg { width:110px; height:110px; flex:none; }
+.mr-donut-total { font-family:'Space Grotesk'; font-weight:700; font-size:20px; fill:var(--ink); }
+.mr-donut-legend { display:flex; flex-direction:column; gap:6px; font-size:12.5px; }
+.mr-leg { display:flex; align-items:center; gap:7px; color:var(--soft); }
+.mr-leg b { margin-left:auto; color:var(--ink); font-family:'Space Grotesk'; }
+.mr-leg-dot { width:10px; height:10px; border-radius:3px; flex:none; }
+.mr-heat-wrap { overflow-x:auto; }
+.mr-heat { border-collapse:separate; border-spacing:3px; font-size:12px; }
+.mr-heat th { font-size:10.5px; font-weight:700; color:var(--soft); text-transform:uppercase; letter-spacing:.03em; padding:2px 4px; text-align:center; }
+.mr-heat .mr-heat-row { color:var(--soft); white-space:nowrap; padding-right:6px; }
+.mr-heat-cell { text-align:center; padding:8px 10px; border-radius:6px; font-weight:700; font-family:'Space Grotesk'; color:var(--ink); min-width:52px; }
+.mr-lead { width:100%; border-collapse:collapse; font-size:13px; }
+.mr-lead td { padding:6px 8px; border-bottom:1px solid var(--line); }
+.mr-lead tr:last-child td { border-bottom:none; }
+.mr-lead-rank { width:20px; color:var(--soft); font-family:'Space Grotesk'; font-weight:700; }
+.mr-lead-bar { width:45%; }
+.mr-lead-bar span { display:block; height:8px; border-radius:999px; background:var(--pl); }
+.mr-lead-val { width:48px; text-align:right; font-family:'Space Grotesk'; font-weight:700; font-variant-numeric:tabular-nums; }

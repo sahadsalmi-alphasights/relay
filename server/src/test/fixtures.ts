@@ -22,7 +22,7 @@ export interface Fixture {
 export async function resetAndSeedFixture(): Promise<Fixture> {
   await pool.query(`
     TRUNCATE TABLE audit_log, goal_change_request, note, assignment, project,
-      market_share_snapshot, sunday_swap_request, sunday_rota, person, team RESTART IDENTITY CASCADE
+      market_share_snapshot, monthly_review_snapshot, sunday_swap_request, sunday_rota, person, team RESTART IDENTITY CASCADE
   `);
   // Reset integration credential stores so every test starts "not configured"
   // (these singletons/side tables aren't in the TRUNCATE above; stored secrets

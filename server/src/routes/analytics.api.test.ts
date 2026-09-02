@@ -184,6 +184,12 @@ describe("GET /analytics/monthly-review", () => {
     expect(b.history[5]).toHaveProperty("goalPct");
     expect(b.history[5]).toHaveProperty("rework");
     expect(b.history[5]).toHaveProperty("overMedian");
+    // Visual-form + remaining-metric blocks.
+    expect(b.heatmap.find((c: { team: string; type: string }) => c.team === "Team_Alpha" && c.type === "Strategy").callsSold).toBe(3);
+    expect(b.topDeliverers[0].name).toBe("Deliverer_Alpha");
+    expect(b.topDeliverers[0].delivered).toBe(4);
+    expect(b.ghost).toEqual({ contested: 0, won: 0 });
+    expect(Array.isArray(b.byBU)).toBe(true);
   });
 
   it("rejects a malformed month", async () => {

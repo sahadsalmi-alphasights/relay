@@ -379,6 +379,10 @@ export interface MonthlyReview {
   autoArchived: number;
   auditEvents: number;
   auditByAction: { action: string; count: number }[];
+  heatmap: { team: string; type: string; callsSold: number; n: number; share: number | null }[];
+  topDeliverers: { name: string; delivered: number }[];
+  ghost: { contested: number; won: number };
+  byBU: { bu: string; callsSold: number; n: number; share: number | null }[];
   goalChange: { open: number; resolved: number };
   goalChangeOutcomes: { accepted: number; declined: number };
   staleCallsSold: number;

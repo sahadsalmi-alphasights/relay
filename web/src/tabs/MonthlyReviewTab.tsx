@@ -45,6 +45,88 @@ function Bar({ label, value, pct, tone = "accent" }: { label: string; value: str
     </div>
   );
 }
+/** Descending conversion funnel; each step shows its value and % of the step above. */
+function Funnel({ steps }: { steps: { label: string; value: number }[] }) {
+  const max = Math.max(1, ...steps.map((s) => s.value));
+  return (
+    <div className="mr-funnel">
+      {steps.map((s, i) => {
+        const drop = i > 0 && steps[i - 1].value > 0 ? Math.round((s.value / steps[i - 1].value) * 100) : null;
+        return (
+          <div className="mr-fstep" key={s.label}>
+            <span className="mr-fl">{s.label}</span>
+            <span className="mr-fbar" style={{ width: `${Math.max(10, (s.value / max) * 100)}%` }}>{s.value.toLocaleString()}</span>
+            <span className="mr-fd">{drop != null ? `${drop}%` : ""}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+const DONUT_COLORS = ["var(--pl)", "var(--green)", "var(--amber)", "var(--red)", "var(--soft)"];
+/** Donut chart from labelled slices. */
+function Donut({ slices }: { slices: { label: string; value: number }[] }) {
+  const total = slices.reduce((a, s) => a + s.value, 0);
+  const C = 2 * Math.PI * 42;
+  let acc = 0;
+  return (
+    <div className="mr-donut">
+      <svg viewBox="0 0 100 100" className="mr-donut-svg" aria-hidden="true">
+        <g transform="rotate(-90 50 50)">
+          {total > 0 && slices.map((s, i) => {
+            const dash = (s.value / total) * C;
+            const el = (
+              <circle key={i} cx="50" cy="50" r="42" fill="none" stroke={DONUT_COLORS[i % DONUT_COLORS.length]}
+                strokeWidth="15" strokeDasharray={`${dash} ${C - dash}`} strokeDashoffset={-acc} />
+            );
+            acc += dash;
+            return el;
+          })}
+        </g>
+        <text x="50" y="54" textAnchor="middle" className="mr-donut-total">{total}</text>
+      </svg>
+      <div className="mr-donut-legend">
+        {slices.map((s, i) => (
+          <div key={s.label} className="mr-leg"><span className="mr-leg-dot" style={{ background: DONUT_COLORS[i % DONUT_COLORS.length] }} />{s.label}<b>{s.value}</b></div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Team × type share grid; cell intensity tracks share. */
+function Heatmap({ cells }: { cells: { team: string; type: string; share: number | null; n: number }[] }) {
+  const teams = [...new Set(cells.map((c) => c.team))];
+  const types = [...new Set(cells.map((c) => c.type))];
+  const at = (team: string, type: string) => cells.find((c) => c.team === team && c.type === type);
+  return (
+    <div className="mr-heat-wrap">
+      <table className="mr-heat">
+        <thead><tr><th></th>{types.map((t) => <th key={t}>{t}</th>)}</tr></thead>
+        <tbody>
+          {teams.map((team) => (
+            <tr key={team}>
+              <td className="mr-heat-row">{team.replace("Team_", "")}</td>
+              {types.map((type) => {
+                const c = at(team, type);
+                const s = c?.share ?? null;
+                return (
+                  <td key={type} className="mr-heat-cell"
+                    style={{ background: s == null ? "var(--bg)" : `color-mix(in srgb, var(--green) ${Math.round(s * 100)}%, var(--bg))` }}
+                    title={c ? `${c.n} wanted` : "no cards"}>
+                    {s == null ? "—" : `${Math.round(s * 100)}%`}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 /** Tiny sparkline over the non-null points of a series (oldest → newest). */
 function Spark({ series }: { series: (number | null)[] }) {
   const pts = series.map((v, i) => ({ v, i })).filter((p): p is { v: number; i: number } => p.v != null);
@@ -113,7 +195,6 @@ export default function MonthlyReviewTab({ reloadTick }: { reloadTick: number })
   const goalPct = d.goals.goalTotal > 0 ? d.goals.deliveredTotal / d.goals.goalTotal : 0;
   const hitPct = d.goals.projectsTotal > 0 ? d.goals.projectsHit / d.goals.projectsTotal : 0;
   const maxTypeN = Math.max(1, ...d.byType.map((t) => t.n));
-  const maxCreated = Math.max(1, ...d.pipeline.byType.map((t) => t.count));
   const maxLoad = Math.max(1, ...d.capacityNow.byTeam.map((t) => t.avgLoad));
 
   return (
@@ -249,6 +330,38 @@ export default function MonthlyReviewTab({ reloadTick }: { reloadTick: number })
                 )); })()}
             </div>
           </div>
+          <div className="mr-cards">
+            <div className="mr-card">
+              <h3>Conversion funnel</h3>
+              <div className="mr-cs">Calls wanted vs sold, this month</div>
+              <Funnel steps={[{ label: "Demand (N)", value: d.marketShare.n }, { label: "Calls sold", value: d.marketShare.callsSold }]} />
+            </div>
+            <div className="mr-card">
+              <h3>Competition (ghosts)</h3>
+              <div className="mr-cs">Angles contested by a ghost deliverer</div>
+              <div className="mr-v" style={{ fontFamily: "'Space Grotesk'", fontWeight: 700, fontSize: 30 }}>
+                {d.ghost.contested > 0 ? `${Math.round((d.ghost.won / d.ghost.contested) * 100)}%` : "—"}
+              </div>
+              <div className="mr-line"><span>Won</span><b>{d.ghost.won} of {d.ghost.contested}</b></div>
+            </div>
+          </div>
+          {d.byBU.length > 1 && (
+            <div className="mr-card">
+              <h3>Market share by business unit</h3>
+              <div className="mr-cs">Across BUs this month</div>
+              {d.byBU.map((b) => (
+                <Bar key={b.bu} label={b.bu} value={pctOf(b.share)} pct={(b.share ?? 0) * 100}
+                  tone={(b.share ?? 0) >= 0.6 ? "good" : (b.share ?? 0) >= 0.33 ? "accent" : "warn"} />
+              ))}
+            </div>
+          )}
+          {d.heatmap.length > 0 && (
+            <div className="mr-card">
+              <h3>Share by team &amp; project type</h3>
+              <div className="mr-cs">Where each team wins</div>
+              <Heatmap cells={d.heatmap} />
+            </div>
+          )}
         </>
       )}
 
@@ -330,6 +443,25 @@ export default function MonthlyReviewTab({ reloadTick }: { reloadTick: number })
                   <div className="mr-line" key={s.projectId}><span>{s.client}</span><b>{s.daysIdle}d</b></div>
                 ))}
             </div>
+          </div>
+          <div className="mr-card">
+            <h3>Top deliverers</h3>
+            <div className="mr-cs">Profiles delivered this month</div>
+            {d.topDeliverers.length === 0 ? <div className="empty" style={{ padding: 8 }}>No delivery this month.</div> :
+              (() => { const mx = Math.max(1, ...d.topDeliverers.map((t) => t.delivered)); return (
+                <table className="mr-lead">
+                  <tbody>
+                    {d.topDeliverers.map((t, i) => (
+                      <tr key={t.name}>
+                        <td className="mr-lead-rank">{i + 1}</td>
+                        <td>{t.name}</td>
+                        <td className="mr-lead-bar"><span style={{ width: `${(t.delivered / mx) * 100}%` }} /></td>
+                        <td className="mr-lead-val">{t.delivered}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ); })()}
           </div>
           <p className="foot-note">Delivery is measured on projects created in the selected month, ghosts excluded. Chase and stuck lists are live (current state). Time-to-first-deliverable and rework accrue from stage changes going forward, so early months read low until history builds up.</p>
         </>
@@ -414,6 +546,7 @@ export default function MonthlyReviewTab({ reloadTick }: { reloadTick: number })
             <Kpi k="Archived" v={String(d.pipeline.byStatus.archived)} series={hs((h) => h.archived)} />
             <Kpi k="Delivery closed" v={String(d.pipeline.byStatus.deliveryClosed)} series={hs((h) => h.deliveryClosed)} />
             <Kpi k="Auto-closed (idle)" v={String(d.autoArchived)} series={hs((h) => h.autoArchived)} />
+            <Kpi k="Staffed rate" v={d.pipeline.created > 0 ? pctOf((d.pipeline.created - d.pipeline.byStatus.open) / d.pipeline.created) : "—"} d="reached staffing" />
           </div>
           <div className="mr-card">
             <h3>New projects by PL</h3>
@@ -428,9 +561,7 @@ export default function MonthlyReviewTab({ reloadTick }: { reloadTick: number })
               <h3>New projects by type</h3>
               <div className="mr-cs">Created this month</div>
               {d.pipeline.byType.length === 0 ? <div className="empty" style={{ padding: 8 }}>No new projects.</div> :
-                d.pipeline.byType.map((t) => (
-                  <Bar key={t.type} label={t.type} value={String(t.count)} pct={(t.count / maxCreated) * 100} />
-                ))}
+                <Donut slices={d.pipeline.byType.map((t) => ({ label: t.type, value: t.count }))} />}
             </div>
             <div className="mr-card">
               <h3>New projects by expert pool</h3>

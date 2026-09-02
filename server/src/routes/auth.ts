@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from "fastify";
 import { buildAuthorizationUrl, exchangeCallback, type OidcTransaction } from "../auth/oidc";
 import { issueSession, SESSION_COOKIE } from "../auth/plugin";
 import { config } from "../config";
+import { insertAuditLog } from "../repositories/auditLog";
 import { badRequest, forbidden, notFound, unauthorized } from "../errors";
 import {
   bumpSessionVersion,
@@ -45,6 +46,7 @@ const authRoutes: FastifyPluginAsync = async (app) => {
     if (!person) throw notFound("unknown person");
 
     setSessionCookie(reply, person);
+    await insertAuditLog({ entityType: "person", entityId: person.id, actorId: person.id, action: "login", newValue: { method: "dev" } });
     return person;
   });
 
@@ -115,6 +117,7 @@ const authRoutes: FastifyPluginAsync = async (app) => {
 
       await markLogin(person.id);
       setSessionCookie(reply, person);
+      await insertAuditLog({ entityType: "person", entityId: person.id, actorId: person.id, action: "login", newValue: { method: "sso" } });
       reply.redirect(config.webOrigin);
     } catch (err) {
       request.log.error(err, "OIDC callback failed");
@@ -122,8 +125,11 @@ const authRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 
-  app.post("/logout", async (_request, reply) => {
+  app.post("/logout", async (request, reply) => {
     reply.clearCookie(SESSION_COOKIE, { path: "/" });
+    if (request.actor) {
+      await insertAuditLog({ entityType: "person", entityId: request.actor.id, actorId: request.actor.id, action: "logout" });
+    }
     return { ok: true };
   });
 
@@ -135,6 +141,7 @@ const authRoutes: FastifyPluginAsync = async (app) => {
     if (!request.actor) throw unauthorized();
     await bumpSessionVersion(request.actor.id);
     reply.clearCookie(SESSION_COOKIE, { path: "/" });
+    await insertAuditLog({ entityType: "person", entityId: request.actor.id, actorId: request.actor.id, action: "logout_all" });
     return { ok: true };
   });
 

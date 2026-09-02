@@ -7,6 +7,7 @@ import {
   listSwapRequestsForTeam,
   resolveSwapRequest,
 } from "../repositories/sundaySwapRequests";
+import { insertAuditLog } from "../repositories/auditLog";
 import { badRequest, forbidden, notFound } from "../errors";
 import { canManageAnySundayRota } from "../rules/permissions";
 import { publish } from "../ws/hub";
@@ -19,7 +20,9 @@ const sundaySwapRequestsRoutes: FastifyPluginAsync = async (app) => {
     if (!rotaDate) throw badRequest("rotaDate is required");
     const rotaEntry = await findRotaEntry(rotaDate, actor.id);
     if (!rotaEntry) throw badRequest("you are not rostered for that date");
-    return createSwapRequest(rotaDate, actor.id, note);
+    const created = await createSwapRequest(rotaDate, actor.id, note);
+    await insertAuditLog({ entityType: "person", entityId: actor.id, actorId: actor.id, action: "swap_requested", newValue: { rotaDate } });
+    return created;
   });
 
   app.get("/", { preHandler: [app.requireAuth] }, async (request) => {
@@ -38,6 +41,7 @@ const sundaySwapRequestsRoutes: FastifyPluginAsync = async (app) => {
       throw forbidden("only a manager may resolve a swap request");
     }
     const resolved = await resolveSwapRequest(swapRequest.id);
+    await insertAuditLog({ entityType: "person", entityId: swapRequest.requestedBy, actorId: actor.id, action: "swap_resolved", newValue: { rotaDate: swapRequest.rotaDate } });
     publish({ type: "sunday-rota" });
     return resolved;
   });

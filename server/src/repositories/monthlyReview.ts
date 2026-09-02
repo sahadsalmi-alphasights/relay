@@ -445,3 +445,39 @@ export async function hygieneNow(): Promise<{ anglesNoDemand: number; projectsNo
   );
   return { anglesNoDemand: Number(rows[0].anglesnodemand), projectsNoGoal: Number(rows[0].projectsnogoal) };
 }
+
+/* ---- Stage-transition history (new capture) ---- */
+
+/** First-Deliverable completion timing for stage exits recorded this month. */
+export async function firstDeliverableTimingForMonth(startIso: string, endIso: string): Promise<{ completed: number; avgHours: number | null; overdue: number }> {
+  const { rows } = await pool.query<{ completed: number; avgsec: number | null; overdue: number }>(
+    `SELECT count(*)::int AS completed,
+            AVG(from_dwell_seconds)::float AS avgsec,
+            count(*) FILTER (WHERE from_dwell_seconds > 4 * 3600)::int AS overdue
+     FROM stage_transition
+     WHERE from_stage = 'First Deliverable' AND at >= $1 AND at < $2`,
+    [startIso, endIso]
+  );
+  const r = rows[0];
+  return {
+    completed: Number(r.completed),
+    avgHours: r.avgsec == null ? null : Number((Number(r.avgsec) / 3600).toFixed(1)),
+    overdue: Number(r.overdue),
+  };
+}
+
+/**
+ * Rework this month: stage changes that moved BACKWARD in the delivery order
+ * (First Deliverable → Second → Hail Mary → Selling). Ranks are inlined so the
+ * count is a single grouped query.
+ */
+export async function reworkForMonth(startIso: string, endIso: string): Promise<number> {
+  const rank = `CASE stage WHEN 'First Deliverable' THEN 0 WHEN 'Second Deliverable' THEN 1 WHEN 'Hail Mary' THEN 2 WHEN 'Selling' THEN 3 ELSE 9 END`;
+  const { rows } = await pool.query<{ count: number }>(
+    `SELECT count(*)::int AS count FROM stage_transition
+     WHERE at >= $1 AND at < $2
+       AND (${rank.replace(/stage/g, "to_stage")}) < (${rank.replace(/stage/g, "from_stage")})`,
+    [startIso, endIso]
+  );
+  return Number(rows[0].count);
+}

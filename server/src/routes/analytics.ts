@@ -13,6 +13,7 @@ import {
   clientMixForMonth,
   customVsSystem,
   deliveredByTeam,
+  firstDeliverableTimingForMonth,
   goalAttainmentForMonth,
   goalChangeOutcomes,
   goalChangeSnapshot,
@@ -25,6 +26,7 @@ import {
   overdueFirstDeliverablesNow,
   pipelineByPL,
   pipelineForMonth,
+  reworkForMonth,
   rosterNow,
   stageMixNow,
   staleCallsSoldNow,
@@ -82,7 +84,7 @@ const withShare = <T extends { callsSold: number; n: number }>(rows: T[]) =>
  * are computed separately and never frozen.
  */
 export async function computeHistoricalReview(startIso: string, endIso: string, monthKey: string, currentMonthKey: string) {
-  const [marketShare, byType, byTeam, byPool, topClients, clientMix, avgDeal, unmetPL, goals, goalDistribution, deliveredTeam, customSystem, pipeline, intakePool, byPL, autoArchived, auditEvents, auditByAction] =
+  const [marketShare, byType, byTeam, byPool, topClients, clientMix, avgDeal, unmetPL, goals, goalDistribution, deliveredTeam, customSystem, pipeline, intakePool, byPL, autoArchived, auditEvents, auditByAction, fdTiming, rework] =
     await Promise.all([
       shareForMonth(monthKey, currentMonthKey),
       marketShareByType(startIso, endIso),
@@ -102,6 +104,8 @@ export async function computeHistoricalReview(startIso: string, endIso: string, 
       autoArchivedForMonth(startIso, endIso),
       auditEventsForMonth(startIso, endIso),
       auditByActionForMonth(startIso, endIso),
+      firstDeliverableTimingForMonth(startIso, endIso),
+      reworkForMonth(startIso, endIso),
     ]);
   const trendKeys = [5, 4, 3, 2, 1, 0].map((n) => monthKeyMinus(monthKey, n));
   const trend = await Promise.all(
@@ -130,6 +134,8 @@ export async function computeHistoricalReview(startIso: string, endIso: string, 
     autoArchived,
     auditEvents,
     auditByAction,
+    firstDeliverableTiming: fdTiming,
+    rework,
   };
 }
 
@@ -251,6 +257,10 @@ const analyticsRoutes: FastifyPluginAsync = async (app) => {
       isFrozen,
       generatedAt: new Date().toISOString(),
       ...historical,
+      // Defaults so responses stay complete even for months frozen before the
+      // stage-history capture existed (their payload has no timing/rework).
+      firstDeliverableTiming: (historical as Record<string, unknown>).firstDeliverableTiming ?? { completed: 0, avgHours: null, overdue: 0 },
+      rework: (historical as Record<string, unknown>).rework ?? 0,
       overdueFirstDeliverables: overdueFd,
       stageMix,
       chase,

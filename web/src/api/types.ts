@@ -342,6 +342,7 @@ export interface MonthlyReview {
   month: string; // "YYYY-MM"
   isFrozen: boolean; // read from a month-end snapshot (a closed month)
   generatedAt: string;
+  history: { month: string; share: number | null; callsSold: number; demand: number; hitGoalPct: number | null; delivered: number; medianLoad: number | null }[];
   marketShare: { callsSold: number; n: number; share: number | null };
   trend: { month: string; callsSold: number; n: number; share: number | null }[];
   byType: { type: string; callsSold: number; n: number; share: number | null }[];

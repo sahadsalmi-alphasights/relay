@@ -945,3 +945,4 @@ tr.rank-open, .rank-row.rank-open { box-shadow:inset 3px 0 0 var(--pl); backgrou
 .mr-line:first-of-type { border-top:none; }
 .mr-line b { font-family:'Space Grotesk'; font-variant-numeric:tabular-nums; color:var(--ink); }
 @media (max-width:720px){ .mr-cards { grid-template-columns:1fr; } }
+.mr-kpi .mr-spark { display:block; width:100%; height:20px; margin-top:8px; overflow:visible; }

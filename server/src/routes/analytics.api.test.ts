@@ -175,6 +175,11 @@ describe("GET /analytics/monthly-review", () => {
     expect(typeof b.autoArchived).toBe("number");
     expect(b.hygiene).toHaveProperty("anglesNoDemand");
     expect(b.capacityNow).toHaveProperty("byPractice");
+    // MoM history for sparklines/deltas: 6 points ending at the selected month.
+    expect(b.history).toHaveLength(6);
+    expect(b.history[5].month).toBe(b.month);
+    expect(b.history[5].callsSold).toBe(3);
+    expect(b.history[5]).toHaveProperty("hitGoalPct");
   });
 
   it("rejects a malformed month", async () => {

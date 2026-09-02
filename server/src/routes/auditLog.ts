@@ -1,7 +1,11 @@
 import type { FastifyPluginAsync } from "fastify";
-import { forbidden } from "../errors";
-import { listAuditLog } from "../repositories/auditLog";
+import { badRequest, forbidden } from "../errors";
+import { listAuditLog, listPeopleForToggleMatrix, toggleOnDays } from "../repositories/auditLog";
 import { canViewAuditLog } from "../rules/permissions";
+import { dubaiMonthRange, dubaiMonthRangeForKey } from "../rules/time";
+import { resolveNow } from "../lib/requestTime";
+
+const TOGGLE_METRICS: Record<string, string> = { lunch: "out_to_lunch", evening: "evening_coverage" };
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
@@ -103,6 +107,47 @@ const auditLogRoutes: FastifyPluginAsync = async (app) => {
     reply
       .header("Content-Type", "text/csv; charset=utf-8")
       .header("Content-Disposition", 'attachment; filename="audit-log.csv"')
+      .send(csv);
+  });
+
+  // Self-toggle matrix: one row per person, one column per Dubai day, "Yes" on
+  // the days they turned the toggle on (lunch offline / evening coverage). Lets
+  // leadership see who does it consistently and who doesn't. metric=lunch|evening.
+  app.get<{ Querystring: { metric?: string; month?: string } }>("/toggles.csv", { preHandler: [app.requireAuth] }, async (request, reply) => {
+    if (!canViewAuditLog(request.actor!)) throw forbidden("your group does not have audit-log access");
+    const metric = request.query.metric ?? "lunch";
+    const action = TOGGLE_METRICS[metric];
+    if (!action) throw badRequest("metric must be lunch or evening");
+
+    let range: { startIso: string; endIso: string; monthKey: string };
+    try {
+      range = request.query.month ? dubaiMonthRangeForKey(request.query.month) : dubaiMonthRange(resolveNow(request));
+    } catch {
+      throw badRequest("month must be YYYY-MM");
+    }
+
+    const [people, days] = await Promise.all([listPeopleForToggleMatrix(), toggleOnDays(action, range.startIso, range.endIso)]);
+    const onByPerson = new Map<string, Set<string>>();
+    for (const d of days) {
+      if (!onByPerson.has(d.personId)) onByPerson.set(d.personId, new Set());
+      onByPerson.get(d.personId)!.add(d.day);
+    }
+
+    // Column per calendar day of the month.
+    const [y, m] = range.monthKey.split("-").map(Number);
+    const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    const dayKeys = Array.from({ length: daysInMonth }, (_, i) => `${range.monthKey}-${String(i + 1).padStart(2, "0")}`);
+
+    const esc = (v: string): string => (/[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+    const lines = [["Individual", ...dayKeys].map(esc).join(",")];
+    for (const p of people) {
+      const on = onByPerson.get(p.id) ?? new Set<string>();
+      lines.push([esc(p.name), ...dayKeys.map((d) => (on.has(d) ? "Yes" : "-"))].join(","));
+    }
+    const csv = "﻿" + lines.join("\r\n") + "\r\n";
+    reply
+      .header("Content-Type", "text/csv; charset=utf-8")
+      .header("Content-Disposition", `attachment; filename="${metric}-toggles-${range.monthKey}.csv"`)
       .send(csv);
   });
 };

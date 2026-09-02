@@ -230,6 +230,15 @@ const peopleRoutes: FastifyPluginAsync = async (app) => {
         throw badRequest("eveningCoverage must be a boolean");
       }
       const updated = await updateEveningCoverage(actor.id, request.body.eveningCoverage);
+      // Track the self-toggle so leadership can see who sets evening coverage
+      // (and who doesn't). Self-actioned, so actor === entity.
+      await insertAuditLog({
+        entityType: "person",
+        entityId: actor.id,
+        actorId: actor.id,
+        action: "evening_coverage",
+        newValue: { on: request.body.eveningCoverage },
+      });
       publish({ type: "people" });
       publish({ type: "capacity-ranking" });
       return updated;
@@ -248,6 +257,15 @@ const peopleRoutes: FastifyPluginAsync = async (app) => {
         throw badRequest("outToLunch must be a boolean");
       }
       const updated = await updateOutToLunch(actor.id, request.body.outToLunch);
+      // Track the self-toggle so leadership can see who sets themselves offline
+      // for lunch (and who doesn't). Self-actioned, so actor === entity.
+      await insertAuditLog({
+        entityType: "person",
+        entityId: actor.id,
+        actorId: actor.id,
+        action: "out_to_lunch",
+        newValue: { on: request.body.outToLunch },
+      });
       publish({ type: "people" });
       publish({ type: "capacity-ranking" });
       return updated;

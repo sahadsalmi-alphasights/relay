@@ -236,3 +236,34 @@ describe("GET /audit-log/export.csv", () => {
     expect(res.statusCode).toBe(403);
   });
 });
+
+describe("GET /audit-log/toggles.csv (self-toggle matrix)", () => {
+  it("captures a lunch toggle and reports Yes on that day for the person", async () => {
+    const cookie = await loginAs(app, fx.plAlpha); // manager: can toggle own + view audit
+    const cookies = { relay_session: cookie.split("=")[1] };
+
+    // Turn on out-to-lunch (writes the audit entry).
+    const patch = await app.inject({ method: "PATCH", url: "/people/me/lunch", cookies, payload: { outToLunch: true } });
+    expect(patch.statusCode).toBe(200);
+
+    const now = new Date();
+    const month = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+    const res = await app.inject({ method: "GET", url: `/audit-log/toggles.csv?metric=lunch&month=${month}`, cookies });
+    expect(res.statusCode).toBe(200);
+    const body = res.body.replace(/^﻿/, "");
+    const lines = body.trim().split("\r\n");
+    expect(lines[0].startsWith("Individual,")).toBe(true);
+    const plRow = lines.find((l) => l.startsWith("PL_Alpha,"))!;
+    expect(plRow).toContain("Yes"); // toggled today
+
+    // A person who never toggled shows only dashes.
+    const otherRow = lines.find((l) => l.startsWith("Manager_Beta,"))!;
+    expect(otherRow.includes("Yes")).toBe(false);
+  });
+
+  it("rejects a bad metric", async () => {
+    const cookie = await loginAs(app, fx.plAlpha);
+    const res = await app.inject({ method: "GET", url: "/audit-log/toggles.csv?metric=nope", cookies: { relay_session: cookie.split("=")[1] } });
+    expect(res.statusCode).toBe(400);
+  });
+});

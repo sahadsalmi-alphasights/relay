@@ -384,5 +384,6 @@ export interface MonthlyReview {
     idle: number;
     byTeam: { teamId: string | null; avgLoad: number; count: number }[];
     byPractice: { practice: string; avgLoad: number; count: number }[];
+    trend: { date: string; medianLoad: number; avgLoad: number; people: number }[];
   };
 }

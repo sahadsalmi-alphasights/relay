@@ -4,7 +4,7 @@ import { auditByAction, frictionSignals, topUsers, usageByEvent, usageByTeam } f
 import { marketShareForMonth } from "../repositories/projects";
 import { hasSnapshot, snapshotMarketShare } from "../repositories/marketShareSnapshot";
 import { getMonthlyReviewSnapshot } from "../repositories/monthlyReviewSnapshot";
-import { capacityMonthlyMedian, capacityTrend } from "../repositories/capacitySnapshot";
+import { capacityMonthly, capacityTrend } from "../repositories/capacitySnapshot";
 import {
   auditByActionForMonth,
   auditEventsForMonth,
@@ -152,21 +152,54 @@ async function computeHistory(currentMonthKey: string, endMonthKey: string, inst
   return Promise.all(
     keys.map(async (k) => {
       const { startIso, endIso } = dubaiMonthRangeForKey(k);
-      const [{ callsSold, n }, snap, medianLoad] = await Promise.all([
-        shareForMonth(k, currentMonthKey),
-        getMonthlyReviewSnapshot(k),
-        capacityMonthlyMedian(instanceKey, startIso, endIso),
-      ]);
-      const snapGoals = snap?.goals as { deliveredTotal: number; projectsTotal: number; projectsHit: number } | undefined;
-      const goals = snapGoals ?? (await goalAttainmentForMonth(startIso, endIso));
+      const [snap, cap] = await Promise.all([getMonthlyReviewSnapshot(k), capacityMonthly(instanceKey, startIso, endIso)]);
+
+      // Prefer the frozen snapshot payload (stable + cheap) for a closed month;
+      // otherwise recompute just the scalars this history needs.
+      let callsSold: number, demand: number, goals: { deliveredTotal: number; goalTotal: number; projectsTotal: number; projectsHit: number };
+      let created: number, archived: number, deliveryClosed: number, active: number, autoArchived: number;
+      let fdAvgHours: number | null, rework: number;
+      if (snap) {
+        const ms = snap.marketShare as { callsSold: number; n: number };
+        const p = snap.pipeline as { created: number; byStatus: { archived: number; deliveryClosed: number; active: number } };
+        callsSold = ms.callsSold; demand = ms.n;
+        goals = snap.goals as typeof goals;
+        created = p.created; archived = p.byStatus.archived; deliveryClosed = p.byStatus.deliveryClosed; active = p.byStatus.active;
+        autoArchived = (snap.autoArchived as number) ?? 0;
+        fdAvgHours = (snap.firstDeliverableTiming as { avgHours: number | null } | undefined)?.avgHours ?? null;
+        rework = (snap.rework as number) ?? 0;
+      } else {
+        const [ms, g, p, auto, fd, rw] = await Promise.all([
+          shareForMonth(k, currentMonthKey),
+          goalAttainmentForMonth(startIso, endIso),
+          pipelineForMonth(startIso, endIso),
+          autoArchivedForMonth(startIso, endIso),
+          firstDeliverableTimingForMonth(startIso, endIso),
+          reworkForMonth(startIso, endIso),
+        ]);
+        callsSold = ms.callsSold; demand = ms.n; goals = g;
+        created = p.created; archived = p.byStatus.archived; deliveryClosed = p.byStatus.deliveryClosed; active = p.byStatus.active;
+        autoArchived = auto; fdAvgHours = fd.avgHours; rework = rw;
+      }
       return {
         month: k,
-        share: n > 0 ? callsSold / n : null,
+        share: demand > 0 ? callsSold / demand : null,
         callsSold,
-        demand: n,
+        demand,
         hitGoalPct: goals.projectsTotal > 0 ? goals.projectsHit / goals.projectsTotal : null,
         delivered: goals.deliveredTotal,
-        medianLoad,
+        goalPct: goals.goalTotal > 0 ? goals.deliveredTotal / goals.goalTotal : null,
+        fdAvgHours,
+        rework,
+        created,
+        archived,
+        deliveryClosed,
+        active,
+        autoArchived,
+        medianLoad: cap.medianLoad,
+        people: cap.people,
+        overMedian: cap.overMedian,
+        idle: cap.idle,
       };
     })
   );

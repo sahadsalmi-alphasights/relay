@@ -348,27 +348,39 @@ export interface MonthlyReview {
   byTeam: { team: string; callsSold: number; n: number; share: number | null }[];
   byPool: { pool: string; callsSold: number; n: number; share: number | null }[];
   topClients: { client: string; callsSold: number; n: number; share: number | null }[];
+  clientMix: { total: number; newClients: number };
+  avgDealByType: { type: string; projects: number; n: number }[];
+  unmetDemandByPL: { pl: string; gap: number }[];
   goals: { deliveredTotal: number; goalTotal: number; projectsTotal: number; projectsHit: number };
   goalDistribution: { bucket: string; count: number }[];
+  deliveredByTeam: { team: string; delivered: number; goal: number }[];
+  customVsSystem: { system: number; custom: number };
+  overdueFirstDeliverables: number;
   stageMix: { stage: string; count: number }[];
   chase: { projectId: string; client: string; sold: number; delivered: number }[];
   stuck: { projectId: string; client: string; latestStageEnteredAt: string; daysIdle: number }[];
+  statusBreakdown: { status: string; count: number }[];
+  roster: { active: number; deactivated: number; ghosts: number; loggedInRecently: number };
   pipeline: {
     created: number;
     byType: { type: string; count: number }[];
     byStatus: { open: number; active: number; archived: number; deliveryClosed: number };
   };
   intakeByPool: { pool: string; count: number }[];
+  pipelineByPL: { pl: string; count: number }[];
+  autoArchived: number;
   auditEvents: number;
   auditByAction: { action: string; count: number }[];
   goalChange: { open: number; resolved: number };
   goalChangeOutcomes: { accepted: number; declined: number };
   staleCallsSold: number;
+  hygiene: { anglesNoDemand: number; projectsNoGoal: number };
   capacityNow: {
     people: number;
     medianLoad: number;
     overMedian: number;
     idle: number;
     byTeam: { teamId: string | null; avgLoad: number; count: number }[];
+    byPractice: { practice: string; avgLoad: number; count: number }[];
   };
 }

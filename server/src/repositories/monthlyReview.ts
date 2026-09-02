@@ -299,3 +299,149 @@ export async function staleCallsSoldNow(beforeIso: string): Promise<number> {
   );
   return Number(rows[0].count);
 }
+
+/* ---- Available-now batch (no new capture) ---- */
+
+/** Distinct clients this month and how many are new (never had a project before). */
+export async function clientMixForMonth(startIso: string, endIso: string): Promise<{ total: number; newClients: number }> {
+  const { rows } = await pool.query<{ total: number; newclients: number }>(
+    `WITH cur AS (
+       SELECT DISTINCT client FROM project
+       WHERE created_at >= $1 AND created_at < $2 AND deleted_at IS NULL
+     )
+     SELECT (SELECT count(*) FROM cur)::int AS total,
+            (SELECT count(*) FROM cur WHERE client NOT IN (SELECT client FROM project WHERE created_at < $1))::int AS newclients`,
+    [startIso, endIso]
+  );
+  return { total: Number(rows[0].total), newClients: Number(rows[0].newclients) };
+}
+
+/** Average deal size (calls wanted per project) by type. */
+export async function avgDealSizeByType(startIso: string, endIso: string): Promise<{ type: string; projects: number; n: number }[]> {
+  const { rows } = await pool.query<{ type: string; projects: number; n: number }>(
+    `SELECT p.project_type AS type, count(DISTINCT p.id)::int AS projects, COALESCE(SUM(ang.calls_n),0)::int AS n
+     FROM project p JOIN angle ang ON ang.project_id = p.id
+     WHERE p.created_at >= $1 AND p.created_at < $2 AND p.deleted_at IS NULL
+     GROUP BY p.project_type ORDER BY p.project_type`,
+    [startIso, endIso]
+  );
+  return rows.map((r) => ({ type: r.type, projects: Number(r.projects), n: Number(r.n) }));
+}
+
+/** PLs with the most unmet demand (calls wanted minus sold) this month. */
+export async function unmetDemandByPL(startIso: string, endIso: string, limit = 6): Promise<{ pl: string; gap: number }[]> {
+  const { rows } = await pool.query<{ pl: string; gap: number }>(
+    `SELECT pl.name AS pl, SUM(ang.calls_n - ang.calls_sold)::int AS gap
+     FROM project p JOIN angle ang ON ang.project_id = p.id JOIN person pl ON pl.id = p.pl_id
+     WHERE p.created_at >= $1 AND p.created_at < $2
+     GROUP BY pl.name HAVING SUM(ang.calls_n - ang.calls_sold) > 0
+     ORDER BY SUM(ang.calls_n - ang.calls_sold) DESC LIMIT $3`,
+    [startIso, endIso, limit]
+  );
+  return rows.map((r) => ({ pl: r.pl, gap: Number(r.gap) }));
+}
+
+/** Profiles delivered vs goal per team, for projects created in the month (ghosts excluded). */
+export async function deliveredByTeam(startIso: string, endIso: string): Promise<{ team: string; delivered: number; goal: number }[]> {
+  const { rows } = await pool.query<{ team: string | null; delivered: number; goal: number }>(
+    `SELECT t.name AS team,
+            COALESCE(SUM(a.delivered + a.custom_delivered),0)::int AS delivered,
+            COALESCE(SUM(a.goal),0)::int AS goal
+     FROM project p
+     JOIN angle ang ON ang.project_id = p.id
+     JOIN assignment a ON a.angle_id = ang.id AND a.is_ghost = false
+     JOIN person pl ON pl.id = p.pl_id
+     LEFT JOIN team t ON t.id = pl.team_id
+     WHERE p.created_at >= $1 AND p.created_at < $2 AND p.deleted_at IS NULL
+     GROUP BY t.name ORDER BY SUM(a.delivered + a.custom_delivered) DESC NULLS LAST`,
+    [startIso, endIso]
+  );
+  return rows.map((r) => ({ team: r.team ?? "Unassigned", delivered: Number(r.delivered), goal: Number(r.goal) }));
+}
+
+/** System-sourced vs custom (outside-system) profiles delivered this month. */
+export async function customVsSystem(startIso: string, endIso: string): Promise<{ system: number; custom: number }> {
+  const { rows } = await pool.query<{ system: number; custom: number }>(
+    `SELECT COALESCE(SUM(a.delivered),0)::int AS system, COALESCE(SUM(a.custom_delivered),0)::int AS custom
+     FROM project p JOIN angle ang ON ang.project_id = p.id
+     JOIN assignment a ON a.angle_id = ang.id AND a.is_ghost = false
+     WHERE p.created_at >= $1 AND p.created_at < $2 AND p.deleted_at IS NULL`,
+    [startIso, endIso]
+  );
+  return { system: Number(rows[0].system), custom: Number(rows[0].custom) };
+}
+
+/** First Deliverables sitting past the threshold with no recent progress. Live. */
+export async function overdueFirstDeliverablesNow(beforeIso: string): Promise<number> {
+  const { rows } = await pool.query<{ count: number }>(
+    `SELECT count(*)::int AS count
+     FROM assignment a
+     JOIN angle ang ON ang.id = a.angle_id AND ang.archived_at IS NULL
+     JOIN project p ON p.id = ang.project_id
+     WHERE a.is_ghost = false AND a.stage = 'First Deliverable'
+       AND p.status <> 'archived' AND p.deleted_at IS NULL
+       AND GREATEST(a.stage_entered_at, a.progress_updated_at) < $1`,
+    [beforeIso]
+  );
+  return Number(rows[0].count);
+}
+
+/** Current person status breakdown (non-ghost, active accounts). Live. */
+export async function statusBreakdownNow(): Promise<{ status: string; count: number }[]> {
+  const { rows } = await pool.query<{ status: string; count: number }>(
+    `SELECT status, count(*)::int AS count FROM person
+     WHERE is_ghost = false AND deactivated_at IS NULL GROUP BY status ORDER BY count(*) DESC`
+  );
+  return rows.map((r) => ({ status: r.status, count: Number(r.count) }));
+}
+
+/** Roster snapshot. Live. `activeSinceIso` = the "recently logged in" cutoff. */
+export async function rosterNow(activeSinceIso: string): Promise<{ active: number; deactivated: number; ghosts: number; loggedInRecently: number }> {
+  const { rows } = await pool.query<{ active: number; deactivated: number; ghosts: number; recent: number }>(
+    `SELECT count(*) FILTER (WHERE deactivated_at IS NULL AND is_ghost = false)::int AS active,
+            count(*) FILTER (WHERE deactivated_at IS NOT NULL)::int AS deactivated,
+            count(*) FILTER (WHERE is_ghost = true)::int AS ghosts,
+            count(*) FILTER (WHERE deactivated_at IS NULL AND is_ghost = false AND last_login_at > $1)::int AS recent
+     FROM person`,
+    [activeSinceIso]
+  );
+  const r = rows[0];
+  return { active: Number(r.active), deactivated: Number(r.deactivated), ghosts: Number(r.ghosts), loggedInRecently: Number(r.recent) };
+}
+
+/** Count of projects auto-archived-for-deliverers this month (audit action). */
+export async function autoArchivedForMonth(startIso: string, endIso: string): Promise<number> {
+  const { rows } = await pool.query<{ count: number }>(
+    `SELECT count(*)::int AS count FROM audit_log
+     WHERE action = 'close_delivery_auto' AND created_at >= $1 AND created_at < $2`,
+    [startIso, endIso]
+  );
+  return Number(rows[0].count);
+}
+
+/** Top PLs by projects created this month. */
+export async function pipelineByPL(startIso: string, endIso: string, limit = 6): Promise<{ pl: string; count: number }[]> {
+  const { rows } = await pool.query<{ pl: string; count: number }>(
+    `SELECT pl.name AS pl, count(*)::int AS count
+     FROM project p JOIN person pl ON pl.id = p.pl_id
+     WHERE p.created_at >= $1 AND p.created_at < $2 AND p.deleted_at IS NULL
+     GROUP BY pl.name ORDER BY count(*) DESC LIMIT $3`,
+    [startIso, endIso, limit]
+  );
+  return rows.map((r) => ({ pl: r.pl, count: Number(r.count) }));
+}
+
+/** Data-hygiene counts (live): live angles with no demand set, and live projects with no goal. */
+export async function hygieneNow(): Promise<{ anglesNoDemand: number; projectsNoGoal: number }> {
+  const { rows } = await pool.query<{ anglesnodemand: number; projectsnogoal: number }>(
+    `SELECT
+       (SELECT count(*) FROM angle ang JOIN project p ON p.id = ang.project_id
+          WHERE p.status <> 'archived' AND p.deleted_at IS NULL AND ang.archived_at IS NULL AND ang.calls_n = 0)::int AS anglesnodemand,
+       (SELECT count(*) FROM (
+          SELECT p.id FROM project p JOIN angle ang ON ang.project_id = p.id
+          WHERE p.status <> 'archived' AND p.deleted_at IS NULL AND ang.archived_at IS NULL
+          GROUP BY p.id HAVING COALESCE(SUM(ang.goal_total),0) = 0
+        ) z)::int AS projectsnogoal`
+  );
+  return { anglesNoDemand: Number(rows[0].anglesnodemand), projectsNoGoal: Number(rows[0].projectsnogoal) };
+}

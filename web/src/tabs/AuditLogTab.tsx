@@ -134,35 +134,55 @@ export default function AuditLogTab({ reloadTick }: { reloadTick: number }) {
   };
 
   const [downloading, setDownloading] = useState(false);
-  async function downloadCsv() {
+  const [toggleMonth, setToggleMonth] = useState(() => {
+    const n = new Date();
+    return `${n.getUTCFullYear()}-${String(n.getUTCMonth() + 1).padStart(2, "0")}`;
+  });
+  const monthOpts = (() => {
+    const now = new Date();
+    return Array.from({ length: 12 }, (_, i) => {
+      const dt = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+      return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}`;
+    });
+  })();
+
+  async function download(url: string, filename: string) {
     setDownloading(true);
     try {
-      const res = await fetch(`${apiBaseUrl}/audit-log/export.csv?${filterParams(filters).toString()}`, {
-        credentials: "include",
-      });
+      const res = await fetch(`${apiBaseUrl}${url}`, { credentials: "include" });
       if (!res.ok) throw new Error(`export failed (${res.status})`);
       const blob = await res.blob();
       const objUrl = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = objUrl;
-      a.download = "audit-log.csv";
+      a.download = filename;
       document.body.appendChild(a);
       a.click();
       a.remove();
       URL.revokeObjectURL(objUrl);
     } catch {
-      // Leave the button re-enabled so it can be retried.
+      // Leave the buttons re-enabled so a download can be retried.
     } finally {
       setDownloading(false);
     }
   }
 
   const header = (title: string, count?: number) => (
-    <div className="section-lbl" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+    <div className="section-lbl" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
       <span>
         {title} {count != null && <span className="count">{count}</span>}
       </span>
-      <button className="btn-sm btn-ghost" style={{ marginLeft: "auto" }} disabled={downloading} onClick={downloadCsv}>
+      <select value={toggleMonth} onChange={(e) => setToggleMonth(e.target.value)} aria-label="Toggle-log month"
+        style={{ marginLeft: "auto", fontSize: 12, fontWeight: 600, borderRadius: 8, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)", padding: "5px 8px" }}>
+        {monthOpts.map((m) => <option key={m} value={m}>{m}</option>)}
+      </select>
+      <button className="btn-sm btn-ghost" disabled={downloading} onClick={() => download(`/audit-log/toggles.csv?metric=lunch&month=${toggleMonth}`, `lunch-toggles-${toggleMonth}.csv`)}>
+        <Icon name="arrow-down" size={13} /> Lunch toggles
+      </button>
+      <button className="btn-sm btn-ghost" disabled={downloading} onClick={() => download(`/audit-log/toggles.csv?metric=evening&month=${toggleMonth}`, `evening-coverage-${toggleMonth}.csv`)}>
+        <Icon name="arrow-down" size={13} /> Evening coverage
+      </button>
+      <button className="btn-sm btn-ghost" disabled={downloading} onClick={() => download(`/audit-log/export.csv?${filterParams(filters).toString()}`, "audit-log.csv")}>
         <Icon name="arrow-down" size={13} /> {downloading ? "Preparing…" : "Export CSV"}
       </button>
     </div>

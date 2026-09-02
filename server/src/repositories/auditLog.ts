@@ -167,3 +167,25 @@ export async function listAuditLog(filters: AuditLogFilters): Promise<{ items: A
 
   return { items, total };
 }
+
+/** Distinct (person, Dubai-day) pairs where a person turned a self-toggle ON in the window. */
+export async function toggleOnDays(action: string, startIso: string, endIso: string): Promise<{ personId: string; day: string }[]> {
+  const { rows } = await pool.query<{ personId: string; day: string }>(
+    `SELECT entity_id AS "personId",
+            to_char((created_at AT TIME ZONE 'UTC') + interval '4 hours', 'YYYY-MM-DD') AS day
+     FROM audit_log
+     WHERE action = $1 AND new_value->>'on' = 'true'
+       AND created_at >= $2 AND created_at < $3
+     GROUP BY entity_id, day`,
+    [action, startIso, endIso]
+  );
+  return rows;
+}
+
+/** Active, non-ghost people for the toggle matrix (so non-togglers still appear). */
+export async function listPeopleForToggleMatrix(): Promise<{ id: string; name: string }[]> {
+  const { rows } = await pool.query<{ id: string; name: string }>(
+    `SELECT id, name FROM person WHERE is_ghost = false AND deactivated_at IS NULL ORDER BY name`
+  );
+  return rows;
+}

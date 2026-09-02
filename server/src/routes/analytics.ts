@@ -10,6 +10,7 @@ import {
   auditEventsForMonth,
   autoArchivedForMonth,
   avgDealSizeByType,
+  callsSoldVelocity,
   chaseClientsNow,
   clientMixForMonth,
   customVsSystem,
@@ -112,11 +113,12 @@ export async function computeHistoricalReview(startIso: string, endIso: string, 
       firstDeliverableTimingForMonth(startIso, endIso),
       reworkForMonth(startIso, endIso),
     ]);
-  const [heatmap, deliverers, ghost, byBU] = await Promise.all([
+  const [heatmap, deliverers, ghost, byBU, velocity] = await Promise.all([
     marketShareByTeamAndType(startIso, endIso),
     topDeliverers(startIso, endIso),
     ghostWinRate(startIso, endIso),
     marketShareByBU(startIso, endIso),
+    callsSoldVelocity(startIso, endIso),
   ]);
   const trendKeys = [5, 4, 3, 2, 1, 0].map((n) => monthKeyMinus(monthKey, n));
   const trend = await Promise.all(
@@ -151,6 +153,7 @@ export async function computeHistoricalReview(startIso: string, endIso: string, 
     topDeliverers: deliverers,
     ghost,
     byBU: withShare(byBU),
+    velocity,
   };
 }
 
@@ -351,6 +354,7 @@ const analyticsRoutes: FastifyPluginAsync = async (app) => {
       topDeliverers: (historical as Record<string, unknown>).topDeliverers ?? [],
       ghost: (historical as Record<string, unknown>).ghost ?? { contested: 0, won: 0 },
       byBU: (historical as Record<string, unknown>).byBU ?? [],
+      velocity: (historical as Record<string, unknown>).velocity ?? { total: 0, byWeek: [] },
       overdueFirstDeliverables: overdueFd,
       stageMix,
       chase,

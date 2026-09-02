@@ -107,8 +107,22 @@ export async function updateAngleFields(id: string, patch: Record<string, unknow
   if ("callsSold" in patch) {
     sets.push(`calls_sold_updated_at = now()`);
   }
+  // Ledger: capture the calls-sold delta before the update so velocity (calls
+  // sold per week) can be measured. Read the old value first.
+  let priorCallsSold: number | null = null;
+  if ("callsSold" in patch) {
+    const { rows } = await pool.query<{ callsSold: number }>(`SELECT calls_sold AS "callsSold" FROM angle WHERE id = $1`, [id]);
+    priorCallsSold = rows[0] ? Number(rows[0].callsSold) : null;
+  }
   if (sets.length > 0) {
     await pool.query(`UPDATE angle SET ${sets.join(", ")} WHERE id = $1`, params);
+  }
+  if (priorCallsSold !== null) {
+    const newValue = Number(patch.callsSold);
+    const delta = newValue - priorCallsSold;
+    if (delta !== 0) {
+      await pool.query(`INSERT INTO calls_sold_event (angle_id, delta, new_value) VALUES ($1, $2, $3)`, [id, delta, newValue]);
+    }
   }
   return (await findAngleById(id))!;
 }

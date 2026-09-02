@@ -333,7 +333,23 @@ export default function MonthlyReviewTab({ reloadTick }: { reloadTick: number })
               <div className="mr-line"><span>Deactivated</span><b>{d.roster.deactivated}</b></div>
             </div>
           </div>
-          <p className="foot-note">Capacity is a live snapshot of the deliverer pool in your active instance, not a monthly average.</p>
+          {d.capacityNow.trend.length > 0 && (
+            <div className="mr-card">
+              <h3>Utilisation trend</h3>
+              <div className="mr-cs">Median weighted load, last 14 days</div>
+              <div className="mr-trend">
+                {(() => { const mx = Math.max(0.01, ...d.capacityNow.trend.map((t) => t.medianLoad)); return d.capacityNow.trend.map((t, i) => (
+                  <div className="mr-tcol" key={t.date}>
+                    <div className="mr-tbar" style={{ height: `${Math.max(4, (t.medianLoad / mx) * 100)}%`, opacity: i === d.capacityNow.trend.length - 1 ? 1 : 0.5 }}>
+                      <b>{t.medianLoad.toFixed(1)}</b>
+                    </div>
+                    <div className="mr-tcl">{t.date.slice(5)}</div>
+                  </div>
+                )); })()}
+              </div>
+            </div>
+          )}
+          <p className="foot-note">Capacity is a live snapshot of the deliverer pool in your active instance. The utilisation trend builds from a daily snapshot, so it fills in over the coming days.</p>
         </>
       )}
 

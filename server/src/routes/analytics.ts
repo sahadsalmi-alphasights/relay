@@ -4,6 +4,7 @@ import { auditByAction, frictionSignals, topUsers, usageByEvent, usageByTeam } f
 import { marketShareForMonth } from "../repositories/projects";
 import { hasSnapshot, snapshotMarketShare } from "../repositories/marketShareSnapshot";
 import { getMonthlyReviewSnapshot } from "../repositories/monthlyReviewSnapshot";
+import { capacityTrend } from "../repositories/capacitySnapshot";
 import {
   auditByActionForMonth,
   auditEventsForMonth,
@@ -40,7 +41,7 @@ import { activeInstanceKey } from "../auth/activeInstance";
 import { listAvailableCandidatesWithAssignments } from "../services/candidates";
 import { personLoad } from "../rules/load";
 import { median } from "../rules/median";
-import { dubaiHour, dubaiMonthRange, dubaiMonthRangeForKey } from "../rules/time";
+import { dubaiDateKey, dubaiHour, dubaiMonthRange, dubaiMonthRangeForKey } from "../rules/time";
 import { resolveNow } from "../lib/requestTime";
 
 /** Step a "YYYY-MM" key back by n months. */
@@ -239,6 +240,8 @@ const analyticsRoutes: FastifyPluginAsync = async (app) => {
     };
     const teamAgg = aggBy((l) => l.teamId);
     const practiceAgg = aggBy((l) => l.practice);
+    // Utilisation over the last 14 days, from the daily capacity snapshots.
+    const utilisationTrend = await capacityTrend(activeInstanceKey(request), dubaiDateKey(new Date(now.getTime() - 14 * dayMs)));
     const capacityNow = {
       people: loads.length,
       medianLoad: Number(medLoad.toFixed(1)),
@@ -250,6 +253,7 @@ const analyticsRoutes: FastifyPluginAsync = async (app) => {
       byPractice: [...practiceAgg.entries()]
         .map(([practice, { sum, count }]) => ({ practice: practice === "none" ? "Unassigned" : practice, avgLoad: Number((sum / count).toFixed(1)), count }))
         .sort((a, b) => b.avgLoad - a.avgLoad),
+      trend: utilisationTrend,
     };
 
     return {

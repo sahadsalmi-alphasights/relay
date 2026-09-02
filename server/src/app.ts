@@ -35,6 +35,7 @@ import { startStaleScheduler } from "./services/staleScheduler";
 import { startAdminAutoArchiveScheduler } from "./services/adminAutoArchive";
 import { snapshotClosedMonths, startMarketShareSnapshotScheduler } from "./services/marketShareSnapshot";
 import { snapshotClosedReviewMonths, startMonthlyReviewSnapshotScheduler } from "./services/monthlyReviewSnapshot";
+import { recordCapacitySnapshots, startCapacitySnapshotScheduler } from "./services/capacitySnapshot";
 import { startBroadcastRepingScheduler } from "./services/broadcast";
 import { startDailyResetScheduler } from "./services/dailyReset";
 import { startHrSyncScheduler } from "./services/hrSyncScheduler";
@@ -141,9 +142,10 @@ export function buildApp(): FastifyInstance {
   const adminAutoArchiveTimer = startAdminAutoArchiveScheduler();
   const marketShareSnapshotTimer = startMarketShareSnapshotScheduler();
   const monthlyReviewSnapshotTimer = startMonthlyReviewSnapshotScheduler();
-  // Backfill closed months once on boot so history is stored promptly on
-  // deploy (the interval alone would leave it hours). Skipped under test to
-  // keep buildApp() side-effect-free for the fixture-reset suites.
+  const capacitySnapshotTimer = startCapacitySnapshotScheduler();
+  // Backfill/record once on boot so history is stored promptly on deploy (the
+  // interval alone would leave it hours). Skipped under test to keep buildApp()
+  // side-effect-free for the fixture-reset suites.
   if (process.env.NODE_ENV !== "test") {
     snapshotClosedMonths(new Date()).catch((err) => {
       // eslint-disable-next-line no-console
@@ -152,6 +154,10 @@ export function buildApp(): FastifyInstance {
     snapshotClosedReviewMonths(new Date()).catch((err) => {
       // eslint-disable-next-line no-console
       console.error("monthly-review snapshot boot backfill failed", err);
+    });
+    recordCapacitySnapshots(new Date()).catch((err) => {
+      // eslint-disable-next-line no-console
+      console.error("capacity snapshot boot record failed", err);
     });
   }
   app.addHook("onClose", (_instance, done) => {
@@ -163,6 +169,7 @@ export function buildApp(): FastifyInstance {
     clearInterval(adminAutoArchiveTimer);
     clearInterval(marketShareSnapshotTimer);
     clearInterval(monthlyReviewSnapshotTimer);
+    clearInterval(capacitySnapshotTimer);
     done();
   });
 

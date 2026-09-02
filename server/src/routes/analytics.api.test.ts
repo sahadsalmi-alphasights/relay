@@ -162,6 +162,19 @@ describe("GET /analytics/monthly-review", () => {
     expect(b.intakeByPool.find((p: { pool: string }) => p.pool === "Global").count).toBe(1);
     expect(b.goalChangeOutcomes).toHaveProperty("accepted");
     expect(typeof b.staleCallsSold).toBe("number");
+    // Available-now batch present and shaped.
+    expect(b.clientMix.total).toBe(1);
+    expect(b.clientMix.newClients).toBe(1);
+    expect(b.avgDealByType.find((t: { type: string }) => t.type === "Strategy").n).toBe(10);
+    expect(b.customVsSystem.system).toBe(4);
+    expect(typeof b.overdueFirstDeliverables).toBe("number");
+    expect(b.deliveredByTeam.find((t: { team: string }) => t.team === "Team_Alpha").delivered).toBe(4);
+    expect(b.statusBreakdown.find((s: { status: string }) => s.status === "Available").count).toBeGreaterThan(0);
+    expect(b.roster).toHaveProperty("active");
+    expect(b.pipelineByPL[0].pl).toBe("PL_Alpha");
+    expect(typeof b.autoArchived).toBe("number");
+    expect(b.hygiene).toHaveProperty("anglesNoDemand");
+    expect(b.capacityNow).toHaveProperty("byPractice");
   });
 
   it("rejects a malformed month", async () => {

@@ -6,20 +6,31 @@ import { hasSnapshot, snapshotMarketShare } from "../repositories/marketShareSna
 import {
   auditByActionForMonth,
   auditEventsForMonth,
+  autoArchivedForMonth,
+  avgDealSizeByType,
   chaseClientsNow,
+  clientMixForMonth,
+  customVsSystem,
+  deliveredByTeam,
   goalAttainmentForMonth,
   goalChangeOutcomes,
   goalChangeSnapshot,
   goalDistributionForMonth,
+  hygieneNow,
   intakeByPool,
   marketShareByPool,
   marketShareByTeam,
   marketShareByType,
+  overdueFirstDeliverablesNow,
+  pipelineByPL,
   pipelineForMonth,
+  rosterNow,
   stageMixNow,
   staleCallsSoldNow,
+  statusBreakdownNow,
   stuckInAdminNow,
   topClientsForMonth,
+  unmetDemandByPL,
 } from "../repositories/monthlyReview";
 import { ADMIN_AUTO_ARCHIVE_DAYS } from "../rules/config";
 import { activeInstanceKey } from "../auth/activeInstance";
@@ -113,10 +124,13 @@ const analyticsRoutes: FastifyPluginAsync = async (app) => {
     const dayMs = 24 * 60 * 60 * 1000;
     const stuckBeforeIso = new Date(now.getTime() - ADMIN_AUTO_ARCHIVE_DAYS * dayMs).toISOString();
     const staleBeforeIso = new Date(now.getTime() - 2 * dayMs).toISOString();
+    const overdueBeforeIso = new Date(now.getTime() - 30 * 60 * 1000).toISOString();
+    const loginSinceIso = new Date(now.getTime() - 30 * dayMs).toISOString();
 
     const [
       marketShare, byType, byTeam, goals, pipeline, auditEvents, goalChange,
       byPool, topClients, goalDistribution, stageMix, chase, stuck, intakePool, goalChangeOut, auditByAction, staleCallsSold,
+      clientMix, avgDeal, unmetPL, deliveredTeam, customSystem, overdueFd, statusMix, roster, autoArchived, byPL, hygiene,
     ] = await Promise.all([
       shareForMonth(monthKey, current.monthKey),
       marketShareByType(startIso, endIso),
@@ -135,6 +149,17 @@ const analyticsRoutes: FastifyPluginAsync = async (app) => {
       goalChangeOutcomes(),
       auditByActionForMonth(startIso, endIso),
       staleCallsSoldNow(staleBeforeIso),
+      clientMixForMonth(startIso, endIso),
+      avgDealSizeByType(startIso, endIso),
+      unmetDemandByPL(startIso, endIso),
+      deliveredByTeam(startIso, endIso),
+      customVsSystem(startIso, endIso),
+      overdueFirstDeliverablesNow(overdueBeforeIso),
+      statusBreakdownNow(),
+      rosterNow(loginSinceIso),
+      autoArchivedForMonth(startIso, endIso),
+      pipelineByPL(startIso, endIso),
+      hygieneNow(),
     ]);
 
     // Six-month market-share trend ending at the selected month (snapshot-aware).
@@ -149,16 +174,25 @@ const analyticsRoutes: FastifyPluginAsync = async (app) => {
     // Live capacity of the deliverer pool in the owner's active instance.
     const hour = dubaiHour(now);
     const people = await listAvailableCandidatesWithAssignments(activeInstanceKey(request), { ghost: false });
-    const loads = people.map((p) => ({ teamId: p.teamId as string | null, load: personLoad(p.assignments, hour) }));
+    const loads = people.map((p) => ({
+      teamId: (p.teamId as string | null) ?? null,
+      practice: (p.practiceArea as string | null) ?? null,
+      load: personLoad(p.assignments, hour),
+    }));
     const medLoad = median(loads.map((l) => l.load));
-    const teamAgg = new Map<string, { sum: number; count: number }>();
-    for (const l of loads) {
-      const key = l.teamId ?? "none";
-      const cur = teamAgg.get(key) ?? { sum: 0, count: 0 };
-      cur.sum += l.load;
-      cur.count += 1;
-      teamAgg.set(key, cur);
-    }
+    const aggBy = (pick: (l: (typeof loads)[number]) => string | null) => {
+      const m = new Map<string, { sum: number; count: number }>();
+      for (const l of loads) {
+        const k = pick(l) ?? "none";
+        const cur = m.get(k) ?? { sum: 0, count: 0 };
+        cur.sum += l.load;
+        cur.count += 1;
+        m.set(k, cur);
+      }
+      return m;
+    };
+    const teamAgg = aggBy((l) => l.teamId);
+    const practiceAgg = aggBy((l) => l.practice);
     const capacityNow = {
       people: loads.length,
       medianLoad: Number(medLoad.toFixed(1)),
@@ -166,6 +200,9 @@ const analyticsRoutes: FastifyPluginAsync = async (app) => {
       idle: loads.filter((l) => l.load === 0).length,
       byTeam: [...teamAgg.entries()]
         .map(([teamId, { sum, count }]) => ({ teamId: teamId === "none" ? null : teamId, avgLoad: Number((sum / count).toFixed(1)), count }))
+        .sort((a, b) => b.avgLoad - a.avgLoad),
+      byPractice: [...practiceAgg.entries()]
+        .map(([practice, { sum, count }]) => ({ practice: practice === "none" ? "Unassigned" : practice, avgLoad: Number((sum / count).toFixed(1)), count }))
         .sort((a, b) => b.avgLoad - a.avgLoad),
     };
 
@@ -180,18 +217,29 @@ const analyticsRoutes: FastifyPluginAsync = async (app) => {
       byTeam: byTeam.map((t) => ({ ...t, share: t.n > 0 ? t.callsSold / t.n : null })),
       byPool: byPool.map((t) => ({ ...t, share: t.n > 0 ? t.callsSold / t.n : null })),
       topClients: topClients.map((t) => ({ ...t, share: t.n > 0 ? t.callsSold / t.n : null })),
+      clientMix,
+      avgDealByType: avgDeal,
+      unmetDemandByPL: unmetPL,
       goals,
       goalDistribution,
+      deliveredByTeam: deliveredTeam,
+      customVsSystem: customSystem,
+      overdueFirstDeliverables: overdueFd,
       stageMix,
       chase,
       stuck: stuck.map((s) => ({ ...s, daysIdle: Math.floor((now.getTime() - new Date(s.latestStageEnteredAt).getTime()) / dayMs) })),
+      statusBreakdown: statusMix,
+      roster,
       pipeline,
       intakeByPool: intakePool,
+      pipelineByPL: byPL,
+      autoArchived,
       auditEvents,
       auditByAction,
       goalChange,
       goalChangeOutcomes: goalChangeOut,
       staleCallsSold,
+      hygiene,
       capacityNow,
     };
   });

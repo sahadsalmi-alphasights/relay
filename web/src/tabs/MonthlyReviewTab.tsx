@@ -184,6 +184,25 @@ export default function MonthlyReviewTab({ reloadTick }: { reloadTick: number })
                 ))}
             </div>
           </div>
+          <div className="mr-cards">
+            <div className="mr-card">
+              <h3>Average deal size</h3>
+              <div className="mr-cs">Calls wanted per project, by type</div>
+              {(() => { const mx = Math.max(1, ...d.avgDealByType.map((t) => t.projects ? t.n / t.projects : 0)); return d.avgDealByType.map((t) => {
+                const avg = t.projects ? t.n / t.projects : 0;
+                return <Bar key={t.type} label={t.type} value={avg.toFixed(1)} pct={(avg / mx) * 100} tone="mut" />;
+              }); })()}
+              <div className="mr-line"><span>New vs repeat clients</span><b>{d.clientMix.newClients} new / {Math.max(0, d.clientMix.total - d.clientMix.newClients)} repeat</b></div>
+            </div>
+            <div className="mr-card">
+              <h3>Unmet demand by PL</h3>
+              <div className="mr-cs">Calls wanted minus sold</div>
+              {d.unmetDemandByPL.length === 0 ? <div className="empty" style={{ padding: 8 }}>All demand captured.</div> :
+                (() => { const mx = Math.max(1, ...d.unmetDemandByPL.map((p) => p.gap)); return d.unmetDemandByPL.map((p) => (
+                  <Bar key={p.pl} label={p.pl} value={String(p.gap)} pct={(p.gap / mx) * 100} tone="warn" />
+                )); })()}
+            </div>
+          </div>
         </>
       )}
 
@@ -195,6 +214,7 @@ export default function MonthlyReviewTab({ reloadTick }: { reloadTick: number })
             <Kpi k="Goal total" v={d.goals.goalTotal.toLocaleString()} />
             <Kpi k="Delivered ÷ goal" v={pctOf(goalPct)} />
             <Kpi k="Projects hit goal" v={pctOf(hitPct)} d={`${d.goals.projectsHit} of ${d.goals.projectsTotal}`} />
+            <Kpi k="Overdue 1st (now)" v={String(d.overdueFirstDeliverables)} />
           </div>
           <div className="mr-card">
             <h3>Goal attainment</h3>
@@ -202,6 +222,26 @@ export default function MonthlyReviewTab({ reloadTick }: { reloadTick: number })
             <Bar label="Delivered" value={d.goals.deliveredTotal.toLocaleString()} pct={goalPct * 100}
               tone={goalPct >= 0.85 ? "good" : goalPct >= 0.6 ? "warn" : "bad"} />
             <Bar label="Goal" value={d.goals.goalTotal.toLocaleString()} pct={100} tone="mut" />
+          </div>
+          <div className="mr-cards">
+            <div className="mr-card">
+              <h3>Delivered by team</h3>
+              <div className="mr-cs">Profiles delivered ÷ goal, this month</div>
+              {d.deliveredByTeam.length === 0 ? <div className="empty" style={{ padding: 8 }}>No delivery this month.</div> :
+                d.deliveredByTeam.map((t) => {
+                  const p = t.goal > 0 ? t.delivered / t.goal : 0;
+                  return <Bar key={t.team} label={t.team.replace("Team_", "")} value={`${t.delivered}/${t.goal}`} pct={p * 100}
+                    tone={p >= 0.85 ? "good" : p >= 0.6 ? "warn" : "bad"} />;
+                })}
+            </div>
+            <div className="mr-card">
+              <h3>Sourcing split</h3>
+              <div className="mr-cs">System vs custom (outside-system) profiles</div>
+              {(() => { const tot = Math.max(1, d.customVsSystem.system + d.customVsSystem.custom); return (<>
+                <Bar label="System" value={String(d.customVsSystem.system)} pct={(d.customVsSystem.system / tot) * 100} />
+                <Bar label="Custom" value={String(d.customVsSystem.custom)} pct={(d.customVsSystem.custom / tot) * 100} tone="mut" />
+              </>); })()}
+            </div>
           </div>
           <div className="mr-cards">
             <div className="mr-card">
@@ -252,15 +292,44 @@ export default function MonthlyReviewTab({ reloadTick }: { reloadTick: number })
             <Kpi k="Over median" v={String(d.capacityNow.overMedian)} />
             <Kpi k="Idle (no load)" v={String(d.capacityNow.idle)} />
           </div>
-          <div className="mr-card">
-            <h3>Load distribution by team</h3>
-            <div className="mr-cs">Average weighted load right now (live)</div>
-            {d.capacityNow.byTeam.length === 0 ? <div className="empty" style={{ padding: 8 }}>No deliverers online.</div> :
-              d.capacityNow.byTeam.map((t) => (
-                <Bar key={t.teamId ?? "none"} label={(teamNameOf(t.teamId) || "Unassigned").replace("Team_", "")}
-                  value={t.avgLoad.toFixed(1)} pct={(t.avgLoad / maxLoad) * 100}
-                  tone={t.avgLoad >= maxLoad * 0.8 ? "bad" : t.avgLoad >= maxLoad * 0.5 ? "warn" : "accent"} />
-              ))}
+          <div className="mr-cards">
+            <div className="mr-card">
+              <h3>Load by team</h3>
+              <div className="mr-cs">Average weighted load right now (live)</div>
+              {d.capacityNow.byTeam.length === 0 ? <div className="empty" style={{ padding: 8 }}>No deliverers online.</div> :
+                d.capacityNow.byTeam.map((t) => (
+                  <Bar key={t.teamId ?? "none"} label={(teamNameOf(t.teamId) || "Unassigned").replace("Team_", "")}
+                    value={t.avgLoad.toFixed(1)} pct={(t.avgLoad / maxLoad) * 100}
+                    tone={t.avgLoad >= maxLoad * 0.8 ? "bad" : t.avgLoad >= maxLoad * 0.5 ? "warn" : "accent"} />
+                ))}
+            </div>
+            <div className="mr-card">
+              <h3>Load by practice area</h3>
+              <div className="mr-cs">Average weighted load right now (live)</div>
+              {d.capacityNow.byPractice.length === 0 ? <div className="empty" style={{ padding: 8 }}>No deliverers online.</div> :
+                (() => { const mx = Math.max(1, ...d.capacityNow.byPractice.map((p) => p.avgLoad)); return d.capacityNow.byPractice.map((p) => (
+                  <Bar key={p.practice} label={p.practice} value={p.avgLoad.toFixed(1)} pct={(p.avgLoad / mx) * 100}
+                    tone={p.avgLoad >= mx * 0.8 ? "bad" : p.avgLoad >= mx * 0.5 ? "warn" : "accent"} />
+                )); })()}
+            </div>
+          </div>
+          <div className="mr-cards">
+            <div className="mr-card">
+              <h3>Status right now</h3>
+              <div className="mr-cs">People by availability</div>
+              {(() => { const mx = Math.max(1, ...d.statusBreakdown.map((s) => s.count)); return d.statusBreakdown.map((s) => (
+                <Bar key={s.status} label={s.status} value={String(s.count)} pct={(s.count / mx) * 100}
+                  tone={s.status === "Available" ? "good" : s.status === "Offline" ? "mut" : "warn"} />
+              )); })()}
+            </div>
+            <div className="mr-card">
+              <h3>Roster</h3>
+              <div className="mr-cs">Current headcount</div>
+              <div className="mr-line"><span>Active people</span><b>{d.roster.active}</b></div>
+              <div className="mr-line"><span>Logged in last 30 days</span><b>{d.roster.loggedInRecently}</b></div>
+              <div className="mr-line"><span>Ghost deliverers</span><b>{d.roster.ghosts}</b></div>
+              <div className="mr-line"><span>Deactivated</span><b>{d.roster.deactivated}</b></div>
+            </div>
           </div>
           <p className="foot-note">Capacity is a live snapshot of the deliverer pool in your active instance, not a monthly average.</p>
         </>
@@ -274,6 +343,15 @@ export default function MonthlyReviewTab({ reloadTick }: { reloadTick: number })
             <Kpi k="Active" v={String(d.pipeline.byStatus.active)} />
             <Kpi k="Archived" v={String(d.pipeline.byStatus.archived)} />
             <Kpi k="Delivery closed" v={String(d.pipeline.byStatus.deliveryClosed)} />
+            <Kpi k="Auto-closed (idle)" v={String(d.autoArchived)} />
+          </div>
+          <div className="mr-card">
+            <h3>New projects by PL</h3>
+            <div className="mr-cs">Created this month</div>
+            {d.pipelineByPL.length === 0 ? <div className="empty" style={{ padding: 8 }}>No new projects.</div> :
+              (() => { const mx = Math.max(1, ...d.pipelineByPL.map((p) => p.count)); return d.pipelineByPL.map((p) => (
+                <Bar key={p.pl} label={p.pl} value={String(p.count)} pct={(p.count / mx) * 100} tone="mut" />
+              )); })()}
           </div>
           <div className="mr-cards">
             <div className="mr-card">
@@ -308,6 +386,8 @@ export default function MonthlyReviewTab({ reloadTick }: { reloadTick: number })
               <div className="mr-line"><span>Goal-change open</span><b>{d.goalChange.open}</b></div>
               <div className="mr-line"><span>Goal-change accepted / declined</span><b>{d.goalChangeOutcomes.accepted} / {d.goalChangeOutcomes.declined}</b></div>
               <div className="mr-line"><span>Stale calls-sold (angles)</span><b>{d.staleCallsSold}</b></div>
+              <div className="mr-line"><span>Angles with no demand set</span><b>{d.hygiene.anglesNoDemand}</b></div>
+              <div className="mr-line"><span>Live projects with no goal</span><b>{d.hygiene.projectsNoGoal}</b></div>
               <div className="mr-line"><span>Audit events this month</span><b>{d.auditEvents.toLocaleString()}</b></div>
             </div>
           </div>

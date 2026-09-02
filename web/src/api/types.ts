@@ -352,6 +352,8 @@ export interface MonthlyReview {
   avgDealByType: { type: string; projects: number; n: number }[];
   unmetDemandByPL: { pl: string; gap: number }[];
   goals: { deliveredTotal: number; goalTotal: number; projectsTotal: number; projectsHit: number };
+  firstDeliverableTiming: { completed: number; avgHours: number | null; overdue: number };
+  rework: number;
   goalDistribution: { bucket: string; count: number }[];
   deliveredByTeam: { team: string; delivered: number; goal: number }[];
   customVsSystem: { system: number; custom: number };

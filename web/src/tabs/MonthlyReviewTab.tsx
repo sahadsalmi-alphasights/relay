@@ -214,6 +214,8 @@ export default function MonthlyReviewTab({ reloadTick }: { reloadTick: number })
             <Kpi k="Goal total" v={d.goals.goalTotal.toLocaleString()} />
             <Kpi k="Delivered ÷ goal" v={pctOf(goalPct)} />
             <Kpi k="Projects hit goal" v={pctOf(hitPct)} d={`${d.goals.projectsHit} of ${d.goals.projectsTotal}`} />
+            <Kpi k="Avg time to 1st" v={d.firstDeliverableTiming.avgHours == null ? "—" : `${d.firstDeliverableTiming.avgHours}h`} d={d.firstDeliverableTiming.completed ? `${d.firstDeliverableTiming.completed} completed` : "no data yet"} />
+            <Kpi k="Rework moves" v={String(d.rework)} d="backward stage changes" />
             <Kpi k="Overdue 1st (now)" v={String(d.overdueFirstDeliverables)} />
           </div>
           <div className="mr-card">
@@ -279,7 +281,7 @@ export default function MonthlyReviewTab({ reloadTick }: { reloadTick: number })
                 ))}
             </div>
           </div>
-          <p className="foot-note">Delivery is measured on projects created in the selected month, ghosts excluded. Chase and stuck lists are live (current state). First-deliverable timing arrives with stage-history capture.</p>
+          <p className="foot-note">Delivery is measured on projects created in the selected month, ghosts excluded. Chase and stuck lists are live (current state). Time-to-first-deliverable and rework accrue from stage changes going forward, so early months read low until history builds up.</p>
         </>
       )}
 

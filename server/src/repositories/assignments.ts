@@ -234,6 +234,12 @@ export async function updateAssignmentDeliverer(id: string, delivererId: string)
  * leaves the existing stamp untouched).
  */
 export async function setAssignmentStage(id: string, stage: Stage): Promise<AssignmentRow> {
+  // Read the stage being left (and when it was entered) before the update, so
+  // the transition row can record how long the assignment sat in it.
+  const { rows: prior } = await pool.query<{ stage: string; stageEnteredAt: string }>(
+    `SELECT stage, stage_entered_at AS "stageEnteredAt" FROM assignment WHERE id = $1`,
+    [id]
+  );
   await pool.query(
     `UPDATE assignment
      SET stage = $2, stage_entered_at = now(), progress_updated_at = now(), stale_notified_threshold_minutes = 0,
@@ -241,6 +247,14 @@ export async function setAssignmentStage(id: string, stage: Stage): Promise<Assi
      WHERE id = $1`,
     [id, stage]
   );
+  // Record the transition for analytics (skip no-op sets that don't change stage).
+  if (prior[0] && prior[0].stage !== stage) {
+    await pool.query(
+      `INSERT INTO stage_transition (assignment_id, from_stage, to_stage, from_dwell_seconds)
+       VALUES ($1, $2, $3, GREATEST(0, EXTRACT(EPOCH FROM (now() - $4::timestamptz))::int))`,
+      [id, prior[0].stage, stage, prior[0].stageEnteredAt]
+    );
+  }
   return (await findAssignmentById(id))!;
 }
 

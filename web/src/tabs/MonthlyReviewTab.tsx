@@ -337,6 +337,23 @@ export default function MonthlyReviewTab({ reloadTick }: { reloadTick: number })
               <Funnel steps={[{ label: "Demand (N)", value: d.marketShare.n }, { label: "Calls sold", value: d.marketShare.callsSold }]} />
             </div>
             <div className="mr-card">
+              <h3>Calls-sold velocity</h3>
+              <div className="mr-cs">Calls sold per week this month (from the ledger)</div>
+              {d.velocity.byWeek.length === 0 ? <div className="empty" style={{ padding: 8 }}>No calls sold logged yet.</div> : (
+                <>
+                  <div className="mr-trend" style={{ height: 90 }}>
+                    {(() => { const mx = Math.max(1, ...d.velocity.byWeek.map((w) => w.sold)); return d.velocity.byWeek.map((w) => (
+                      <div className="mr-tcol" key={w.week}>
+                        <div className="mr-tbar" style={{ height: `${Math.max(4, (w.sold / mx) * 100)}%` }}><b>{w.sold}</b></div>
+                        <div className="mr-tcl">{w.week.slice(5)}</div>
+                      </div>
+                    )); })()}
+                  </div>
+                  <div className="mr-line"><span>Total sold this month</span><b>{d.velocity.total}</b></div>
+                </>
+              )}
+            </div>
+            <div className="mr-card">
               <h3>Competition (ghosts)</h3>
               <div className="mr-cs">Angles contested by a ghost deliverer</div>
               <div className="mr-v" style={{ fontFamily: "'Space Grotesk'", fontWeight: 700, fontSize: 30 }}>

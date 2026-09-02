@@ -383,6 +383,7 @@ export interface MonthlyReview {
   topDeliverers: { name: string; delivered: number }[];
   ghost: { contested: number; won: number };
   byBU: { bu: string; callsSold: number; n: number; share: number | null }[];
+  velocity: { total: number; byWeek: { week: string; sold: number }[] };
   goalChange: { open: number; resolved: number };
   goalChangeOutcomes: { accepted: number; declined: number };
   staleCallsSold: number;

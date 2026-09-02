@@ -552,3 +552,20 @@ export async function marketShareByBU(startIso: string, endIso: string): Promise
   );
   return rows.map((r) => ({ bu: r.bu ?? "Unassigned", callsSold: Number(r.callsSold), n: Number(r.n) }));
 }
+
+/* ---- Calls-sold velocity (new capture: calls_sold_event ledger) ---- */
+
+/** Calls sold during the month (from the ledger), total and by ISO week. */
+export async function callsSoldVelocity(startIso: string, endIso: string): Promise<{ total: number; byWeek: { week: string; sold: number }[] }> {
+  const { rows } = await pool.query<{ week: string; sold: number }>(
+    `SELECT to_char(date_trunc('week', at), 'YYYY-MM-DD') AS week,
+            COALESCE(SUM(GREATEST(delta, 0)), 0)::int AS sold
+     FROM calls_sold_event
+     WHERE at >= $1 AND at < $2
+     GROUP BY date_trunc('week', at)
+     ORDER BY date_trunc('week', at)`,
+    [startIso, endIso]
+  );
+  const byWeek = rows.map((r) => ({ week: r.week, sold: Number(r.sold) }));
+  return { total: byWeek.reduce((a, w) => a + w.sold, 0), byWeek };
+}

@@ -23,6 +23,10 @@ services:
       context: ./server
       dockerfile: Dockerfile.prod
     restart: unless-stopped
+    # Give the process time to drain on SIGTERM (see server/src/index.ts). Above
+    # the app's own 10s force-exit backstop so a clean exit always wins the race
+    # with Docker's SIGKILL rather than being cut off at the default 10s.
+    stop_grace_period: 15s
     depends_on:
       db:
         condition: service_healthy

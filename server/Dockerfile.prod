@@ -33,4 +33,9 @@ EXPOSE 4000
 # migrate step uses MIGRATE_DATABASE_URL when set (the owner role), and the
 # app process uses DATABASE_URL (the scoped role). Falls back to DATABASE_URL
 # for both when MIGRATE_DATABASE_URL is unset — fully backward compatible.
-CMD ["sh", "-c", "DATABASE_URL=\"${MIGRATE_DATABASE_URL:-$DATABASE_URL}\" npm run migrate:up && node dist/index.js"]
+# `exec` so node replaces the shell as PID 1 and receives SIGTERM directly on a
+# deploy/stop — otherwise the signal hits `sh`, which doesn't forward it, and
+# the graceful-shutdown handler in index.ts never runs (in-flight requests and
+# WebSockets would be cut off). Migrations still run first, in the shell, before
+# exec hands the process to node.
+CMD ["sh", "-c", "DATABASE_URL=\"${MIGRATE_DATABASE_URL:-$DATABASE_URL}\" npm run migrate:up && exec node dist/index.js"]

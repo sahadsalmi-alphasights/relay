@@ -73,6 +73,21 @@ export function publish(event: LiveEvent, recipientIds?: Set<string>): void {
   }
 }
 
+/**
+ * Close every open socket with a normal-closure code, for graceful shutdown.
+ * 1001 ("going away") tells the client this is an expected server stop, not a
+ * crash — the browser reconnects to the new instance on its own. Clears the
+ * registry so nothing lingers.
+ */
+export function closeAllConnections(): void {
+  for (const [id, conn] of connections) {
+    if (conn.socket.readyState === conn.socket.OPEN) {
+      conn.socket.close(1001, "server shutting down");
+    }
+    connections.delete(id);
+  }
+}
+
 /** Ping every connection; terminate any that didn't respond since the last sweep (dead from sleep/dropped wifi). */
 export function heartbeatSweep(): void {
   for (const [id, conn] of connections) {

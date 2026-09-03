@@ -240,6 +240,18 @@ describe("GET /audit-log/export.csv", () => {
     });
     expect(res.statusCode).toBe(403);
   });
+
+  it("excludeAuth=true drops login/logout rows from the export", async () => {
+    await insertAuditLog({ entityType: "project", entityId: fx.project, actorId: fx.plAlpha, action: "archive" });
+    const cookie = await loginAs(app, fx.plAlpha); // writes a login row
+    const cookies = { relay_session: cookie.split("=")[1] };
+
+    const withAuth = (await app.inject({ method: "GET", url: "/audit-log/export.csv", cookies })).body;
+    expect(withAuth).toContain(",login,");
+    const noAuth = (await app.inject({ method: "GET", url: "/audit-log/export.csv?excludeAuth=true", cookies })).body;
+    expect(noAuth).not.toContain(",login,");
+    expect(noAuth).toContain(",archive,");
+  });
 });
 
 describe("GET /audit-log/toggles.csv (self-toggle matrix)", () => {

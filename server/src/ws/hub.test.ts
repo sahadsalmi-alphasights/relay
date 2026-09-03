@@ -1,13 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
-import { heartbeatSweep, markAlive, publish, registerConnection, unregisterConnection } from "./hub";
+import { closeAllConnections, heartbeatSweep, markAlive, publish, registerConnection, unregisterConnection } from "./hub";
 
-function fakeSocket() {
+function fakeSocket(readyState = 1) {
   return {
-    readyState: 1,
+    readyState,
     OPEN: 1,
     send: vi.fn(),
     ping: vi.fn(),
     terminate: vi.fn(),
+    close: vi.fn(),
   } as unknown as import("ws").WebSocket;
 }
 
@@ -71,5 +72,33 @@ describe("ws/hub — connection registry and fanout", () => {
     expect(alive.ping).toHaveBeenCalledTimes(2);
 
     unregisterConnection(idAlive);
+  });
+
+  it("closeAllConnections closes every open socket with the going-away code and empties the registry", () => {
+    const a = fakeSocket();
+    const b = fakeSocket();
+    registerConnection(a, "person-a");
+    registerConnection(b, "person-b");
+
+    closeAllConnections();
+
+    expect(a.close).toHaveBeenCalledWith(1001, "server shutting down");
+    expect(b.close).toHaveBeenCalledWith(1001, "server shutting down");
+
+    // Registry is emptied: a subsequent publish reaches no one.
+    publish({ type: "capacity-ranking" });
+    expect(a.send).not.toHaveBeenCalled();
+    expect(b.send).not.toHaveBeenCalled();
+  });
+
+  it("closeAllConnections skips a socket that is already closing but still clears it", () => {
+    const closing = fakeSocket(2); // CLOSING, not OPEN
+    registerConnection(closing, "person-c");
+
+    closeAllConnections();
+
+    expect(closing.close).not.toHaveBeenCalled();
+    publish({ type: "capacity-ranking" });
+    expect(closing.send).not.toHaveBeenCalled();
   });
 });

@@ -30,7 +30,7 @@ import slackRoutes from "./routes/slack";
 import sundaySwapRequestsRoutes from "./routes/sundaySwapRequests";
 import teamsRoutes from "./routes/teams";
 import wsRoutes from "./routes/ws";
-import { startHeartbeat } from "./ws/hub";
+import { closeAllConnections, startHeartbeat } from "./ws/hub";
 import { startStaleScheduler } from "./services/staleScheduler";
 import { startAdminAutoArchiveScheduler } from "./services/adminAutoArchive";
 import { snapshotClosedMonths, startMarketShareSnapshotScheduler } from "./services/marketShareSnapshot";
@@ -170,6 +170,11 @@ export function buildApp(): FastifyInstance {
     clearInterval(marketShareSnapshotTimer);
     clearInterval(monthlyReviewSnapshotTimer);
     clearInterval(capacitySnapshotTimer);
+    // Open WebSockets would otherwise keep the HTTP server from closing (their
+    // sockets stay open), stalling app.close() until the deploy's kill timeout.
+    // Close them with a "going away" code so clients reconnect to the new
+    // instance instead of being severed mid-frame.
+    closeAllConnections();
     done();
   });
 

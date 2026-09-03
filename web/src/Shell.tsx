@@ -35,6 +35,7 @@ import { useLiveSocket, type LiveEvent } from "./lib/useLiveSocket";
 import { useNotifications } from "./lib/useNotifications";
 import { showBrowserNotification } from "./lib/pushNotifications";
 import { initSoundUnlock, playNotificationSound } from "./lib/notificationSound";
+import { usePersistentState } from "./lib/persistentState";
 
 export interface NotesTarget {
   projectId: string;
@@ -58,9 +59,13 @@ export default function Shell() {
   useEffect(() => {
     try { localStorage.setItem(TAB_KEY, tab); } catch { /* ignore storage errors */ }
   }, [tab]);
-  const [scope, setScope] = useState<Scope>("mine");
+  // Persist the scope toggle (and the Team-view target) so a refresh keeps you
+  // in the view you were in — managers mostly live in Team view and were being
+  // snapped back to My view on every reload. teamView is a free team id, so it
+  // has no allowed-set guard.
+  const [scope, setScope] = usePersistentState<Scope>("relay.scope", "mine", ["mine", "team"]);
   // Team view target: "" = own team (default), "all" = whole BU, else a team id.
-  const [teamView, setTeamView] = useState<string>("");
+  const [teamView, setTeamView] = usePersistentState<string>("relay.teamView", "");
   const [plPendingCount, setPlPendingCount] = useState(0);
   const [fdCount, setFdCount] = useState(0);
   const [reloadTick, setReloadTick] = useState(0);

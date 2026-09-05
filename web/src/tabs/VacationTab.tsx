@@ -97,26 +97,45 @@ export default function VacationTab({ reloadTick }: { reloadTick: number }) {
   if (!data) return <div className="empty">Loading…</div>;
 
   const me = data.members.find((m) => m.email.toLowerCase() === data.me.email.toLowerCase());
-  const open = openQuarter(data);
+
+  // Role-scoped sub-tabs. Everyone plans their own leave (My Vacation, Plan My
+  // Trip); managers also see the team (Dashboard, Team View); only owners get
+  // Holidays & Coverage. The server enforces the same boundary — reads are open,
+  // reminders are manager+, config writes are owner-only — so this is UX, not
+  // the security control. Order is the landing order: allowed[0] is the tab a
+  // role opens on.
+  const allowedKeys: Sub[] = actor.isOwner
+    ? ["dash", "mine", "team", "plan", "admin"]
+    : actor.isManager
+      ? ["dash", "mine", "team", "plan"]
+      : ["mine", "plan"];
+  const visibleTabs = SUB_TABS.filter((t) => allowedKeys.includes(t.key));
+  // Clamp: a persisted/default sub the current role can't see (e.g. an owner's
+  // "admin" left in localStorage, then signed in as a member) falls back to the
+  // role's landing tab rather than rendering nothing.
+  const activeSub: Sub = allowedKeys.includes(sub) ? sub : allowedKeys[0];
+  // Only navigate to tabs this role actually has — keeps cross-tab links (e.g.
+  // the Dashboard "Manage" shortcut) from stranding a manager on a blank tab.
+  const goto = (s: Sub) => { if (allowedKeys.includes(s)) setSub(s); };
 
   return (
     <div>
       <div className="section-lbl" style={{ marginBottom: 4 }}>Vacation Planner</div>
 
       <div className="dl-view-switch settings-subnav" role="group" aria-label="Vacation section" style={{ marginBottom: 14 }}>
-        {SUB_TABS.map((t) => (
-          <button key={t.key} className={"btn-sm " + (sub === t.key ? "btn-pl" : "btn-ghost")} onClick={() => setSub(t.key)}>
+        {visibleTabs.map((t) => (
+          <button key={t.key} className={"btn-sm " + (activeSub === t.key ? "btn-pl" : "btn-ghost")} onClick={() => setSub(t.key)}>
             {t.label}
           </button>
         ))}
       </div>
       {error && <div className="err-line" style={{ marginBottom: 12 }}>{error}</div>}
 
-      {sub === "dash" && <Dashboard data={data} me={me} meId={actor.id} goto={setSub} />}
-      {sub === "mine" && <MyVacation data={data} me={me} />}
-      {sub === "team" && <TeamView data={data} teamId={teamId} setTeamId={setTeamId} meId={actor.id} />}
-      {sub === "plan" && <PlanTrip data={data} meEmail={data.me.email} />}
-      {sub === "admin" && <AdminPanel data={data} busy={busy} mutate={mutate} />}
+      {activeSub === "dash" && <Dashboard data={data} me={me} meId={actor.id} goto={goto} canAdmin={actor.isOwner} />}
+      {activeSub === "mine" && <MyVacation data={data} me={me} />}
+      {activeSub === "team" && <TeamView data={data} teamId={teamId} setTeamId={setTeamId} meId={actor.id} />}
+      {activeSub === "plan" && <PlanTrip data={data} meEmail={data.me.email} />}
+      {activeSub === "admin" && actor.isOwner && <AdminPanel data={data} busy={busy} mutate={mutate} />}
     </div>
   );
 }
@@ -124,7 +143,7 @@ export default function VacationTab({ reloadTick }: { reloadTick: number }) {
 /* ----------------------------- Dashboard (Timeline / gantt) ----------------------------- */
 const HEAVY_FRAC = 0.3; // ≥30% of the team off in a week ⇒ capacity risk (heuristic until a real coverage baseline exists)
 
-function Dashboard({ data, me, meId, goto }: { data: VacationData; me: Member | undefined; meId: string; goto: (s: Sub) => void }) {
+function Dashboard({ data, me, meId, goto, canAdmin }: { data: VacationData; me: Member | undefined; meId: string; goto: (s: Sub) => void; canAdmin: boolean }) {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const open = openQuarter(data);
 
@@ -332,7 +351,7 @@ function Dashboard({ data, me, meId, goto }: { data: VacationData; me: Member | 
 
         {/* 7 · Public-holiday coverage */}
         <div style={wCard}>
-          <h2 style={wH}>Holiday coverage <button style={{ ...chipBtn, marginLeft: "auto" }} onClick={() => goto("admin")}>Manage <Icon name="arrow-right" size={12} /></button></h2>
+          <h2 style={wH}>Holiday coverage {canAdmin && <button style={{ ...chipBtn, marginLeft: "auto" }} onClick={() => goto("admin")}>Manage <Icon name="arrow-right" size={12} /></button>}</h2>
           {coverage.length === 0 ? <div style={{ fontSize: 12.5, color: "var(--soft)" }}>No public holidays configured.</div>
             : coverage.map(({ h, short }) => (
               <div key={h.id} style={{ display: "flex", gap: 8, alignItems: "center", padding: "5px 0", borderBottom: "1px solid var(--line)", fontSize: 12.5 }}>

@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from "fastify";
-import { badRequest, notFound } from "../errors";
+import { badRequest, forbidden, notFound } from "../errors";
 import { insertAuditLog } from "../repositories/auditLog";
 import { listPeopleForVacation, setSeniority } from "../repositories/people";
 import { listTeams } from "../repositories/teams";
@@ -30,17 +30,24 @@ const SENIORITY = ["Senior", "Mid", "Junior"];
 const intOf = (v: unknown) => (Number.isFinite(Number(v)) ? Math.max(0, Math.trunc(Number(v))) : 0);
 
 /**
- * Vacation Planner API — OWNER only for now (gated here and in the nav).
- * Personal vacations + who's-out come from BambooHR; closures, public
- * holidays, coverage and busy periods are CapTracker config, BU-scoped.
- * Every mutation is audit-logged.
+ * Vacation Planner API — access is role-scoped (matching the sub-tabs the web
+ * app shows each role): any signed-in person can read the planner data (their
+ * own leave + who's-out for planning); managers can also nudge people to plan;
+ * only owners can change config — closures, public holidays, coverage, busy
+ * periods, seniority — and run the BambooHR diagnostics. Personal vacations +
+ * who's-out come from BambooHR; the config is CapTracker's, BU-scoped. Every
+ * mutation is audit-logged.
  */
 const vacationRoutes: FastifyPluginAsync = async (app) => {
-  // One call powers all four tabs: people + their BambooHR time-off in the
-  // window, plus config + computed quarters.
+  // One call powers every tab: people + their BambooHR time-off in the window,
+  // plus config + computed quarters. Read is open to any signed-in user — a
+  // member only sees their own leave + Plan-my-trip, but the overlap/coverage
+  // signals there need the same roster read; the tabs that expose the team
+  // (Dashboard, Team View) are gated in the web nav, and every write below
+  // still requires owner.
   app.get<{ Querystring: { from?: string; to?: string; teamId?: string } }>(
     "/data",
-    { preHandler: [app.requireOwner] },
+    { preHandler: [app.requireAuth] },
     async (request) => {
       const actor = request.actor!;
       const today = new Date();
@@ -295,8 +302,12 @@ const vacationRoutes: FastifyPluginAsync = async (app) => {
   // wired or the DM fails.
   app.post<{ Body: { email?: string; name?: string; quarter?: string; deadline?: string } }>(
     "/remind",
-    { preHandler: [app.requireOwner] },
+    { preHandler: [app.requireAuth] },
     async (request) => {
+      const actor = request.actor!;
+      // The nudge lives on the manager Team View. Managers and owners may send
+      // it; a plain member never sees the button, and can't reach it here.
+      if (!actor.isManager && !actor.isOwner) throw forbidden("only a manager may send vacation reminders");
       const { email, name, quarter, deadline } = request.body ?? {};
       if (!email || typeof email !== "string") throw badRequest("email is required");
 

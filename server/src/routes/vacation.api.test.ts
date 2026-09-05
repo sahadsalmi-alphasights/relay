@@ -21,10 +21,22 @@ const owner = async () => { await pool.query(`UPDATE person SET is_owner = true 
 const get = (cookie: string, url: string) => app.inject({ method: "GET", url, cookies: { relay_session: ck(cookie) } });
 const post = (cookie: string, url: string, payload: unknown) => app.inject({ method: "POST", url, cookies: { relay_session: ck(cookie) }, payload });
 
-describe("vacation planner API (owner-only)", () => {
-  it("blocks non-owners from /vacation/data", async () => {
+describe("vacation planner API (role-scoped)", () => {
+  it("lets any signed-in member read /vacation/data", async () => {
+    // Read is open — a member needs it for My Vacation + Plan My Trip. The
+    // team-facing sub-tabs are gated in the web nav; every write stays owner-only.
     const member = await loginAs(app, fx.delivererAlpha);
-    expect((await get(member, "/vacation/data")).statusCode).toBe(403);
+    const res = await get(member, "/vacation/data");
+    expect(res.statusCode).toBe(200);
+    expect(Array.isArray(res.json().members)).toBe(true);
+    expect(res.json().quarters.length).toBeGreaterThan(0);
+  });
+
+  it("still blocks a member from every config write", async () => {
+    const member = await loginAs(app, fx.delivererAlpha);
+    expect((await post(member, "/vacation/closures", { name: "x", startDate: "2026-12-24", endDate: "2026-12-26" })).statusCode).toBe(403);
+    expect((await post(member, "/vacation/public-holidays", { name: "x", holidayDate: "2026-09-25" })).statusCode).toBe(403);
+    expect((await post(member, "/vacation/busy-periods", { label: "x", startDate: "2026-12-24", endDate: "2026-12-26" })).statusCode).toBe(403);
   });
 
   it("returns members, computed quarters and empty config for an owner", async () => {
@@ -93,17 +105,25 @@ describe("vacation planner API (owner-only)", () => {
     expect(String(res.json().error)).toMatch(/bamboohr|not configured/i);
   });
 
-  it("POST /vacation/remind is owner-only and reports when Slack isn't configured", async () => {
+  it("POST /vacation/remind is manager+ and reports when Slack isn't configured", async () => {
+    // A plain member never sees the nudge and can't reach it.
     const member = await loginAs(app, fx.delivererAlpha);
     expect((await post(member, "/vacation/remind", { email: "a@b.co" })).statusCode).toBe(403);
 
-    const cookie = await owner();
-    expect((await post(cookie, "/vacation/remind", {})).statusCode).toBe(400); // email required
+    // A manager (not an owner) may send it.
+    const mgr = await loginAs(app, fx.managerBeta);
+    expect((await post(mgr, "/vacation/remind", {})).statusCode).toBe(400); // email required
     // No SLACK_BOT_TOKEN in the test env → clean {ok:false} with a reason, not a crash.
+    const mres = await post(mgr, "/vacation/remind", { email: "someone@test.example", name: "Sam", quarter: "Q2 2027" });
+    expect(mres.statusCode).toBe(200);
+    expect(mres.json().ok).toBe(false);
+    expect(mres.json().error).toMatch(/slack/i);
+
+    // And an owner, of course.
+    const cookie = await owner();
     const res = await post(cookie, "/vacation/remind", { email: "someone@test.example", name: "Sam", quarter: "Q2 2027" });
     expect(res.statusCode).toBe(200);
     expect(res.json().ok).toBe(false);
-    expect(res.json().error).toMatch(/slack/i);
   });
 
   describe("self-service booking (POST /vacation/request)", () => {

@@ -132,17 +132,17 @@ export default function Sidebar({
         <span className="nav-label">Sunday Coverage</span>
       </button>
 
-      {/* Vacation — sits right under Sunday Coverage. Owner-only for now. */}
-      {actor.isOwner && (
-        <button
-          className={"sunday-link" + (tab === "Vacation" ? " active" : "")}
-          onClick={() => setTab("Vacation")}
-          title="Vacation planner"
-        >
-          <span className="nav-icon ico" style={ico("vacation.svg")} aria-hidden="true" />
-          <span className="nav-label">Vacation</span>
-        </button>
-      )}
+      {/* Vacation — sits right under Sunday Coverage. Open to everyone; the tab
+          shows role-scoped sub-tabs (members plan their own leave, managers
+          also see the team, owners also configure holidays & coverage). */}
+      <button
+        className={"sunday-link" + (tab === "Vacation" ? " active" : "")}
+        onClick={() => setTab("Vacation")}
+        title="Vacation planner"
+      >
+        <span className="nav-icon ico" style={ico("vacation.svg")} aria-hidden="true" />
+        <span className="nav-label">Vacation</span>
+      </button>
 
       {/* FAQ — external link to the DeliveryGPT agent, opens in a new tab. */}
       <a
